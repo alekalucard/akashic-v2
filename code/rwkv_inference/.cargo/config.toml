@@ -1,0 +1,5 @@
+[build]
+# Enable native CPU features: AVX2, FMA, BMI2, etc.
+# This generates code optimized for Ace's specific CPU
+# ~4-8× speedup for matmul due to 256-bit SIMD vectorization
+rustflags = ["-C", "target-cpu=native"]

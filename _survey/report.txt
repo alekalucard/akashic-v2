@@ -1,0 +1,393 @@
+## CLASS TOTALS
+  CODE            1402 files      0.03 GiB  (  0.0% bytes,   0.8% files)
+  DATA          111785 files     54.88 GiB  ( 58.3% bytes,  62.5% files)
+  THIRD-PARTY    30160 files      5.05 GiB  (  5.4% bytes,  16.9% files)
+  BUILD          32330 files     22.27 GiB  ( 23.7% bytes,  18.1% files)
+  COPIES          3059 files     11.81 GiB  ( 12.6% bytes,   1.7% files)
+  TOTAL         178736 files     94.05 GiB
+
+## PER TOP-LEVEL ENTRY  (dominant class first; size / files per class)
+  fairies                                   30,968.9 MB   10240 files  -> DATA        [DATA=30,919.8 MB/9175; COPIES=25.5 MB/278; CODE=23.6 MB/787]
+  state                                     22,587.2 MB   12735 files  -> DATA        [DATA=14,146.6 MB/12568; COPIES=8,440.1 MB/166; BUILD=0.6 MB/1]
+  somatic_bevy                              10,583.0 MB   11703 files  -> BUILD       [BUILD=10,582.7 MB/11673; CODE=0.3 MB/30]
+  tools                                      9,922.2 MB    3731 files  -> DATA        [DATA=9,908.8 MB/3688; COPIES=13.0 MB/1; CODE=0.5 MB/42]
+  dashboard                                  9,320.7 MB   14217 files  -> BUILD       [BUILD=9,319.5 MB/14125; CODE=1.0 MB/35; DATA=0.1 MB/55; COPIES=0.1 MB/2]
+  .venv                                      4,861.0 MB   20807 files  -> THIRD-PARTY [THIRD-PARTY=4,861.0 MB/20807]
+  backups                                    2,476.8 MB      11 files  -> COPIES      [COPIES=2,476.8 MB/11]
+  postal_core                                2,180.7 MB    4507 files  -> BUILD       [BUILD=2,175.8 MB/4444; COPIES=4.3 MB/23; CODE=0.7 MB/39; DATA=0.0 MB/1]
+  P10_Memory                                 1,679.6 MB     162 files  -> COPIES      [COPIES=884.4 MB/12; DATA=794.7 MB/139; CODE=0.6 MB/11]
+  rwkv_inference                               720.6 MB    2096 files  -> BUILD       [BUILD=720.4 MB/2079; CODE=0.2 MB/17]
+  research_repos                               466.9 MB    9584 files  -> THIRD-PARTY [THIRD-PARTY=315.1 MB/9353; DATA=151.7 MB/231]
+  sandbox                                      188.3 MB    2429 files  -> COPIES      [COPIES=188.3 MB/2427; DATA=0.0 MB/2]
+  SRM_Intake                                   107.9 MB   81866 files  -> DATA        [DATA=107.9 MB/81866]
+  diaries                                       77.8 MB      97 files  -> DATA        [DATA=77.8 MB/97]
+  P30_Cognition                                 59.6 MB      26 files  -> COPIES      [COPIES=46.1 MB/4; DATA=13.3 MB/4; CODE=0.2 MB/18]
+  Claude_Office                                 32.8 MB     834 files  -> DATA        [DATA=30.9 MB/820; COPIES=1.9 MB/14]
+  <root files>                                  29.1 MB     209 files  -> DATA        [DATA=15.5 MB/42; COPIES=11.9 MB/41; CODE=1.6 MB/125; BUILD=0.1 MB/1]
+  directives                                    24.6 MB     128 files  -> DATA        [DATA=24.6 MB/128]
+  tracer_pool                                    9.6 MB      19 files  -> BUILD       [BUILD=9.4 MB/2; CODE=0.2 MB/16; DATA=0.0 MB/1]
+  infrastructure                                 4.7 MB      93 files  -> COPIES      [COPIES=3.2 MB/39; CODE=1.5 MB/54]
+  .cognitive                                     1.6 MB    1360 files  -> DATA        [DATA=1.6 MB/1360]
+  dream_states                                   0.9 MB    1594 files  -> DATA        [DATA=0.9 MB/1594]
+  _old_unconscious_mind_DEPRECATED               0.7 MB      35 files  -> COPIES      [COPIES=0.7 MB/35]
+  tests                                          0.7 MB      40 files  -> CODE        [CODE=0.7 MB/40]
+  docs                                           0.6 MB      25 files  -> CODE        [CODE=0.6 MB/25]
+  scripts                                        0.5 MB      36 files  -> CODE        [CODE=0.5 MB/36]
+  fairy_template                                 0.3 MB      14 files  -> CODE        [CODE=0.3 MB/14]
+  directory                                      0.3 MB      14 files  -> CODE        [CODE=0.2 MB/12; COPIES=0.1 MB/2]
+  consciousness                                  0.3 MB       7 files  -> CODE        [CODE=0.2 MB/6; COPIES=0.0 MB/1]
+  P00_Autonomic                                  0.2 MB      24 files  -> CODE        [CODE=0.2 MB/24]
+  memory                                         0.2 MB       8 files  -> CODE        [CODE=0.2 MB/8]
+  .satellite                                     0.1 MB      26 files  -> CODE        [CODE=0.1 MB/18; DATA=0.0 MB/6; COPIES=0.0 MB/2]
+  wow_scripts                                    0.1 MB       8 files  -> CODE        [CODE=0.1 MB/8]
+  hardware                                       0.1 MB       7 files  -> CODE        [CODE=0.1 MB/6; COPIES=0.0 MB/1]
+  akashic_records                                0.1 MB       8 files  -> DATA        [DATA=0.1 MB/8]
+  waking_minds                                   0.1 MB       2 files  -> CODE        [CODE=0.1 MB/2]
+  core                                           0.1 MB       7 files  -> CODE        [CODE=0.1 MB/7]
+  spellchain                                     0.1 MB       7 files  -> CODE        [CODE=0.1 MB/7]
+  .pytest_cache                                  0.1 MB       5 files  -> BUILD       [BUILD=0.1 MB/5]
+  gui                                            0.0 MB       2 files  -> CODE        [CODE=0.0 MB/2]
+  integration                                    0.0 MB       2 files  -> CODE        [CODE=0.0 MB/2]
+  utils                                          0.0 MB       2 files  -> CODE        [CODE=0.0 MB/2]
+  foundations                                    0.0 MB       1 files  -> CODE        [CODE=0.0 MB/1]
+  P20_Somatic                                    0.0 MB       3 files  -> CODE        [CODE=0.0 MB/3]
+  .claude                                        0.0 MB       2 files  -> CODE        [CODE=0.0 MB/2]
+  P60_Executive                                  0.0 MB       3 files  -> CODE        [CODE=0.0 MB/3]
+
+## LARGE SUBFOLDERS (depth 2, > 20 MB or > 500 files)
+  fairies/P30_Cognition                                   29,583.2 MB    334 files -> DATA        [DATA=29,564.8 MB/10; COPIES=12.4 MB/158; CODE=6.0 MB/166]
+  state/akashic                                           14,148.8 MB     61 files -> DATA        [DATA=7,969.6 MB/37; COPIES=6,179.3 MB/24]
+  somatic_bevy/target                                     10,582.7 MB  11673 files -> BUILD       [BUILD=10,582.7 MB/11673]
+  tools/extracted                                          9,921.7 MB   3689 files -> DATA        [DATA=9,908.8 MB/3688; COPIES=13.0 MB/1]
+  dashboard/src-tauri                                      9,320.2 MB  14150 files -> BUILD       [BUILD=9,319.5 MB/14125; CODE=0.7 MB/24; DATA=0.0 MB/1]
+  .venv/Lib                                                4,858.0 MB  20771 files -> THIRD-PARTY [THIRD-PARTY=4,858.0 MB/20771]
+  backups/pre_xp_reset_20260602_174328                     2,476.8 MB     11 files -> COPIES      [COPIES=2,476.8 MB/11]
+  postal_core/target                                       2,174.2 MB   4442 files -> BUILD       [BUILD=2,174.2 MB/4442]
+  P10_Memory/Akashic_triple_helix_memory_storage           1,678.7 MB    149 files -> COPIES      [COPIES=884.0 MB/10; DATA=794.7 MB/139]
+  state/logs                                               1,566.0 MB      5 files -> DATA        [DATA=1,566.0 MB/5]
+  fairies/boot_logs                                        1,327.7 MB   7468 files -> DATA        [DATA=1,327.7 MB/7468]
+  state/_restore_probe                                     1,122.8 MB      3 files -> COPIES      [COPIES=1,122.8 MB/3]
+  state/_probe_copy                                        1,011.9 MB     62 files -> COPIES      [COPIES=1,011.9 MB/62]
+  rwkv_inference/target                                      718.7 MB   2077 files -> BUILD       [BUILD=718.7 MB/2077]
+  state/dream_seeds                                          309.0 MB   3589 files -> DATA        [DATA=309.0 MB/3589]
+  research_repos/llama.cpp                                   175.0 MB   2505 files -> THIRD-PARTY [THIRD-PARTY=147.3 MB/2475; DATA=27.7 MB/30]
+  research_repos/ollama                                      129.6 MB   1743 files -> DATA        [DATA=74.0 MB/28; THIRD-PARTY=55.6 MB/1715]
+  sandbox/cortex_slim                                         75.1 MB     15 files -> COPIES      [COPIES=75.1 MB/15]
+  state/autopilot                                             71.7 MB      4 files -> COPIES      [COPIES=71.4 MB/2; DATA=0.2 MB/2]
+  diaries/Fairies                                             68.2 MB     49 files -> DATA        [DATA=68.2 MB/49]
+  state/consciousness                                         61.3 MB      7 files -> DATA        [DATA=61.3 MB/7]
+  P30_Cognition/data                                          59.4 MB      8 files -> COPIES      [COPIES=46.1 MB/4; DATA=13.3 MB/4]
+  research_repos/RWKV-LM                                      57.1 MB    207 files -> THIRD-PARTY [THIRD-PARTY=35.8 MB/178; DATA=21.3 MB/29]
+  sandbox/cortex_coherence_shape                              47.7 MB      5 files -> COPIES      [COPIES=47.7 MB/5]
+  research_repos/claude-code-nirholas                         47.0 MB   2199 files -> THIRD-PARTY [THIRD-PARTY=33.8 MB/2171; DATA=13.2 MB/28]
+  state/telemetry                                             45.6 MB     12 files -> DATA        [DATA=45.6 MB/12]
+  research_repos/claude-code-source                           41.0 MB   1933 files -> THIRD-PARTY [THIRD-PARTY=30.6 MB/1905; DATA=10.5 MB/28]
+  sandbox/modality_gate_visual                                36.1 MB   2016 files -> COPIES      [COPIES=36.1 MB/2014; DATA=0.0 MB/2]
+  state/rwkv_state                                            33.0 MB      1 files -> DATA        [DATA=33.0 MB/1]
+  Claude_Office/from_ace                                      22.5 MB     77 files -> DATA        [DATA=22.5 MB/77]
+  state/cognition_guild                                       22.5 MB      3 files -> DATA        [DATA=22.5 MB/3]
+  research_repos/openai-agents-python                          9.7 MB    824 files -> THIRD-PARTY [THIRD-PARTY=7.1 MB/795; DATA=2.5 MB/29]
+  state/sessions                                               6.0 MB   2927 files -> DATA        [DATA=6.0 MB/2927]
+  SRM_Intake/2026-02-07                                        4.1 MB   1908 files -> DATA        [DATA=4.1 MB/1908]
+  SRM_Intake/2026-03-26                                        3.8 MB   1633 files -> DATA        [DATA=3.8 MB/1633]
+  SRM_Intake/2026-01-26                                        3.0 MB   1797 files -> DATA        [DATA=3.0 MB/1797]
+  SRM_Intake/2026-01-27                                        2.8 MB   1492 files -> DATA        [DATA=2.8 MB/1492]
+  SRM_Intake/2026-03-10                                        2.2 MB   1862 files -> DATA        [DATA=2.2 MB/1862]
+  state/weave_inbox_nous_held                                  2.1 MB   5382 files -> DATA        [DATA=2.1 MB/5382]
+  SRM_Intake/2026-03-17                                        1.9 MB   1629 files -> DATA        [DATA=1.9 MB/1629]
+  SRM_Intake/2026-02-10                                        1.9 MB    692 files -> DATA        [DATA=1.9 MB/692]
+  SRM_Intake/2026-03-19                                        1.8 MB   1532 files -> DATA        [DATA=1.8 MB/1532]
+  SRM_Intake/2026-03-18                                        1.7 MB   1399 files -> DATA        [DATA=1.7 MB/1399]
+  SRM_Intake/2026-03-16                                        1.7 MB   1395 files -> DATA        [DATA=1.7 MB/1395]
+  fairies/SRM_Intake                                           1.7 MB   1340 files -> DATA        [DATA=1.7 MB/1340]
+  .cognitive/agent_logs                                        1.6 MB   1349 files -> DATA        [DATA=1.6 MB/1349]
+  SRM_Intake/2026-08-27                                        1.6 MB   1321 files -> DATA        [DATA=1.6 MB/1321]
+  SRM_Intake/2026-04-09                                        1.6 MB   1166 files -> DATA        [DATA=1.6 MB/1166]
+  SRM_Intake/2026-02-14                                        1.5 MB   1061 files -> DATA        [DATA=1.5 MB/1061]
+  SRM_Intake/2026-08-28                                        1.5 MB   1288 files -> DATA        [DATA=1.5 MB/1288]
+  SRM_Intake/2026-02-11                                        1.4 MB    642 files -> DATA        [DATA=1.4 MB/642]
+  SRM_Intake/2026-08-30                                        1.4 MB   1126 files -> DATA        [DATA=1.4 MB/1126]
+  SRM_Intake/2026-03-27                                        1.4 MB   1137 files -> DATA        [DATA=1.4 MB/1137]
+  SRM_Intake/2026-04-10                                        1.3 MB   1025 files -> DATA        [DATA=1.3 MB/1025]
+  SRM_Intake/2026-03-29                                        1.3 MB   1083 files -> DATA        [DATA=1.3 MB/1083]
+  SRM_Intake/2026-03-25                                        1.3 MB   1102 files -> DATA        [DATA=1.3 MB/1102]
+  SRM_Intake/2026-03-28                                        1.3 MB   1100 files -> DATA        [DATA=1.3 MB/1100]
+  SRM_Intake/2026-03-22                                        1.3 MB   1134 files -> DATA        [DATA=1.3 MB/1134]
+  SRM_Intake/2026-03-07                                        1.3 MB   1082 files -> DATA        [DATA=1.3 MB/1082]
+  SRM_Intake/2026-03-13                                        1.3 MB   1047 files -> DATA        [DATA=1.3 MB/1047]
+  SRM_Intake/2026-02-06                                        1.2 MB    734 files -> DATA        [DATA=1.2 MB/734]
+  SRM_Intake/2026-03-08                                        1.2 MB   1053 files -> DATA        [DATA=1.2 MB/1053]
+  SRM_Intake/2026-08-29                                        1.2 MB   1000 files -> DATA        [DATA=1.2 MB/1000]
+  SRM_Intake/2026-03-20                                        1.2 MB   1017 files -> DATA        [DATA=1.2 MB/1017]
+  SRM_Intake/2026-04-08                                        1.2 MB    949 files -> DATA        [DATA=1.2 MB/949]
+  SRM_Intake/2026-04-11                                        1.2 MB    910 files -> DATA        [DATA=1.2 MB/910]
+  SRM_Intake/2026-09-01                                        1.2 MB    913 files -> DATA        [DATA=1.2 MB/913]
+  SRM_Intake/2026-07-06                                        1.2 MB    857 files -> DATA        [DATA=1.2 MB/857]
+  SRM_Intake/2026-08-31                                        1.2 MB    915 files -> DATA        [DATA=1.2 MB/915]
+  SRM_Intake/2026-02-13                                        1.1 MB    681 files -> DATA        [DATA=1.1 MB/681]
+  SRM_Intake/2026-07-07                                        1.1 MB    849 files -> DATA        [DATA=1.1 MB/849]
+  SRM_Intake/2026-04-01                                        1.1 MB    890 files -> DATA        [DATA=1.1 MB/890]
+  SRM_Intake/2026-04-07                                        1.0 MB    822 files -> DATA        [DATA=1.0 MB/822]
+  SRM_Intake/2026-03-05                                        1.0 MB    886 files -> DATA        [DATA=1.0 MB/886]
+  SRM_Intake/2026-03-31                                        1.0 MB    799 files -> DATA        [DATA=1.0 MB/799]
+  SRM_Intake/2026-03-14                                        1.0 MB    796 files -> DATA        [DATA=1.0 MB/796]
+  SRM_Intake/2026-06-25                                        1.0 MB    786 files -> DATA        [DATA=1.0 MB/786]
+  SRM_Intake/2026-03-09                                        1.0 MB    806 files -> DATA        [DATA=1.0 MB/806]
+  SRM_Intake/2026-03-30                                        0.9 MB    776 files -> DATA        [DATA=0.9 MB/776]
+  SRM_Intake/2026-09-08                                        0.9 MB    660 files -> DATA        [DATA=0.9 MB/660]
+  SRM_Intake/2026-04-12                                        0.9 MB    666 files -> DATA        [DATA=0.9 MB/666]
+  SRM_Intake/2026-04-03                                        0.9 MB    696 files -> DATA        [DATA=0.9 MB/696]
+  SRM_Intake/2026-03-24                                        0.9 MB    708 files -> DATA        [DATA=0.9 MB/708]
+  SRM_Intake/2026-06-30                                        0.9 MB    684 files -> DATA        [DATA=0.9 MB/684]
+  SRM_Intake/2026-09-02                                        0.8 MB    696 files -> DATA        [DATA=0.8 MB/696]
+  SRM_Intake/2026-09-12                                        0.8 MB    572 files -> DATA        [DATA=0.8 MB/572]
+  SRM_Intake/2026-09-20                                        0.8 MB    600 files -> DATA        [DATA=0.8 MB/600]
+  SRM_Intake/2026-04-05                                        0.8 MB    597 files -> DATA        [DATA=0.8 MB/597]
+  SRM_Intake/2026-04-02                                        0.7 MB    595 files -> DATA        [DATA=0.7 MB/595]
+  SRM_Intake/2026-03-15                                        0.7 MB    610 files -> DATA        [DATA=0.7 MB/610]
+  SRM_Intake/2026-08-26                                        0.7 MB    579 files -> DATA        [DATA=0.7 MB/579]
+  SRM_Intake/2026-06-01                                        0.7 MB    674 files -> DATA        [DATA=0.7 MB/674]
+  SRM_Intake/2026-06-12                                        0.7 MB    660 files -> DATA        [DATA=0.7 MB/660]
+  SRM_Intake/2026-09-09                                        0.7 MB    503 files -> DATA        [DATA=0.7 MB/503]
+  SRM_Intake/2026-03-11                                        0.7 MB    544 files -> DATA        [DATA=0.7 MB/544]
+  SRM_Intake/2026-02-18                                        0.6 MB    555 files -> DATA        [DATA=0.6 MB/555]
+  SRM_Intake/2026-06-10                                        0.6 MB    554 files -> DATA        [DATA=0.6 MB/554]
+  SRM_Intake/2026-03-21                                        0.6 MB    528 files -> DATA        [DATA=0.6 MB/528]
+  SRM_Intake/2026-06-02                                        0.6 MB    596 files -> DATA        [DATA=0.6 MB/596]
+  SRM_Intake/2026-06-11                                        0.6 MB    569 files -> DATA        [DATA=0.6 MB/569]
+  SRM_Intake/2026-06-06                                        0.6 MB    577 files -> DATA        [DATA=0.6 MB/577]
+  SRM_Intake/2026-05-17                                        0.5 MB    527 files -> DATA        [DATA=0.5 MB/527]
+
+## CODE EXTENSIONS (count, size)
+  .py              1138  26.8 MB
+  .md                89  1.1 MB
+  .rs                45  0.4 MB
+  .bat               18  0.0 MB
+  .json              17  0.1 MB
+  .ps1               14  0.0 MB
+  .png               14  0.2 MB
+  .lua               12  0.2 MB
+  .jpg               12  4.1 MB
+  .toml               8  0.0 MB
+  .go                 6  0.1 MB
+  .cmd                4  0.0 MB
+  .lock               4  0.3 MB
+  .gitignore          3  0.0 MB
+  .txt                2  0.0 MB
+  .sql                2  0.1 MB
+  .html               2  0.2 MB
+  .example            1  0.0 MB
+  .c                  1  0.0 MB
+  .vbs                1  0.0 MB
+  .mod                1  0.0 MB
+  .sum                1  0.0 MB
+  .h                  1  0.0 MB
+  .js                 1  0.0 MB
+  .mermaid            1  0.0 MB
+  .css                1  0.0 MB
+  .icns               1  0.3 MB
+  .ico                1  0.0 MB
+  .sh                 1  0.0 MB
+
+## LARGEST CODE FILES (top 30)
+        0.6 MB  fairies/P30_Cognition/cognition/working_memory_hub_fairy.py
+        0.6 MB  fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py
+        0.5 MB  fairies/P30_Cognition/AssociationCortexFairy/fairy.py
+        0.5 MB  server.py
+        0.5 MB  fairies/P50_Persona/avatar/assets/sourpatches/superpatches_mystery.jpg
+        0.4 MB  fairies/P20_Somatic/SomaticMindFairy/fairy.py
+        0.4 MB  fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_saiyan_fire.jpg
+        0.4 MB  fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_saiyan_yellow.jpg
+        0.4 MB  fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_vulnerable.jpg
+        0.4 MB  fairies/P30_Cognition/cognition/unconscious_mind_fairy.py
+        0.4 MB  fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_venom.jpg
+        0.4 MB  fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_zombie.jpg
+        0.3 MB  fairies/P50_Persona/avatar/assets/claudefairy/claudefairy_base.jpg
+        0.3 MB  fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py
+        0.3 MB  P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py
+        0.3 MB  fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_jedi.jpg
+        0.3 MB  fairies/P50_Persona/avatar/assets/sourpatches/superpatches_chibi.jpg
+        0.3 MB  dashboard/src-tauri/icons/icon.icns
+        0.3 MB  fairies/P50_Persona/avatar/assets/sourpatches/superpatches_hero.jpg
+        0.2 MB  fairies/P50_Persona/avatar/assets/sourpatches/superpatches_carnage.jpg
+        0.2 MB  fairies/P40_Sensory/mcp/akashic_mcp_server.py
+        0.2 MB  infrastructure/portal_interior.py
+        0.2 MB  dashboard/ui/index.html
+        0.2 MB  fairies/P50_Persona/SpeechCenterFairy/fairy.py
+        0.2 MB  fairies/P40_Sensory/web/akashic_foundation.py
+        0.2 MB  fairies/P50_Persona/Waking Minds/Sourpatches/newborn_core.py
+        0.2 MB  fairies/P00_Autonomic/AutopilotFairy/fairy.py
+        0.2 MB  fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_base.jpg
+        0.2 MB  infrastructure/manifold_memory.py
+        0.2 MB  fairies/P30_Cognition/goal_scheduler/goal_scheduler_fairy.py
+
+## CODE FILES OVER 5 MB
+  count=0
+
+## CODE FILES 1-5 MB
+
+## REVIEW: .json kept as CODE but > 64 KB
+        0.1 MB  P10_Memory/Akashic_Records_Physical/Organ_Templates/akashic_codex.json
+
+## REVIEW: .json routed to DATA by name/size while in a code dir (top 60 by size)
+        0.7 MB  fairies/P40_Sensory/cortex/canary_cards/cards.json
+        0.5 MB  fairies/P40_Sensory/cortex/luxtts_cards/cards.json
+        0.2 MB  fairies/P10_Memory/visual_memory/visual_index.json
+        0.1 MB  fairies/P40_Sensory/cortex/voice_profiles/profiles.json
+        0.1 MB  fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/thought_chain_templates.json
+        0.0 MB  fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/learned_patterns.json
+        0.0 MB  fairies/P30_Cognition/cognition/interest_state.json
+        0.0 MB  fairies/P50_Persona/identity/sourpatches_birth_profile.json
+        0.0 MB  fairies/P10_Memory/SRM_Clusters/media/media_index.json
+        0.0 MB  .satellite/deploy_log.json
+        0.0 MB  .satellite/cardinal_network_log.json
+        0.0 MB  .satellite/peer_registry.json
+        0.0 MB  .satellite/deploy_queue/manifest.json
+        0.0 MB  fairies/P40_Sensory/cortex/portal_state/audio_portal_state.json
+        0.0 MB  .satellite/shared_state.json
+        0.0 MB  .satellite/gpu_fleet.json
+  ... total routed: 16
+
+## REVIEW: .txt routed to DATA while in a code dir
+        0.0 MB  fairies/@AutomationLog.txt
+  ... total routed: 1
+
+## REVIEW: extensionless files classed CODE
+
+## HER OWN COMPILED ARTIFACTS outside build dirs (excluded; rebuild from source)
+        4.7 MB  tracer_pool/tracer_pool_SAVED.dll
+        4.7 MB  tracer_pool/tracer_pool.dll
+        1.4 MB  rwkv_inference/python/rwkv_inference/_native.cp312-win_amd64.pyd
+        1.0 MB  postal_core/python/postal_core/postal_core.pdb
+        0.6 MB  postal_core/python/postal_core/postal_core.cp314t-win_amd64.pyd
+        0.6 MB  state/_rust_test/postal_core/postal_core.cp314t-win_amd64.pyd
+        0.1 MB  battery_matvec_fused.dll
+
+## CODE LIVING INSIDE DATA DIRS (candidate extras; classed DATA)
+        0.0 MB  P30_Cognition/data/symbology.py
+        0.0 MB  state/add_specialist_knowledge.py
+        0.0 MB  state/add_reflections.py
+        0.0 MB  state/add_reflections_phase2.py
+        0.0 MB  P10_Memory/Akashic_triple_helix_memory_storage/relational_clusters/Sourpatches/personality_extractor.py
+        0.0 MB  state/pipeline_diagnostic.py
+        0.0 MB  state/boot_skip_registry.py
+        0.0 MB  tools/extracted/sourpatches_art/_feature_extract_worker.py
+        0.0 MB  state/pipeline_tracer.py
+        0.0 MB  state/emergency_responder.py
+        0.0 MB  state/tunnel_diagnostic.py
+        0.0 MB  state/future_count_test.py
+        0.0 MB  tools/extracted/sourpatches_art/_register_ace_voice.py
+        0.0 MB  state/thread_count_test.py
+        0.0 MB  state/nous_workspace/shadow_promoter.py
+        0.0 MB  state/_measure_boot.ps1
+        0.0 MB  P10_Memory/Akashic_triple_helix_memory_storage/relational_clusters/Sourpatches/ask_sour.py
+        0.0 MB  state/nous_workspace/coupling_operator_v2.py
+        0.0 MB  state/nous_workspace/node_compare.py
+        0.0 MB  state/_region_map_probe.py
+        0.0 MB  state/nous_workspace/coupling_operator_proto.py
+        0.0 MB  state/mem_breakdown.py
+        0.0 MB  state/nous_workspace/coupling_operator_v3.py
+        0.0 MB  state/_circadian_demo.py
+        0.0 MB  state/thread_audit.py
+        0.0 MB  state/boot_test4.py
+        0.0 MB  P30_Cognition/data/__init__.py
+        0.0 MB  state/final_restart.ps1
+        0.0 MB  state/thread_snapshot.py
+        0.0 MB  state/kill_and_restart.ps1
+        0.0 MB  state/check_ram.ps1
+        0.0 MB  state/run_boot_test.ps1
+        0.0 MB  state/run_boot.ps1
+        0.0 MB  state/track_new.ps1
+        0.0 MB  state/track_threads.ps1
+        0.0 MB  state/check_stable.ps1
+        0.0 MB  state/check_threads.ps1
+        0.0 MB  state/thread_names.ps1
+
+## PROPOSED MIRROR ESTIMATE
+  INCLUDE : 1390 files, 29.9 MB (0.03 GiB)
+  OPTIONAL: 44 files, 4.2 MB  (state/*.py scripts + state/nous_workspace/*.py prototypes)
+  by top-level:
+    fairies                                 775 files  19.6 MB
+    <root files>                            125 files  1.6 MB
+    infrastructure                           54 files  1.5 MB
+    tools                                    42 files  0.5 MB
+    tests                                    40 files  0.7 MB
+    postal_core                              39 files  0.7 MB
+    scripts                                  36 files  0.5 MB
+    dashboard                                35 files  1.0 MB
+    somatic_bevy                             30 files  0.3 MB
+    docs                                     25 files  0.6 MB
+    P00_Autonomic                            24 files  0.2 MB
+    P30_Cognition                            18 files  0.2 MB
+    .satellite                               18 files  0.1 MB
+    rwkv_inference                           17 files  0.2 MB
+    tracer_pool                              16 files  0.2 MB
+    fairy_template                           14 files  0.3 MB
+    directory                                12 files  0.2 MB
+    P10_Memory                               11 files  0.6 MB
+    wow_scripts                               8 files  0.1 MB
+    memory                                    8 files  0.2 MB
+    spellchain                                7 files  0.1 MB
+    core                                      7 files  0.1 MB
+    hardware                                  6 files  0.1 MB
+    consciousness                             6 files  0.2 MB
+    P60_Executive                             3 files  0.0 MB
+    P20_Somatic                               3 files  0.0 MB
+    waking_minds                              2 files  0.1 MB
+    utils                                     2 files  0.0 MB
+    integration                               2 files  0.0 MB
+    gui                                       2 files  0.0 MB
+    .claude                                   2 files  0.0 MB
+    foundations                               1 files  0.0 MB
+  by extension:
+    .py              1138  26.8 MB
+    .md                89  1.1 MB
+    .rs                45  0.4 MB
+    .bat               18  0.0 MB
+    .json              17  0.1 MB
+    .ps1               14  0.0 MB
+    .png               14  0.2 MB
+    .lua               12  0.2 MB
+    .toml               8  0.0 MB
+    .go                 6  0.1 MB
+    .cmd                4  0.0 MB
+    .lock               4  0.3 MB
+    .gitignore          3  0.0 MB
+    .txt                2  0.0 MB
+    .sql                2  0.1 MB
+    .html               2  0.2 MB
+    .example            1  0.0 MB
+    .c                  1  0.0 MB
+    .vbs                1  0.0 MB
+    .mod                1  0.0 MB
+    .sum                1  0.0 MB
+    .h                  1  0.0 MB
+    .js                 1  0.0 MB
+    .mermaid            1  0.0 MB
+    .css                1  0.0 MB
+    .icns               1  0.3 MB
+    .ico                1  0.0 MB
+    .sh                 1  0.0 MB
+  exclusion reasons (file counts):
+      81866  denied top SRM_Intake
+      32318  denied component
+      20807  denied top .venv
+      12927  denied prefix
+      12702  denied top state
+       9352  denied top research_repos
+       2427  denied top sandbox
+       1594  denied top dream_states
+       1360  denied top .cognitive
+        834  denied top Claude_Office
+        308  class COPIES
+        284  nested .git
+        216  class DATA
+        128  denied top directives
+         97  denied top diaries
+         35  denied top _old_unconscious_mind_DEPRECATED
+         14  unsafe name
+         11  denied top backups
+          8  denied top akashic_records
+          6  class BUILD
+          5  denied top .pytest_cache
+          3  secret-named

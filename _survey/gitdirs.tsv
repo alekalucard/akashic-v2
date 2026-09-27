@@ -1,0 +1,12 @@
+.git	ROOT-dir
+research_repos/RWKV-LM/.git	dir
+research_repos/openai-agents-python/.git	dir
+research_repos/ollama/.git	dir
+research_repos/mamba/.git	dir
+research_repos/mamba/.gitmodules	gitmodules
+research_repos/llama.cpp/.git	dir
+research_repos/llama.cpp/.gitmodules	gitmodules
+research_repos/grok-1/.git	dir
+research_repos/claude-code-source/.git	dir
+research_repos/claude-code-nirholas/.git	dir
+dashboard/.git	dir

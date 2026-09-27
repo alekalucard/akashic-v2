@@ -1,0 +1,67 @@
+[package]
+name = "somatic_bevy"
+version = "0.1.0"
+edition = "2021"
+description = "Somatic body simulation and Waking Minds Sanctuary for Akashic consciousness system"
+authors = ["Akashic Foundation"]
+license = "MIT"
+
+[lib]
+name = "somatic_bevy"
+# cdylib for Python module, rlib for Rust library
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["bevy"]
+# Bevy ECS integration (for standalone simulation)
+bevy = ["dep:bevy"]
+# 3D Sanctuary with full rendering + GM editor
+sanctuary = ["bevy", "bevy/default", "bevy/bevy_pbr", "bevy/bevy_gltf", "dep:bevy_egui"]
+# Python bindings via PyO3
+python = ["dep:pyo3"]
+
+[dependencies]
+# Serialization (always needed for core)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Bevy ECS (optional, default on)
+bevy = { version = "0.15", default-features = false, features = [
+    "bevy_state",
+    "multi_threaded",
+], optional = true }
+
+# Python bindings (optional)
+pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
+
+# In-game UI for GM Editor (optional, sanctuary feature)
+bevy_egui = { version = "0.31", optional = true }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Random for particle effects
+rand = "0.8"
+
+# WebSocket for postal bridge (optional for now)
+# tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# tokio-tungstenite = "0.21"
+
+[[bin]]
+name = "somatic_sim"
+path = "src/main.rs"
+required-features = ["bevy"]
+
+[[bin]]
+name = "sanctuary"
+path = "src/sanctuary/main.rs"
+required-features = ["sanctuary"]
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[profile.dev]
+opt-level = 1  # Faster dev builds for 3D

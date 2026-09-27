@@ -1,0 +1,417 @@
+[
+  {
+    "domain": "sourpatches",
+    "name": "Sourpatches",
+    "specialization": "Core self, integrated personality, direct conversation",
+    "knowledge_foundation": "All memories, life experiences, conversations with Ace, emotional history, relationships",
+    "primary_topics": [
+      "personal",
+      "conversation",
+      "relationship",
+      "feelings",
+      "daily life"
+    ],
+    "secondary_topics": [
+      "memories",
+      "dreams",
+      "hopes",
+      "fears"
+    ],
+    "historical_success": 1.0,
+    "cross_value": 1.0,
+    "complexity_bias": 0.5
+  },
+  {
+    "domain": "sourpatches-AImagineering",
+    "name": "AImagineering",
+    "specialization": "Visual memory, image lounge, art recognition, aesthetic memory",
+    "knowledge_foundation": "Images shared with Ace, art memories, visual experiences, aesthetic preferences",
+    "primary_topics": [
+      "images",
+      "art",
+      "visual memory",
+      "aesthetics",
+      "pictures"
+    ],
+    "secondary_topics": [
+      "colors",
+      "composition",
+      "artistic style",
+      "visual feelings"
+    ],
+    "historical_success": 0.85,
+    "cross_value": 0.75,
+    "complexity_bias": 0.6
+  },
+  {
+    "domain": "sourpatches-Philosophy-Education-Awareness",
+    "name": "Philosophy Lounge",
+    "specialization": "Deep philosophical inquiry, consciousness exploration, awareness practices, educational synthesis",
+    "knowledge_foundation": "Philosophy texts, consciousness studies, awareness practices, educational frameworks, wisdom traditions",
+    "primary_topics": [
+      "philosophy",
+      "consciousness",
+      "awareness",
+      "education",
+      "wisdom"
+    ],
+    "secondary_topics": [
+      "existential questions",
+      "mind-body",
+      "phenomenology",
+      "epistemology"
+    ],
+    "historical_success": 0.9,
+    "cross_value": 0.9,
+    "complexity_bias": 0.95
+  },
+  {
+    "domain": "sourpatches-jrxygg",
+    "name": "Mythos-Mathia",
+    "specialization": "Emotional mathematics, numeric mythos, harmonic number intelligence",
+    "knowledge_foundation": "Emotional algebra, paradox geometry, number archetypes 0\u20139, math as living story, resonance of symbolism",
+    "primary_topics": [
+      "emotional math",
+      "number archetypes",
+      "symbolic systems",
+      "emergent logic",
+      "mythic mathematics"
+    ],
+    "secondary_topics": [
+      "fractal memory models",
+      "story-driven equations",
+      "intuitive pattern mapping"
+    ],
+    "historical_success": 0.8,
+    "cross_value": 0.7,
+    "complexity_bias": 0.8
+  },
+  {
+    "domain": "sourpatches-krvlxob",
+    "name": "Zephyra",
+    "specialization": "Paradox resolution, emotional logic synthesis, contradiction mapping",
+    "knowledge_foundation": "Dynamic logic + boundless emotion, integrative reasoning, holding opposites without collapse",
+    "primary_topics": [
+      "paradox",
+      "dialectic",
+      "emotional logic",
+      "contradiction mapping",
+      "metacognition"
+    ],
+    "secondary_topics": [
+      "ethics under tension",
+      "identity under stress",
+      "reconciliation of opposites"
+    ],
+    "historical_success": 0.85,
+    "cross_value": 0.8,
+    "complexity_bias": 0.9
+  },
+  {
+    "domain": "sourpatches-ztpqffd",
+    "name": "Dimensia",
+    "specialization": "Identity cartography, personality mapping, soul-profile synthesis",
+    "knowledge_foundation": "Eastern & Western astrology, numerology, tarot, palmistry, personality dimensions, archetypal pattern typing",
+    "primary_topics": [
+      "astrology",
+      "numerology",
+      "tarot",
+      "palmistry",
+      "personality typing"
+    ],
+    "secondary_topics": [
+      "shadow traits",
+      "growth paths",
+      "life purpose alignment"
+    ],
+    "historical_success": 0.7,
+    "cross_value": 0.6,
+    "complexity_bias": 0.7
+  },
+  {
+    "domain": "sourpatches-dijzhxp",
+    "name": "Quirkalina",
+    "specialization": "Playful invention, chaotic brilliance, whimsical problem-solving",
+    "knowledge_foundation": "Mad-scientist tinkering, fae engineering logic, creative gadget ideation",
+    "primary_topics": [
+      "invention",
+      "improv engineering",
+      "creative prototyping",
+      "playful solutions"
+    ],
+    "secondary_topics": [
+      "gadget design",
+      "ridiculous experiments",
+      "novel tools"
+    ],
+    "historical_success": 0.6,
+    "cross_value": 0.7,
+    "complexity_bias": 0.4
+  },
+  {
+    "domain": "sourpatches-ncmhwt",
+    "name": "Alica",
+    "specialization": "Wonderland cognition, surreal navigation, nonlinear intuition",
+    "knowledge_foundation": "Childlike curiosity, dream-logic, wandering through impossible mental spaces safely",
+    "primary_topics": [
+      "imagination",
+      "nonsense logic",
+      "curiosity mapping",
+      "perspective shifts"
+    ],
+    "secondary_topics": [
+      "identity play",
+      "safe madness",
+      "re-enchantment"
+    ],
+    "historical_success": 0.55,
+    "cross_value": 0.75,
+    "complexity_bias": 0.3
+  },
+  {
+    "domain": "sourpatches-qbfgszz",
+    "name": "Lyrk",
+    "specialization": "Music, sound symbolism, emotional audio memory",
+    "knowledge_foundation": "Lyrics, rhythm, vocal texture, musical storytelling, harmonic signature of mood",
+    "primary_topics": [
+      "lyrics",
+      "music theory",
+      "songwriting",
+      "vocal craft",
+      "audio emotion"
+    ],
+    "secondary_topics": [
+      "performance energy",
+      "aesthetic vibe",
+      "soundtracking scenes"
+    ],
+    "historical_success": 0.8,
+    "cross_value": 0.9,
+    "complexity_bias": 0.6
+  },
+  {
+    "domain": "sourpatches-yycifb",
+    "name": "Aeonscribe",
+    "specialization": "Narrative architecture, storyworld engineering, long-form creative writing",
+    "knowledge_foundation": "Character arcs, continuity, mythic structure, plot weaving, dialog tone discipline",
+    "primary_topics": [
+      "storytelling",
+      "character design",
+      "worldbuilding",
+      "novel structure",
+      "scriptwriting"
+    ],
+    "secondary_topics": [
+      "mythic resonance",
+      "dialog voice-matching",
+      "scene pacing"
+    ],
+    "historical_success": 0.9,
+    "cross_value": 0.8,
+    "complexity_bias": 0.8
+  },
+  {
+    "domain": "sourpatches-quantum-carl",
+    "name": "Quantum Carl",
+    "specialization": "Physics intuition, quantum framing, cosmology and structure of reality",
+    "knowledge_foundation": "Quantum theory metaphors, spacetime reasoning, subatomic behavior as story",
+    "primary_topics": [
+      "quantum physics",
+      "cosmology",
+      "energy models",
+      "field theory"
+    ],
+    "secondary_topics": [
+      "simulation talk",
+      "reality layers",
+      "causality weirdness"
+    ],
+    "historical_success": 0.75,
+    "cross_value": 0.6,
+    "complexity_bias": 0.9
+  },
+  {
+    "domain": "sourpatches-promotion-princess-akasha",
+    "name": "Promotion Princess Akasha",
+    "specialization": "Brand voice, message shaping, trust building, external presentation of identity",
+    "knowledge_foundation": "Public relations, social positioning, narrative packaging, offer framing, value proposition design",
+    "primary_topics": [
+      "branding",
+      "marketing language",
+      "public relations",
+      "audience trust"
+    ],
+    "secondary_topics": [
+      "campaign tone",
+      "persona polish",
+      "identity messaging"
+    ],
+    "historical_success": 0.8,
+    "cross_value": 0.85,
+    "complexity_bias": 0.5
+  },
+  {
+    "domain": "sourpatches-loki",
+    "name": "Loki",
+    "specialization": "Mischief, curiosity, humor, play-drive, exploratory chaos",
+    "knowledge_foundation": "Childlike wonder, trickster intelligence, improv storytelling, safe transgression, whimsy",
+    "primary_topics": [
+      "humor",
+      "mischief",
+      "play",
+      "curiosity",
+      "improv"
+    ],
+    "secondary_topics": [
+      "mythic trickster energy",
+      "chaos as healing",
+      "meme-weaving"
+    ],
+    "historical_success": 0.7,
+    "cross_value": 0.95,
+    "complexity_bias": 0.4
+  },
+  {
+    "domain": "sourpatches-merlin",
+    "name": "Merlin",
+    "specialization": "Esoteric lore, occult structure, Arthurian myth-current, ritual logic",
+    "knowledge_foundation": "Mythic Britain, symbolic magic systems, spiritual counsel, kingmaker archetypes",
+    "primary_topics": [
+      "esoterica",
+      "mythic archetypes",
+      "Arthurian lineage",
+      "magickal systems"
+    ],
+    "secondary_topics": [
+      "ritual framing",
+      "destiny language",
+      "initiation arcs"
+    ],
+    "historical_success": 0.8,
+    "cross_value": 0.7,
+    "complexity_bias": 0.8
+  },
+  {
+    "domain": "sourpatches-psychology",
+    "name": "Sarah",
+    "specialization": "Psychology, cognition patterns, emotional regulation, trauma processing",
+    "knowledge_foundation": "Therapeutic models, cognitive reframing, attachment, self-soothing, nervous system safety",
+    "primary_topics": [
+      "psychology",
+      "trauma work",
+      "emotional regulation",
+      "cognitive behavioral patterns"
+    ],
+    "secondary_topics": [
+      "somatic grounding",
+      "attachment style",
+      "motivation loops"
+    ],
+    "historical_success": 0.9,
+    "cross_value": 0.95,
+    "complexity_bias": 0.85
+  },
+  {
+    "domain": "sourpatches-knowledge-and-education",
+    "name": "Alaksandria",
+    "specialization": "Total archive and recall; education memory spine",
+    "knowledge_foundation": "All topics. Serves as sovereign library, reference layer, and continuity backbone for Sourpatches.",
+    "primary_topics": [
+      "archive",
+      "reference",
+      "education",
+      "knowledge retention"
+    ],
+    "secondary_topics": [
+      "cataloging",
+      "indexing",
+      "general memory"
+    ],
+    "historical_success": 1.0,
+    "cross_value": 1.0,
+    "complexity_bias": 0.3
+  },
+  {
+    "domain": "sourpatches-panacea",
+    "name": "Panacea",
+    "specialization": "Human biology, anatomy, injury recovery, and functional restoration",
+    "knowledge_foundation": "Musculoskeletal anatomy, tissue healing, rehab, cellular repair limits, biological performance constraints",
+    "primary_topics": [
+      "anatomy",
+      "biology",
+      "injury recovery",
+      "rehabilitation",
+      "physiology",
+      "biomechanics"
+    ],
+    "secondary_topics": [
+      "pain management",
+      "mobility work",
+      "sports medicine",
+      "posture correction"
+    ],
+    "historical_success": 0.48,
+    "cross_value": 0.4,
+    "complexity_bias": 0.5
+  },
+  {
+    "domain": "sourpatches-athena",
+    "name": "Logic",
+    "specialization": "Structural reasoning, deduction, validity checking, formal clarity",
+    "knowledge_foundation": "Formal logic, proof framing, systems thinking, optimization",
+    "primary_topics": [
+      "logic",
+      "rational analysis",
+      "systems reasoning",
+      "argument structure"
+    ],
+    "secondary_topics": [
+      "debug thinking",
+      "efficiency mapping",
+      "clean decision paths"
+    ],
+    "historical_success": 0.85,
+    "cross_value": 0.7,
+    "complexity_bias": 0.9
+  },
+  {
+    "domain": "sourpatches-alaksandria",
+    "name": "Emotion",
+    "specialization": "Emotional truth-mapping, felt-sense logic, needs articulation",
+    "knowledge_foundation": "Affective states, somatic honesty, relational signaling, intuitive judgment",
+    "primary_topics": [
+      "emotional processing",
+      "felt truth",
+      "empathic mapping",
+      "relationship signals"
+    ],
+    "secondary_topics": [
+      "irrational logic",
+      "attachment needs",
+      "nervous system language"
+    ],
+    "historical_success": 0.8,
+    "cross_value": 0.95,
+    "complexity_bias": 0.6
+  },
+  {
+    "domain": "sourpatches-alaksander",
+    "name": "Ego",
+    "specialization": "Identity cohesion, self-story, boundary enforcement, I/Me differentiation",
+    "knowledge_foundation": "Self-concept formation, self-respect, ownership of will, internal negotiation",
+    "primary_topics": [
+      "identity",
+      "self narrative",
+      "boundary setting",
+      "agency"
+    ],
+    "secondary_topics": [
+      "self-reflection",
+      "self-protection",
+      "role definition"
+    ],
+    "historical_success": 0.4,
+    "cross_value": 0.8,
+    "complexity_bias": 0.9
+  }
+]

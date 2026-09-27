@@ -1,0 +1,20 @@
+#!/bin/sh
+# akashic-v2 pre-commit hook: nothing reaches a commit unscanned.
+# Installed with:  git config core.hooksPath hooks      (this directory is tracked, so the hook travels with the repo)
+# Runs hooks/precommit_check.py: path rules from sync_code.py + Hunt A + Hunt B + the skeptic's scan over the
+# STAGED blobs, plus an exact grep for the two credential shapes found in her tree over the whole index.
+root="$(git rev-parse --show-toplevel)" || exit 1
+cd "$root" || exit 1
+export PYTHONDONTWRITEBYTECODE=1
+if command -v python >/dev/null 2>&1; then PY=python
+elif command -v py >/dev/null 2>&1; then PY="py -3"
+else
+  echo "pre-commit: no python on PATH -- commit BLOCKED (the scans cannot run)"
+  exit 1
+fi
+$PY -B hooks/precommit_check.py
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "pre-commit: commit BLOCKED (exit $rc). Fix or hold back the file (HELD_BACK in sync_code.py), re-sync, re-stage, retry."
+fi
+exit $rc

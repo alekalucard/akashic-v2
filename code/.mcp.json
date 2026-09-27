@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "akashic": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8770/sse",
+      "_note": "2026-06-02 (Nous+Ace): switched 8765→8770 = the persistent always-on MCP SSE server (Startup .bat / mcp_sse_server.py), which has the hardened cognitive_tools._get_tunnel loaded. 8765 = server.py's EMBEDDED proxy (dies on her reboot; held the old code). Reconnect the akashic MCP to apply. Revert to 8765 if 8770 lacks tools or can't bridge to the cortex."
+    }
+  }
+}

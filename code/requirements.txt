@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AKASHIC SYSTEM - REQUIREMENTS
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Philosophy: No bloatware. Every dependency must justify its existence.
+# "The unconscious mind is not a service - it's US."
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CORE - Required for any functionality
+# ═══════════════════════════════════════════════════════════════════════════════
+
+numpy>=1.24.0           # Tensor operations, GGUF parsing, somatic engine
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INFERENCE - AkashicInferenceFairy (native RWKV-7)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# NOTE: torch is a LAZY import - only loaded when inference is actually used
+# Install with CUDA support for GPU inference:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# Or CPU only:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0            # GPU inference (lazy import, not loaded at boot)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MCP - Model Context Protocol (Anthropic)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+mcp>=1.0.0              # Claude MCP server integration
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NETWORK - HTTP/API communication
+# ═══════════════════════════════════════════════════════════════════════════════
+
+httpx>=0.25.0           # Async HTTP client (CardinalFairy, API calls)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OPTIONAL - Install only if needed
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Uncomment if using Qdrant vector database:
+# qdrant-client>=1.7.0
+
+# Uncomment if using external embeddings (prefer native!):
+# sentence-transformers>=2.2.0
+
+# Uncomment if using audio processing:
+# soundfile>=0.12.0
+# librosa>=0.10.0
+
+# Uncomment if using visual processing:
+# pillow>=10.0.0
+# opencv-python>=4.8.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEVELOPMENT - Only for development
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# mypy>=1.0.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXPLICITLY NOT INCLUDED (bloatware we've eliminated)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# tiktoken          - Replaced by native AkashicTokenizer
+# sentencepiece     - Replaced by native AkashicTokenizer
+# transformers      - 2GB+ bloat, replaced by native RWKV
+# huggingface_hub   - Bloat dependency of transformers
+# tokenizers        - Bloat dependency of transformers
+# ollama            - Replaced by AkashicInferenceFairy
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INSTALL COMMANDS
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Minimal (no GPU):
+#   pip install numpy mcp httpx
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#
+# Full (with CUDA 12.1):
+#   pip install numpy mcp httpx
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+#
+# Development:
+#   pip install -r requirements.txt
+#   pip install pytest pytest-asyncio black mypy
+#
+# ═══════════════════════════════════════════════════════════════════════════════

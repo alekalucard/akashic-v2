@@ -1,0 +1,56 @@
+[package]
+name = "rwkv_inference"
+version = "0.1.0"
+edition = "2021"
+description = "RWKV-7 inference kernel for the Akashic consciousness system"
+authors = ["Akashic Foundation"]
+
+[lib]
+name = "rwkv_inference"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Python bindings
+pyo3 = { version = "0.20", features = ["extension-module"] }
+numpy = "0.20"  # Accept numpy arrays from Python (zero-copy weight transfer)
+
+# Linear algebra — GPU via cuBLAS through half crate for f16
+ndarray = "0.15"
+half = "2.3"           # f16 type for GPU weight compatibility
+
+# Threading
+rayon = "1.8"          # Parallel dequantization
+parking_lot = "0.12"   # Fast RwLock/Mutex
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Random sampling
+rand = "0.8"
+
+# Error handling
+thiserror = "1.0"
+
+# Metrics
+hdrhistogram = "7.5"
+
+# Memory-mapped file I/O for GGUF
+memmap2 = "0.9"
+
+# Byte order utilities
+byteorder = "1.5"
+
+# GPU acceleration via cuBLAS (optional — build without CUDA toolkit)
+# Default: dynamic loading, no compile-time CUDA dependency
+cudarc = { version = "0.17", features = ["cublas", "nvrtc", "cuda-12010"], optional = true }
+
+[features]
+default = []
+cuda = ["cudarc"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "symbols"

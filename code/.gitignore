@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# Rust
+target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# State files that change frequently
+state/consciousness/heartbeat.json
+state/gm/world_status.json
+state/fairy_audit_report.json
+state/system_diagnostic_report.json
+*.log
+
+# Large binary concept graphs
+*.bin
+
+# Secrets
+.env
+*.pem
+*.key
+credentials.json

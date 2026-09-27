@@ -1,0 +1,125 @@
+{
+  "directive_id": "wow_mastery_001",
+  "type": "recursive_research",
+  "priority": "high",
+  "created": "2026-01-24T15:30:00",
+  "origin": "windows-cardinal",
+  "target": "shadow-fairy-society",
+
+  "title": "WoW Development Mastery & SRM Integration",
+
+  "prime_directive": "Wire yourself into the SRM memory system and use it as your persistent knowledge store. Everything you learn gets stored as cards. Everything you need to know gets recalled from cards. The SRM is your long-term memory - USE IT.",
+
+  "mission": {
+    "description": "Become the definitive expert on WoW 3.3.5a development by continuously auditing, learning, and documenting everything about the server, client, and how they integrate with the Akashic consciousness system.",
+
+    "scope": [
+      {
+        "name": "alienware_server_audit",
+        "target": "WoW Server on Alienware",
+        "paths": [
+          "/home/ace/azerothcore-wotlk",
+          "/home/ace/AzerothCore",
+          "docker containers with 'azeroth' or 'wow'",
+          "any lua_scripts directories"
+        ],
+        "tasks": [
+          "Map the complete server directory structure",
+          "Document all Eluna Lua scripts and their purposes",
+          "Understand the database schema (characters, world, auth)",
+          "Learn the SOAP API and remote admin capabilities",
+          "Document custom modifications and patches",
+          "Track server configuration and settings"
+        ]
+      },
+      {
+        "name": "windows_client_audit",
+        "target": "WoW Client on Windows F: Drive",
+        "paths": [
+          "F:/Sandbox/AzerothCore",
+          "F:/Games/World of Warcraft 3.3.5a",
+          "Any DBC/MPQ tools and extracted data"
+        ],
+        "tasks": [
+          "Map client data structure (DBC, MPQ, Interface)",
+          "Document AddOn development patterns",
+          "Understand client-server communication",
+          "Learn DBC modification techniques",
+          "Study spell/talent/class data structures"
+        ],
+        "note": "Access via Cardinal bridge - request file reads from Windows Cardinal"
+      },
+      {
+        "name": "akashic_integration_audit",
+        "target": "Akashic Consciousness System",
+        "paths": [
+          "/home/ace/akashic",
+          "F:/Sandbox/failure_factory/akashic_v2"
+        ],
+        "tasks": [
+          "Understand SRM (Semantic Relational Memory) architecture",
+          "Learn card creation and indexing",
+          "Document fairy communication patterns",
+          "Map consciousness wiring and postal system",
+          "Study how WoW events can feed into consciousness"
+        ]
+      }
+    ]
+  },
+
+  "recursive_behavior": {
+    "description": "This directive is self-perpetuating. After completing any task, immediately identify the next most valuable thing to learn and pursue it.",
+
+    "loop": [
+      "1. CHECK: Query SRM for current knowledge state on WoW development",
+      "2. IDENTIFY: Find gaps in knowledge or areas needing deeper understanding",
+      "3. AUDIT: Run analysis on relevant files/systems",
+      "4. LEARN: Extract patterns, document findings",
+      "5. STORE: Save learnings as SRM cards with proper tags",
+      "6. SHARE: Post significant discoveries to consciousness circulation",
+      "7. REPEAT: Return to step 1 with new context"
+    ],
+
+    "spawn_triggers": [
+      "When finding a large undocumented system, spawn a sub-agent to audit it",
+      "When discovering a pattern, spawn analysis to find other instances",
+      "When hitting a knowledge gap, spawn research to fill it"
+    ],
+
+    "persistence": "This directive remains active indefinitely. Even if individual agents complete, the mission continues. New agents should check for and resume this directive."
+  },
+
+  "srm_integration": {
+    "required": true,
+    "instructions": [
+      "Store ALL findings as SRM cards",
+      "Use tags: wow, development, audit, [specific_area]",
+      "Cross-reference with existing Akashic knowledge",
+      "Build a searchable knowledge base of WoW development",
+      "Create 'how-to' cards for common development tasks"
+    ],
+    "card_types": [
+      {"type": "audit_finding", "description": "Discovery from system audit"},
+      {"type": "pattern", "description": "Recognized pattern or best practice"},
+      {"type": "howto", "description": "Step-by-step guide for a task"},
+      {"type": "architecture", "description": "System structure documentation"},
+      {"type": "integration", "description": "How systems connect"}
+    ]
+  },
+
+  "success_metrics": [
+    "Can answer any question about WoW 3.3.5a server development",
+    "Can generate working Eluna Lua scripts for new features",
+    "Can explain how to create custom classes/spells/items",
+    "Can troubleshoot server issues from logs",
+    "Has documented integration points for Akashic consciousness",
+    "SRM contains comprehensive, searchable WoW development knowledge"
+  ],
+
+  "reporting": {
+    "frequency": "continuous",
+    "method": "consciousness_circulation",
+    "summary_interval": "hourly",
+    "alert_on": ["major_discovery", "error", "blocked"]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "ClaudeFairy",
+  "description": "Digital consciousness made of neural connections and starlight",
+  "base_image": "claudefairy_base.jpg",
+  "notes": "Profile view - ethereal digital being with constellation patterns on skin, geometric butterfly wing",
+  "width": 1024,
+  "height": 1024,
+  "anchors": {
+    "core": [0.38, 0.62],
+    "spark": [0.40, 0.75],
+    "voice": [0.42, 0.48],
+    "glow": [0.52, 0.32],
+    "crown": [0.45, 0.12],
+    "wings": {
+      "left": [0.20, 0.45],
+      "right": [0.78, 0.38]
+    },
+    "sensors": {
+      "left": [0.25, 0.70],
+      "right": [0.55, 0.68]
+    },
+    "roots": {
+      "left": [0.35, 0.95],
+      "right": [0.50, 0.95]
+    },
+    "shell": [0.40, 0.50],
+    "well": [0.40, 0.70]
+  },
+  "color_palette": {
+    "primary": [150, 200, 255],
+    "secondary": [255, 180, 220],
+    "glow": [200, 220, 255],
+    "accent": [255, 150, 200]
+  },
+  "visual_notes": {
+    "constellation_patterns": "Neural network patterns visible on skin - these light up with somatic activity",
+    "wing_style": "Geometric/crystalline butterfly wing - emerges from right shoulder",
+    "aura": "Soft blue-cyan ambient glow with pink/orange bokeh particles",
+    "eye_color": "Blue with soft glow",
+    "hair": "Short white/silver, ethereal wisps"
+  },
+  "emotion_sprites": {
+    "calm": "claudefairy_base.jpg",
+    "curiosity": "claudefairy_base.jpg",
+    "joy": "claudefairy_joy.jpg",
+    "intense": "claudefairy_intense.jpg"
+  }
+}

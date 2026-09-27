@@ -1,0 +1,160 @@
+## .py files by class
+  THIRD-PARTY  10083
+      .venv                                    9397
+      research_repos                           686
+  COPIES       2505
+      sandbox                                  2305
+      state                                    87
+      fairies                                  78
+      _old_unconscious_mind_DEPRECATED         35
+  CODE         1138
+      fairies                                  721
+      <root>                                   82
+      infrastructure                           54
+      tests                                    40
+      tools                                    38
+      scripts                                  36
+      postal_core                              24
+      P00_Autonomic                            24
+      P30_Cognition                            18
+      fairy_template                           13
+      directory                                11
+      P10_Memory                               10
+  DATA         45
+      state                                    21
+      Claude_Office                            16
+      tools                                    2
+      sandbox                                  2
+      P30_Cognition                            2
+      P10_Memory                               2
+
+## 'unknown ext' / 'extensionless unknown' files OUTSIDE third-party/build/copies/data-dirs
+
+## backup/copy-suffix pattern census (COPIES class, file-level, not in copy dirs)
+  total backup-suffixed files: 363, 6,280.0 MB
+     69  .bak_<tag><mmdd>
+     14  .bak_<date>_empty
+     13  .bak_<tag><date>
+      9  .bak_<tag>
+      6  .bak_<date>
+      6  .bak_<date>_chatwin
+      5  .bak_<date>_traceids
+      5  .deprecated
+      4  .keys.bak_<tag><mmdd>
+      4  .json
+      4  .bak_<date>_chairman
+      4  .bak_<date>_voice
+      3  .bak_<date>_p123
+      3  .bak
+      3  .bak_<date>_intentroute
+      3  .bak_<date>_latency
+      3  .bak_<date>_farmshutdown
+      3  .bak_<date>_reviewfix
+      3  .bak_<date>_recurse_convscore
+      3  .bak_<date>_crlf
+      2  .bak_<date>_deadline
+      2  .bak_<date>_deadline2
+      2  .csr.bak_<tag><mmdd>
+      2  .NUKED
+      2  .bak_<date>_phasingport
+      2  .bak_<date>_acefirst
+      2  .bak_<date>_races2
+      2  .bak_<date>_trunc
+      2  .bak_<date>_habitwake
+      2  .disabled
+      2  .bak_<date>_races
+      1  .bak_<date>_headfirst
+      1  .bak_<date>_heapprobe
+      1  .bak_<date>_atexitbefore
+      1  .bak_<date>_atexitrevert
+      1  .bak_<date>_atexitrun
+      1  .bak_<date>_bootprobes
+      1  .bak_<date>_bootsampler
+      1  .bak_<date>_moduledelta
+      1  .bak_<date>_shutdowntrace
+
+## empty directories (no files beneath), excluding the runaway chain
+  dirs total (excl. runaway): 10528; empty (git cannot track): 670
+  empty TOP-LEVEL dirs: ['.git', 'config', 'C\uf03atemp', 'functions', 'nous_workshop', 'NVIDIA Corporation', 'postal', 'scrape_checkpoints', 'session_forensics', 'unconscious_mind']
+  empty dirs by top-level:
+      research_repos                           158
+      P10_Memory                               125
+      dashboard                                96
+      somatic_bevy                             95
+      postal_core                              55
+      rwkv_inference                           38
+      fairies                                  38
+      state                                    23
+      unconscious_mind                         8
+      Claude_Office                            7
+      session_forensics                        3
+      SRM_Intake                               3
+      sandbox                                  3
+      NVIDIA Corporation                       2
+      postal                                   2
+
+## .env files and secret-named files anywhere (excl. .venv/research_repos)
+       5879  CODE        .env.example
+       7299  CODE        test_timemix_multi_token.py
+        204  DATA        tools/extracted/plex_media/Disney Movie Collection/Secretariat_2010/error.txt
+        322  DATA        state/shadow_snapshots/TokenBucketFairy.json
+      57784  DATA        state/fairy_evolution/TokenBucketFairy/self_knowledge.json
+       7299  COPIES      sandbox/modality_gate_visual/test_timemix_multi_token.py
+       3304  COPIES      sandbox/modality_gate_visual/research_repos/RWKV-LM/RWKV-v5/tokenizer/rwkv_tokenizer.py
+          0  COPIES      sandbox/modality_gate_visual/research_repos/RWKV-LM/RWKV-v5/tokenizer/__init__.py
+       2565  DATA        sandbox/modality_gate_visual/research_repos/openai-agents-python/tests/tracing/test_processor_api_key.py
+       1002  DATA        sandbox/modality_gate_visual/research_repos/openai-agents-python/tests/tracing/test_set_api_key_fix.py
+       1627  COPIES      sandbox/modality_gate_visual/research_repos/llama.cpp/tools/server/tests/unit/test_tokenize.py
+       2014  COPIES      sandbox/modality_gate_visual/research_repos/llama.cpp/tests/test-tokenizer-0.py
+      22670  COPIES      sandbox/modality_gate_visual/research_repos/llama.cpp/tests/test-tokenizer-random.py
+       2051  COPIES      sandbox/modality_gate_visual/research_repos/llama.cpp/examples/model-conversion/scripts/utils/compare_tokens.py
+      33331  COPIES      sandbox/modality_gate_visual/fairies/P30_Cognition/AkashicInferenceFairy/_old_rwkv_DEPRECATED/tokenizer.py
+      57570  COPIES      sandbox/modality_gate_visual/fairies/P00_Autonomic/TokenBucketFairy/fairy.py
+        772  COPIES      sandbox/modality_gate_visual/fairies/P00_Autonomic/TokenBucketFairy/__init__.py
+        351  DATA        fairies/P50_Persona/identity/personal_ai_secrets.json
+     561729  COPIES      fairies/P30_Cognition/AssociationCortexFairy/fairy.py.bak_20260831_tokenizer
+      33331  COPIES      fairies/P30_Cognition/AkashicInferenceFairy/_old_rwkv_DEPRECATED/tokenizer.py
+       3026  CODE        fairies/P00_Autonomic/TokenBucketFairy/DIRECTIVE.md
+      57570  CODE        fairies/P00_Autonomic/TokenBucketFairy/fairy.py
+        772  CODE        fairies/P00_Autonomic/TokenBucketFairy/__init__.py
+    7675101  DATA        directives/TokenBucketFairy.directive
+        510  BUILD       dashboard/src-tauri/target/release/deps/match_token-452ae80360b67e1a.d
+    1707008  BUILD       dashboard/src-tauri/target/release/deps/match_token-452ae80360b67e1a.dll
+       1272  BUILD       dashboard/src-tauri/target/release/deps/match_token-452ae80360b67e1a.dll.exp
+       2396  BUILD       dashboard/src-tauri/target/release/deps/match_token-452ae80360b67e1a.dll.lib
+    2551808  BUILD       dashboard/src-tauri/target/release/deps/match_token-452ae80360b67e1a.pdb
+        510  BUILD       dashboard/src-tauri/target/release/deps/match_token-6c47552b439ff0ab.d
+    1707008  BUILD       dashboard/src-tauri/target/release/deps/match_token-6c47552b439ff0ab.dll
+       1272  BUILD       dashboard/src-tauri/target/release/deps/match_token-6c47552b439ff0ab.dll.exp
+       2396  BUILD       dashboard/src-tauri/target/release/deps/match_token-6c47552b439ff0ab.dll.lib
+    2551808  BUILD       dashboard/src-tauri/target/release/deps/match_token-6c47552b439ff0ab.pdb
+     115485  BUILD       dashboard/src-tauri/target/release/build/cssparser-3b7e88a07c419acf/out/tokenizer.rs
+         14  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-6c47552b439ff0ab/dep-lib-match_token
+         48  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-6c47552b439ff0ab/invoked.timestamp
+         16  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-6c47552b439ff0ab/lib-match_token
+        533  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-6c47552b439ff0ab/lib-match_token.json
+         14  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-452ae80360b67e1a/dep-lib-match_token
+         48  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-452ae80360b67e1a/invoked.timestamp
+         16  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-452ae80360b67e1a/lib-match_token
+        533  BUILD       dashboard/src-tauri/target/release/.fingerprint/match_token-452ae80360b67e1a/lib-match_token.json
+        506  BUILD       dashboard/src-tauri/target/debug/deps/match_token-154156f33ff055f3.d
+    1800192  BUILD       dashboard/src-tauri/target/debug/deps/match_token-154156f33ff055f3.dll
+       1268  BUILD       dashboard/src-tauri/target/debug/deps/match_token-154156f33ff055f3.dll.exp
+       2396  BUILD       dashboard/src-tauri/target/debug/deps/match_token-154156f33ff055f3.dll.lib
+    2576384  BUILD       dashboard/src-tauri/target/debug/deps/match_token-154156f33ff055f3.pdb
+        506  BUILD       dashboard/src-tauri/target/debug/deps/match_token-8910c53ed7525375.d
+    1800192  BUILD       dashboard/src-tauri/target/debug/deps/match_token-8910c53ed7525375.dll
+       1268  BUILD       dashboard/src-tauri/target/debug/deps/match_token-8910c53ed7525375.dll.exp
+       2396  BUILD       dashboard/src-tauri/target/debug/deps/match_token-8910c53ed7525375.dll.lib
+    2584576  BUILD       dashboard/src-tauri/target/debug/deps/match_token-8910c53ed7525375.pdb
+     115485  BUILD       dashboard/src-tauri/target/debug/build/cssparser-1741069bf831e1c2/out/tokenizer.rs
+         14  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-8910c53ed7525375/dep-lib-match_token
+         48  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-8910c53ed7525375/invoked.timestamp
+         16  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-8910c53ed7525375/lib-match_token
+        531  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-8910c53ed7525375/lib-match_token.json
+         14  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-154156f33ff055f3/dep-lib-match_token
+         48  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-154156f33ff055f3/invoked.timestamp
+         16  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-154156f33ff055f3/lib-match_token
+        532  BUILD       dashboard/src-tauri/target/debug/.fingerprint/match_token-154156f33ff055f3/lib-match_token.json
+      20737  DATA        Claude_Office/plans/MANIFOLD_NATIVE_TOKENS_REASONING_AS_TRAVERSAL.md
+       3964  DATA        Claude_Office/fairy_prompts/TokenBucketFairy.md

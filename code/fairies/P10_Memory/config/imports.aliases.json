@@ -1,0 +1,22 @@
+{
+  "aliases": {
+    "_Q": "queue",
+    "_col": "collections",
+    "_ctx": "contextlib",
+    "_dt": "datetime",
+    "_fun": "functools",
+    "_hash": "hashlib",
+    "_it": "itertools",
+    "_json": "json",
+    "_log": "logging",
+    "_ns": "ns_helper",
+    "_os": "os",
+    "_path": "pathlib",
+    "_re": "re",
+    "_sh": "shutil",
+    "_sp": "subprocess",
+    "_tb": "traceback",
+    "_tmp": "tempfile",
+    "_uuid": "uuid"
+  }
+}

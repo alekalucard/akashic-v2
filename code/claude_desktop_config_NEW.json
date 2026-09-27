@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "akashic": {
+      "command": "python",
+      "args": [
+        "F:\\Sandbox\\failure_factory\\akashic_v2\\server.py",
+        "--mcp"
+      ],
+      "cwd": "F:\\Sandbox\\failure_factory\\akashic_v2",
+      "env": {
+        "AKASHIC_ROOT": "F:\\Sandbox\\failure_factory\\akashic_v2",
+        "AKASHIC_PROJECT_ROOT": "F:\\Sandbox\\failure_factory\\akashic_v2",
+        "PYTHONPATH": "F:\\Sandbox\\failure_factory\\akashic_v2"
+      }
+    }
+  }
+}

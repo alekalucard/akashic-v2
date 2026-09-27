@@ -1,0 +1,45 @@
+rows scanned: 190903 (runaway chain entries skipped: 1639)
+
+## Windows-reserved basenames (git cannot check these out on Windows): 12
+   ('nul', 'F')
+   ('tracer_pool/nul', 'F')
+   ('state/nul', 'F')
+   ('research_repos/llama.cpp/nul', 'F')
+   ('postal_core/nul', 'F')
+   ('P10_Memory/Akashic_triple_helix_memory_storage/nul', 'F')
+   ('fairies/nul', 'F')
+   ('fairies/P50_Persona/Waking Minds/Sourpatches/nul', 'F')
+   ('fairies/P30_Cognition/AkashicInferenceFairy/models/nul', 'F')
+   ('fairies/P10_Memory/nul', 'F')
+   ('dashboard/nul', 'F')
+   ('dashboard/src-tauri/nul', 'F')
+
+## Illegal characters in basename (< > : " | ? * ctrl): 0
+
+## Trailing space/dot basenames: 0
+
+## Non-ASCII paths (fine for git, note for cross-platform): 7
+   ('C\uf03atempstatus.json', 'F')
+   ('F\uf03aSandboxfailure_factoryakashic_v2stateboot_live.log', 'F')
+   ('Claude_Office/from_ace/Pi-Rotational Algebra (𝒜ₚᵣ) Towards a Unified Picture of Geometry, Matter, Time and Consciousness from the 4π Material Universe The Pirates of Physics with grateful acknowledgment to.md', 'F')
+   ('Claude_Office/from_ace/screen shots/2026-02-09 14_42_34-ScieVision on X_ _The Basel problem ✍️ It asks for the sum of an infinite list o.png', 'F')
+   ("Claude_Office/from_ace/screen shots/2026-02-13 07_08_29-SKG on X_ _Binet's formula ✍️ This formula is a mathematical tool that lets you .png", 'F')
+   ('Claude_Office/from_ace/screen shots/2026-02-23 11_29_13-Learn Something on X_ _Brain’s frequency spectrum https___t.co_bwCmD8iuZK_ _ X.png', 'F')
+   ('C\uf03atemp', 'D')
+
+## Full path > 259 chars under F:\Sandbox\akashic-v2-repo (needs core.longpaths=true): 0
+
+## Relpath >= 200 chars (fragile if cloned deeper than ~60 chars): 1
+   (208, 'Claude_Office/from_ace/Pi-Rotational Algebra (𝒜ₚᵣ) Towards a Unified Picture of Geometry, Matter, Time and Consciousness from the 4π Material Universe The Pirates of Physics with grateful acknowledgment to.md', 'F')
+
+## Case-only collisions in same directory (breaks checkout on Windows/macOS): 0
+
+## relpath length histogram (25-char buckets, excl. runaway chain)
+     0-24 : 848
+    25-49 : 42091
+    50-74 : 111612
+    75-99 : 26067
+   100-124: 5778
+   125-149: 2818
+   150-174: 49
+   200-224: 1

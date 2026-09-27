@@ -1,0 +1,1171 @@
+/* =============================================================================
+   AKASHIC DASHBOARD STYLES
+   Color, meaning, and logic fused together
+   ============================================================================= */
+
+:root {
+    /* Core palette */
+    --bg-dark: #0f0f1a;
+    --bg-card: #1a1a2e;
+    --bg-hover: #252540;
+    --accent: #e94560;
+
+    /* Decision colors */
+    --logic: #3b82f6;
+    --emotion: #ec4899;
+    --paradox: #a855f7;
+
+    /* Pain drive colors */
+    --isolation: #6366f1;
+    --confusion: #f59e0b;
+    --depletion: #ef4444;
+    --frustration: #f97316;
+    --stagnation: #84cc16;
+    --abandonment: #06b6d4;
+
+    /* Chemistry/intrinsic drive colors */
+    --dopamine: #f59e0b;
+    --serotonin: #06b6d4;
+    --oxytocin: #ec4899;
+    --norepinephrine: #22c55e;
+    --cortisol: #ef4444;
+    --adrenaline: #f97316;
+
+    /* Status colors */
+    --ok: #22c55e;
+    --warn: #eab308;
+    --error: #ef4444;
+
+    /* Text */
+    --text: #e5e7eb;
+    --text-dim: #9ca3af;
+    --text-bright: #ffffff;
+
+    /* Sizing */
+    --radius: 12px;
+    --radius-sm: 6px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* PHASE 8 FIX: Ensure HTML element allows page scroll */
+html {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto !important;  /* PHASE 8 FIX: Ensure page scrolls vertically */
+}
+
+/* =============================================================================
+   HEADER
+   ============================================================================= */
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-dark) 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--logic) 0%, var(--paradox) 50%, var(--emotion) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 8px var(--ok);
+    animation: pulse 2s infinite;
+}
+
+.status-dot.disconnected {
+    background: var(--error);
+    box-shadow: 0 0 8px var(--error);
+    animation: none;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.subtitle {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+/* =============================================================================
+   TABS
+   ============================================================================= */
+
+.tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 24px;
+    background: var(--bg-dark);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.tab.active {
+    background: var(--bg-card);
+    color: var(--text-bright);
+}
+
+.tab[data-tab="system"].active { border-bottom: 2px solid var(--logic); }
+.tab[data-tab="cognition"].active { border-bottom: 2px solid var(--paradox); }
+.tab[data-tab="drives"].active { border-bottom: 2px solid var(--depletion); }
+.tab[data-tab="fairies"].active { border-bottom: 2px solid var(--ok); }
+
+.tab-icon {
+    font-size: 1rem;
+}
+
+/* =============================================================================
+   CONTENT
+   ============================================================================= */
+
+.content {
+    padding: 24px;
+    /* PHASE 8 FIX: Allow content to expand and page to scroll */
+    overflow: visible;
+    min-height: fit-content;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+    /* PHASE 8 FIX: Allow panels to expand beyond viewport */
+    overflow: visible;
+    height: auto;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.panel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+/* =============================================================================
+   CARDS
+   ============================================================================= */
+
+.card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.wide-card {
+    grid-column: 1 / -1;
+}
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.consciousness-title { color: var(--logic); }
+.hardware-title { color: var(--abandonment); }
+.helix-title { color: var(--paradox); }
+.thought-title { color: var(--emotion); }
+.drives-title { color: var(--depletion); }
+.chemistry-title { color: var(--dopamine); }
+.fairies-title { color: var(--ok); }
+.cortex-title { color: #9b59b6; }  /* Purple for neural network vibes */
+
+.cortex-value { color: #9b59b6; font-weight: bold; }
+
+/* Mood indicator */
+.mood-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+}
+.mood-label { color: var(--text-dim); font-size: 0.85rem; }
+.mood-value { color: var(--dopamine); font-weight: 600; text-transform: capitalize; }
+.mood-valence { color: var(--text-dim); font-size: 0.75rem; }
+
+.card-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+}
+
+.section-title {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin: 16px 0 12px 0;
+}
+
+/* =============================================================================
+   STATUS ROWS
+   ============================================================================= */
+
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.status-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.status-label.connected { color: var(--ok); }
+.status-label.disconnected { color: var(--error); }
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+.stat-value {
+    font-size: 0.85rem;
+    font-family: 'Consolas', monospace;
+    color: var(--logic);
+}
+
+.collision-value {
+    color: var(--paradox);
+}
+
+.helix-turns {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+/* =============================================================================
+   PROGRESS BARS
+   ============================================================================= */
+
+.progress-item {
+    margin-bottom: 12px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.progress-label {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+.progress-value {
+    font-size: 0.75rem;
+    font-family: 'Consolas', monospace;
+    color: var(--text-dim);
+}
+
+.progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+/* Progress bar colors */
+.cpu-fill { background: linear-gradient(90deg, var(--ok) 0%, var(--stagnation) 100%); }
+.ram-fill { background: linear-gradient(90deg, var(--logic) 0%, var(--isolation) 100%); }
+.gpu-fill { background: linear-gradient(90deg, var(--paradox) 0%, var(--emotion) 100%); }
+
+.logic-fill { background: var(--logic); box-shadow: 0 0 10px var(--logic); }
+.emotion-fill { background: var(--emotion); box-shadow: 0 0 10px var(--emotion); }
+.paradox-fill { background: var(--paradox); box-shadow: 0 0 10px var(--paradox); }
+
+.isolation-fill { background: var(--isolation); }
+.confusion-fill { background: var(--confusion); }
+.depletion-fill { background: var(--depletion); }
+.frustration-fill { background: var(--frustration); }
+.stagnation-fill { background: var(--stagnation); }
+.abandonment-fill { background: var(--abandonment); }
+
+/* Chemistry fills */
+.dopamine-fill { background: var(--dopamine); box-shadow: 0 0 8px var(--dopamine); }
+.serotonin-fill { background: var(--serotonin); box-shadow: 0 0 8px var(--serotonin); }
+.oxytocin-fill { background: var(--oxytocin); box-shadow: 0 0 8px var(--oxytocin); }
+.norepinephrine-fill { background: var(--norepinephrine); box-shadow: 0 0 8px var(--norepinephrine); }
+.cortisol-fill { background: var(--cortisol); box-shadow: 0 0 8px var(--cortisol); }
+.adrenaline-fill { background: var(--adrenaline); box-shadow: 0 0 8px var(--adrenaline); }
+
+/* =============================================================================
+   STRESS INDICATOR
+   ============================================================================= */
+
+.stress-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stress-label {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+.stress-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.stress-value.low { color: var(--ok); }
+.stress-value.medium { color: var(--warn); }
+.stress-value.high { color: var(--frustration); }
+.stress-value.critical { color: var(--error); }
+
+/* =============================================================================
+   DRIVES GRID
+   ============================================================================= */
+
+.drives-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+/* =============================================================================
+   THOUGHT FEED
+   ============================================================================= */
+
+.thought-feed {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.thought-item {
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+    border-left: 3px solid var(--paradox);
+}
+
+.thought-type {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--paradox);
+    color: var(--text-bright);
+    margin-bottom: 4px;
+}
+
+.thought-type.insight { background: var(--logic); }
+.thought-type.question { background: var(--confusion); }
+.thought-type.idle { background: var(--text-dim); }
+
+.thought-content {
+    font-size: 0.85rem;
+    color: var(--text);
+    line-height: 1.4;
+}
+
+/* =============================================================================
+   FAIRY STATS
+   ============================================================================= */
+
+.fairy-stats {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 20px;
+}
+
+.fairy-stat {
+    text-align: center;
+}
+
+.fairy-stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--confusion);
+}
+
+.fairy-stat-value.approved { color: var(--ok); }
+.fairy-stat-value.issues { color: var(--warn); }
+.fairy-stat-value.pending { color: var(--logic); }
+
+.fairy-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+.fairy-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    /* PHASE 8 FIX v3: Remove max-height - let page scroll naturally!
+       Each plane-section has its own scrollable area now */
+    min-height: 100px;
+    max-height: none;  /* No constraint - page scrolls! */
+    overflow: visible;  /* Don't constrain - let it flow */
+    padding-right: 8px;
+}
+
+.fairy-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-sm);
+}
+
+.fairy-name {
+    font-weight: 500;
+}
+
+.fairy-status {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.fairy-status.approved {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--ok);
+}
+
+.fairy-status.issues {
+    background: rgba(234, 179, 8, 0.2);
+    color: var(--warn);
+}
+
+/* Fairy item status coloring */
+.fairy-item.fairy-running {
+    border-left: 3px solid var(--ok);
+}
+.fairy-item.fairy-running .fairy-status {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--ok);
+}
+.fairy-item.fairy-sleeping {
+    border-left: 3px solid var(--text-dim);
+    opacity: 0.7;
+}
+.fairy-item.fairy-sleeping .fairy-status {
+    background: rgba(156, 163, 175, 0.2);
+    color: var(--text-dim);
+}
+
+/* =============================================================================
+   SCROLLBAR
+   ============================================================================= */
+
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-dim);
+}
+
+/* =============================================================================
+   SERVER CONTROLS
+   ============================================================================= */
+
+.server-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.server-status {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.server-status.online {
+    color: var(--ok);
+    background: rgba(34, 197, 94, 0.15);
+}
+
+.server-status.starting {
+    color: var(--warn);
+    background: rgba(234, 179, 8, 0.15);
+}
+
+.btn {
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-start {
+    background: var(--ok);
+    color: var(--bg-dark);
+}
+
+.btn-start:hover:not(:disabled) {
+    background: #16a34a;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+}
+
+.btn-stop {
+    background: var(--error);
+    color: var(--text-bright);
+}
+
+.btn-stop:hover:not(:disabled) {
+    background: #dc2626;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+}
+
+.btn-restart {
+    background: var(--logic);
+    color: var(--text-bright);
+}
+
+.btn-restart:hover:not(:disabled) {
+    background: #2563eb;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+}
+
+/* =============================================================================
+   CHAT TAB
+   ============================================================================= */
+
+.chat-targets {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chat-target-btn {
+    padding: 12px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-sm);
+    background: var(--bg-hover);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.chat-target-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: rgba(99, 102, 241, 0.4);
+}
+
+.chat-target-btn.active {
+    background: rgba(99, 102, 241, 0.3);
+    border-color: var(--paradox);
+    box-shadow: 0 0 8px rgba(168, 85, 247, 0.3);
+}
+
+.unread-badge {
+    display: inline-block;
+    background: var(--error);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 6px;
+    min-width: 16px;
+    text-align: center;
+}
+
+.chat-message {
+    animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.inbox-message {
+    transition: all 0.2s ease;
+}
+
+.inbox-message:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* =============================================================================
+   PER-FAIRY CHAT SYSTEM
+   ============================================================================= */
+
+.fairy-chat-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    padding: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius);
+}
+
+.fairy-tab {
+    flex: 1;
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fairy-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+}
+
+.fairy-tab.active {
+    background: var(--bg-card);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-bright);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.fairy-chat-container {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 20px;
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+}
+
+.fairy-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 16px;
+}
+
+.fairy-avatar {
+    font-size: 2rem;
+    margin-right: 12px;
+}
+
+.fairy-info h3 {
+    font-size: 1.2rem;
+    color: var(--text-bright);
+    margin-bottom: 4px;
+}
+
+.fairy-info p {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+.conversation-history {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    min-height: 300px;
+    max-height: 400px;
+}
+
+.conversation-message {
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-sm);
+    max-width: 80%;
+    animation: slideIn 0.2s ease-out;
+}
+
+.conversation-message.outgoing {
+    background: linear-gradient(135deg, var(--logic), var(--paradox));
+    color: white;
+    margin-left: auto;
+    text-align: right;
+}
+
+.conversation-message.incoming {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-right: auto;
+}
+
+.message-content {
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.message-meta {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+}
+
+.fairy-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.fairy-stats span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.chat-input-area {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chat-input-area input {
+    flex: 1;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-dark);
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.chat-input-area input:focus {
+    outline: none;
+    border-color: var(--paradox);
+    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+}
+
+.feeling-indicator {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    background: rgba(167, 139, 250, 0.2);
+    color: #a78bfa;
+}
+
+/* =============================================================================
+   FAIRY PLANE SECTIONS (Collapsible)
+   ============================================================================= */
+
+.plane-section {
+    margin-bottom: 12px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease;
+}
+
+.plane-section:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.plane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.03);
+    transition: background 0.2s ease;
+    user-select: none;
+}
+
+.plane-header:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.plane-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.plane-chevron {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    transition: transform 0.3s ease;
+    width: 16px;
+    text-align: center;
+}
+
+.plane-section.collapsed .plane-chevron {
+    transform: rotate(-90deg);
+}
+
+.plane-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.plane-count {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    font-family: 'Consolas', monospace;
+}
+
+.plane-running-count {
+    font-size: 0.7rem;
+    color: var(--ok);
+    margin-left: 6px;
+}
+
+.plane-content {
+    /* PHASE 8 FIX v3: MUCH larger + user-resizable sections */
+    min-height: 100px;
+    max-height: 500px;  /* Show ~10 fairies at once! */
+    overflow-y: auto !important;
+    overflow-x: hidden;
+    transition: padding 0.3s ease;  /* Removed max-height transition for resize */
+    padding: 0 8px 8px 8px;
+    /* Make scrollbar visible */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.4) rgba(0,0,0,0.2);
+    /* USER CAN RESIZE! Drag bottom-right corner */
+    resize: vertical;
+    border-bottom: 2px dashed rgba(255,255,255,0.1);  /* Visual hint for resize handle */
+}
+
+/* Webkit scrollbar for plane content */
+.plane-content::-webkit-scrollbar {
+    width: 8px;
+}
+.plane-content::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+}
+.plane-content::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.3);
+    border-radius: 4px;
+}
+.plane-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.5);
+}
+
+.plane-section.collapsed .plane-content {
+    max-height: 0;
+    padding: 0 8px;
+    overflow: hidden;  /* Hide when collapsed */
+}
+
+.plane-content .fairy-item {
+    margin-top: 6px;
+}
+
+/* Plane-specific accent colors */
+.plane-section[data-plane="P00"] .plane-title { color: var(--logic); }
+.plane-section[data-plane="P10"] .plane-title { color: var(--paradox); }
+.plane-section[data-plane="P20"] .plane-title { color: var(--emotion); }
+.plane-section[data-plane="P30"] .plane-title { color: var(--confusion); }
+.plane-section[data-plane="P40"] .plane-title { color: var(--abandonment); }
+.plane-section[data-plane="P50"] .plane-title { color: var(--oxytocin); }
+.plane-section[data-plane="P60"] .plane-title { color: var(--ok); }
+
+.plane-section[data-plane="P00"] .plane-header { border-left: 3px solid var(--logic); }
+.plane-section[data-plane="P10"] .plane-header { border-left: 3px solid var(--paradox); }
+.plane-section[data-plane="P20"] .plane-header { border-left: 3px solid var(--emotion); }
+.plane-section[data-plane="P30"] .plane-header { border-left: 3px solid var(--confusion); }
+.plane-section[data-plane="P40"] .plane-header { border-left: 3px solid var(--abandonment); }
+.plane-section[data-plane="P50"] .plane-header { border-left: 3px solid var(--oxytocin); }
+.plane-section[data-plane="P60"] .plane-header { border-left: 3px solid var(--ok); }
+
+/* =============================================================================
+   FAIRY DETAIL PANEL
+   Click-to-expand per-fairy status sheets
+   ============================================================================= */
+
+.fairy-item-wrapper {
+    margin-top: 6px;
+}
+
+.fairy-item-wrapper .fairy-item {
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-top: 0;
+}
+
+.fairy-item-wrapper .fairy-item:hover {
+    background: var(--bg-hover);
+}
+
+.fairy-expand-icon {
+    font-size: 0.65rem;
+    margin-right: 6px;
+    opacity: 0.5;
+    transition: transform 0.2s, opacity 0.2s;
+    display: inline-block;
+}
+
+.fairy-item-wrapper.expanded .fairy-expand-icon {
+    transform: rotate(90deg);
+    opacity: 0.9;
+}
+
+.fairy-detail-panel {
+    background: rgba(15, 15, 26, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    padding: 12px 14px;
+    margin-bottom: 4px;
+    animation: detailSlideIn 0.2s ease-out;
+}
+
+@keyframes detailSlideIn {
+    from { opacity: 0; max-height: 0; padding: 0 14px; }
+    to   { opacity: 1; max-height: 600px; padding: 12px 14px; }
+}
+
+.fairy-detail-loading,
+.fairy-detail-error {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    padding: 8px 0;
+}
+
+.fairy-detail-error {
+    color: var(--error);
+}
+
+.fairy-detail-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.fairy-detail-section {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+}
+
+.fairy-detail-section h4 {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 2px 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.detail-label {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.detail-value {
+    color: var(--text);
+    text-align: right;
+    word-break: break-word;
+}
+
+.detail-value.purpose {
+    font-style: italic;
+    color: var(--logic);
+    font-size: 0.75rem;
+}
+
+.detail-value.mantra {
+    font-style: italic;
+    color: var(--paradox);
+    font-size: 0.75rem;
+}
+
+.detail-value.muted {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+}
+
+/* Shadow test results */
+.test-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 0.78rem;
+}
+
+.test-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    min-width: 36px;
+    text-align: center;
+}
+
+.badge-ok      { background: rgba(34, 197, 94, 0.2);  color: var(--ok); }
+.badge-warn    { background: rgba(234, 179, 8, 0.2);   color: var(--warn); }
+.badge-error   { background: rgba(239, 68, 68, 0.2);   color: var(--error); }
+.badge-skip    { background: rgba(156, 163, 175, 0.15); color: var(--text-dim); }
+.badge-changed { background: rgba(168, 85, 247, 0.2);  color: var(--paradox); }
+
+.test-name {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.test-msg {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    margin-left: auto;
+}
+
+/* Affect state colors */
+.shadow-state {
+    font-weight: 600;
+}
+
+.shadow-state.state-ok      { color: var(--ok); }
+.shadow-state.state-warn    { color: var(--warn); }
+.shadow-state.state-error   { color: var(--error); }
+.shadow-state.state-unknown { color: var(--text-dim); }

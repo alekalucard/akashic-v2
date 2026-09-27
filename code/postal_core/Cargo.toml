@@ -1,0 +1,60 @@
+[package]
+name = "postal_core"
+version = "0.1.0"
+edition = "2021"
+description = "Lock-free postal system for Akashic consciousness infrastructure"
+authors = ["Akashic Foundation"]
+
+[lib]
+name = "postal_core"
+crate-type = ["cdylib", "rlib"]  # cdylib for Python, rlib for Rust
+
+[dependencies]
+# Lock-free concurrency
+crossbeam = "0.8"
+dashmap = "5.5"
+parking_lot = "0.12"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Python bindings
+# FIX 2026-03-26 (Nous): PyO3 0.20 doesn't support Python 3.14 free-threaded.
+# PyO3 0.23+ adds free-threaded Python support. Required for our 3.14t runtime.
+pyo3 = { version = "0.28", features = ["extension-module"] }
+
+# Utilities
+uuid = { version = "1.6", features = ["v4"] }
+chrono = "0.4"
+thiserror = "1.0"
+tracing = "0.1"
+
+# Metrics
+hdrhistogram = "7.5"  # High-precision latency histograms
+
+# System info for autoscaling
+sysinfo = "0.30"
+
+# 4D Tensor support (like Whisper's state tensors)
+ndarray = "0.15"
+numpy = { version = "0.28", optional = true }  # For Python interop — version must match PyO3
+
+# Lazy initialization
+once_cell = "1.19"
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"
+
+[[bench]]
+name = "postal_bench"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3

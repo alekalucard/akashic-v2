@@ -1,0 +1,32 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "somatic-bevy"
+version = "0.1.0"
+description = "Somatic body simulation with Python bindings - Akashic consciousness system"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Akashic Foundation"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["consciousness", "simulation", "somatic", "embodiment"]
+
+[tool.maturin]
+# Build with python feature enabled
+features = ["python"]
+# Module name when imported in Python
+module-name = "somatic_bevy"
+# Strip symbols for smaller binary
+strip = true

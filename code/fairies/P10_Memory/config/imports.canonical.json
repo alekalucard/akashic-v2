@@ -1,0 +1,54 @@
+{
+  "auto_import": {
+    "akashic": [
+      "ns_helper"
+    ],
+    "stdlib": [
+      "os",
+      "sys",
+      "re",
+      "json",
+      "time",
+      "datetime",
+      "pathlib",
+      "queue",
+      "hashlib",
+      "uuid",
+      "inspect",
+      "traceback",
+      "asyncio",
+      "threading",
+      "glob",
+      "math",
+      "random",
+      "functools",
+      "itertools",
+      "logging",
+      "shutil",
+      "tempfile",
+      "subprocess",
+      "contextlib",
+      "collections",
+      "dataclasses",
+      "types",
+      "importlib",
+      "warnings",
+      "typing"
+    ],
+    "typing": [
+      "Any",
+      "Dict",
+      "List",
+      "Tuple",
+      "Optional",
+      "Callable",
+      "Union",
+      "Iterable",
+      "Mapping",
+      "Set",
+      "Type",
+      "Literal",
+      "TypedDict"
+    ]
+  }
+}
