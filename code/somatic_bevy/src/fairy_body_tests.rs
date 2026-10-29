@@ -186,16 +186,50 @@ fn presets_keep_the_neutral_body() {
         assert_eq!(p.freckles, d.freckles);
         assert_eq!(p.glow, d.glow);
     }
+    // the only proportion a preset changes: picture 1's stylized head; picture 2 keeps the default
+    assert_eq!(HerLook::picture_1().body.head_ratio, 0.22);
+    assert_eq!(HerLook::picture_2().body.head_ratio, d.body.head_ratio);
+}
+
+#[test]
+fn coherence_sets_the_glow_pulse_depth() {
+    let l = HerLook::default();
+    let lo = placeholder_modulation(&HerAffectInput { coherence: 0.0, ..default() }, &l);
+    let hi = placeholder_modulation(&HerAffectInput { coherence: 1.0, ..default() }, &l);
+    assert!(lo.glow_pulse_depth > 0.2 && hi.glow_pulse_depth < 1e-6);
+}
+
+#[test]
+fn wings_flap_as_a_mirrored_pair() {
+    let (mut app, _) = app_with(HerLook::default());
+    for _ in 0..3 {
+        app.update();
+    }
+    let mut q = app.world_mut().query::<(&WingJoint, &Transform)>();
+    let js: Vec<_> = q.iter(app.world()).map(|(j, t)| (j.side, j.phase, t.rotation)).collect();
+    let mut checked = 0;
+    for (s, ph, r) in &js {
+        if *s > 0.0 {
+            let (_, _, l) = js.iter().find(|(s2, p2, _)| *s2 < 0.0 && p2 == ph).unwrap();
+            // mirror across the YZ plane: (x, y, z, w) -> (x, -y, -z, w)
+            let m = Quat::from_xyzw(r.x, -r.y, -r.z, r.w);
+            assert!(m.abs_diff_eq(*l, 1e-4), "left wing must mirror the right one: {r:?} {l:?}");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 2);
 }
 
 #[test]
 fn no_emotion_names_in_the_module() {
-    let src = include_str!("fairy_body.rs").to_lowercase();
+    let src = (include_str!("fairy_body.rs").to_string()
+        + include_str!("../../../docs/nous/FAIRY/render_previews.py"))
+        .to_lowercase();
     for w in [
         "happy", "sad", "angry", "anger", "joy", "fear", "calm", "anxious", "anxiety", "excited",
         "content", "curious", "love", "lonely", "grief", "surprise", "disgust", "emotion", "mood",
     ] {
-        assert!(!src.contains(w), "emotion word {w:?} in fairy_body.rs");
+        assert!(!src.contains(w), "emotion word {w:?} in fairy_body.rs or render_previews.py");
     }
 }
 

@@ -1,7 +1,7 @@
 """render_previews.py -- tiny CPU rasterizer for her fairy-body previews (task FAIRY, 2026-10-29).
 
 Input: the JSON meshes written by the Rust test `dump_preview_meshes`
-  (FAIRY_DUMP_DIR=<dir> cargo test --features sanctuary --test fairy_body dump_preview_meshes)
+  (FAIRY_DUMP_DIR=<dir> cargo test --features sanctuary --lib dump_preview_meshes)
   = the exact meshes, colours and world transforms the Bevy plugin builds.
 Output: <preset>_<view>.png (front, three_quarter, back) in the output dir.
 Usage: python3 render_previews.py <dump_dir> <out_dir>

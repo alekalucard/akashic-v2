@@ -11,9 +11,11 @@
 //! choose later. Nothing here is copied from any game, franchise or third-party asset: every
 //! mesh is generated below from a few numbers.
 //!
-//! Two picture presets exist (`HerLook::picture_1()` / `HerLook::picture_2()`): they only change
-//! the colours and shapes of her five features, sampled from the two pictures the owner shared
-//! (the pictures are not in the repo; the hex values are recorded in docs/nous/FAIRY/SUMMARY.md).
+//! Two picture presets exist (`HerLook::picture_1()` / `HerLook::picture_2()`): they change the
+//! colours and shapes of her five features, sampled from pictures the owner shared (picture 1
+//! also sets its stylized head/eye proportions). The pictures are not in the repo; the hex
+//! values (and picture 3's, which shows no wings and so has no preset) are recorded in
+//! docs/nous/FAIRY/SUMMARY.md.
 //!
 //! API: add `HerBodyPlugin`, then `spawn_her_body(&mut commands, HerLook::default()) -> Entity`.
 //! The parts are (re)built from the `HerLook` component whenever it changes, so changing a
@@ -132,7 +134,8 @@ pub enum EarShape {
 pub struct NeutralBody {
     /// Height in world units (metres). OPEN.
     pub height: f32,
-    /// Head diameter as a fraction of height (stylized large head, as in both pictures).
+    /// Head diameter as a fraction of height. Default 0.17 (natural, pictures 2 and 3);
+    /// the picture_1 preset uses its stylized 0.22.
     pub head_ratio: f32,
     /// Skin tone. OPEN (neutral default).
     pub skin_color: Color,
@@ -214,12 +217,11 @@ impl Default for HerLook {
 }
 
 impl HerLook {
-    /// Hair colour sampled from picture 3 (no wings shown there, so no wing preset): #7D689F;
-    /// iris #567477 (few pixels, low confidence). Recorded in SUMMARY.md only.
-    ///
     /// Preset "picture 1": colours/shapes of her five features sampled from the owner's first
-    /// picture (short tousled hair, teal-green eyes, pale veined insect-like wings).
-    /// Body, skin, clothing and ears stay neutral.
+    /// picture (short tousled hair, teal-green eyes, pale veined insect-like wings), plus that
+    /// picture's stylized PROPORTIONS (head_ratio 0.22, eye size 0.36) -- the one body value a
+    /// preset changes, because the owner asked for her pictures' proportions to be used.
+    /// Skin, clothing, ears, height, freckles and glow stay neutral.
     pub fn picture_1() -> Self {
         let mut l = HerLook::default();
         l.hair = HairParams { color: hex(0xA793BE), length: 0.15, volume: 0.8, tousle: 0.6 };
@@ -871,7 +873,8 @@ pub fn wing_flutter(
     let amp = look.wings.flutter_deg.to_radians();
     for (j, mut tf) in joints.iter_mut() {
         let flap = amp * (phase.0 + j.phase).sin();
-        tf.rotation = j.base * Quat::from_rotation_y(-flap);
+        // the left wing is mirrored (scale.x = -1), so it flaps with the opposite sign: a symmetric pair
+        tf.rotation = j.base * Quat::from_rotation_y(-j.side * flap);
     }
 }
 
