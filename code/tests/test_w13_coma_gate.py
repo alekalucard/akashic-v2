@@ -296,16 +296,26 @@ class ServerHandler(Base):
         import textwrap
         self.published = []
         self.resolves = 0
+        self.boot_hook = getattr(self, "boot_hook", None)
+        self.init_hook = getattr(self, "init_hook", None)
         self.registered = []
         citizens = self.citizens
 
         class SleepyFairy(FakeFairy):
             def __init__(inner, fabric=None):
                 FakeFairy.__init__(inner, "PainDriveFairy", asleep=False)
-                citizens[inner.ACTOR_NAME] = inner          # template __init__ does this (:1248)
+                inner._booted = False
+                if self.init_hook:
+                    self.init_hook()
+                ex = citizens.get(inner.ACTOR_NAME)         # template __init__ :1212-1248: register unless a booted
+                if not (ex is not None and getattr(ex, "_booted", False) and ex is not inner):   # other copy exists
+                    citizens[inner.ACTOR_NAME] = inner
 
             def boot(inner):
+                inner._booted = True
                 inner._comatose = True                      # AKASHIC_COMA=1: boot() returns asleep (:3572-3583)
+                if self.boot_hook:
+                    self.boot_hook()
                 return True
 
         def resolve(name):
@@ -389,6 +399,63 @@ class ServerHandler(Base):
         self.citizens["PainDriveFairy"] = f
         h({"fairy_name": "PainDriveFairy", "gate": "autonomy", "boot_id": "b"})
         self.assertEqual(FakeFairy.built, 1)
+        self.assertEqual(self.resolves, 0)
+
+    def test_on_concurrent_double_build_wakes_only_one(self):
+        """Main already double-builds when two requests race before registered_fairies is appended; the gate must
+        wake only ONE of the copies (any interleaving of the two __init__/boot calls)."""
+        self.write("gate:PainDriveFairy\n")
+        expect_built = {"in_init": 2, "in_boot": 1, "after": 1}
+        for stagger in ("in_init", "in_boot", "after"):
+            FakeFairy.built = 0
+            self.citizens.clear()
+            self.registered.clear() if hasattr(self, "registered") else None
+            h = self.make(gate_on=True)
+            gm = h.__globals__["_coma_gate"]
+            req = {"fairy_name": "PainDriveFairy", "gate": "autonomy", "boot_id": "b"}
+            fired = []
+
+            def hook():
+                if not fired:
+                    fired.append(1)
+                    h(dict(req, gate="embodiment"))
+            self.init_hook = hook if stagger == "in_init" else None
+            self.boot_hook = hook if stagger == "in_boot" else None
+            h(req)
+            if stagger == "after":      # 2nd request after the 1st finished, before registered_fairies saw it
+                self.registered.clear()
+                h(dict(req, gate="embodiment"))
+            self.init_hook = self.boot_hook = None
+            self.assertEqual(FakeFairy.built, expect_built[stagger], stagger)
+            woken = [o() for o in gm._opened.values() if o() is not None]
+            self.assertEqual(len(woken), 1, stagger)
+            self.assertEqual(woken[0].on_boot_calls, 1, stagger)
+            self.assertIs(self.citizens["PainDriveFairy"], woken[0], stagger)
+
+    def test_on_registry_overwritten_by_a_copy_after_a_wake_never_wakes_or_builds_again(self):
+        """Defence for a registry that a later copy overwrites (template :1248 when the first copy is not yet _booted)."""
+        self.write("gate:PainDriveFairy\n")
+        h = self.make(gate_on=True)
+        gm = h.__globals__["_coma_gate"]
+        a = FakeFairy("PainDriveFairy", asleep=True)
+        self.citizens["PainDriveFairy"] = a
+        h({"fairy_name": "PainDriveFairy", "gate": "autonomy", "boot_id": "b"})
+        self.assertFalse(a._comatose)
+        b = FakeFairy("PainDriveFairy", asleep=True)       # a copy took the registry slot, asleep, not registered
+        self.citizens["PainDriveFairy"] = b
+        self.assertEqual(gm.on_boot_request({"fairy_name": "PainDriveFairy", "gate": "autopilot"}, log=self.log),
+                         "refused:already-opened")
+        h({"fairy_name": "PainDriveFairy", "gate": "embodiment", "boot_id": "b"})
+        self.assertTrue(b._comatose)
+        self.assertEqual(self.resolves, 0)
+        self.assertEqual(FakeFairy.built, 2)
+
+    def test_on_listed_instance_without_wake_is_not_rebuilt(self):
+        self.write("gate:PainDriveFairy\n")
+        h = self.make(gate_on=True)
+        f = types.SimpleNamespace(ACTOR_NAME="PainDriveFairy", _comatose=True)
+        self.citizens["PainDriveFairy"] = f
+        h({"fairy_name": "PainDriveFairy", "gate": "autonomy", "boot_id": "b"})
         self.assertEqual(self.resolves, 0)
 
     def test_on_not_a_gate_falls_through_to_todays_path(self):

@@ -25,8 +25,11 @@ MUT = [
     ("X5 second copy not refused", GATE, 'if instance is not None and the_one is not None and the_one is not instance:',
      'if False:'),
     ("X6 directory record not marked running", GATE, '            rec.status = "running"\n', '            pass\n'),
-    ("X7 lock held across wake()", GATE, '        _waking.add(name)\n    try:\n        wake(reason=',
-     '        _waking.add(name)\n        wake(reason="coma_gate:%s" % source)\n    try:\n        (lambda **k: None)(reason='),
+    ("X8 one-woken-instance-per-name check dropped", GATE, '        if prev is not None and prev is not inst:', '        if False:'),
+    ("X9 HANDLED drops refused:no-wake", GATE, '"refused:no-wake", ', ''),
+    ("X10 HANDLED drops refused:already-opened", GATE, ', "refused:already-opened")', ')'),
+    ("X7 lock held across wake()", GATE, '            _opened[name] = (lambda o=inst: o)\n    try:\n        wake(reason=',
+     '            _opened[name] = (lambda o=inst: o)\n        wake(reason="coma_gate:%s" % source)\n    try:\n        (lambda **k: None)(reason='),
 ]
 tmp = tempfile.mkdtemp()
 for label, path, old, new in MUT:

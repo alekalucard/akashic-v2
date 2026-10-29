@@ -27,6 +27,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 
 SWITCH = "AKASHIC_COMA_GATE"
 FILE_ENV = "AKASHIC_COMA_GATE_FILE"
@@ -35,10 +36,11 @@ DEFAULT_FILE = os.path.join(_CODE_ROOT, "state", "coma_gate_open.txt")
 
 GATES = ("autonomy", "autopilot", "embodiment")   # her three gates (SomaticMindFairy/fairy.py:8171)
 # Results that mean "a listed fairy already has its instance": server.py's handler must not build another.
-HANDLED = ("woke", "awake", "waking", "refused:no-wake", "refused:wake-error")
+HANDLED = ("woke", "awake", "waking", "refused:no-wake", "refused:wake-error", "refused:already-opened")
 
 _LOCK = threading.Lock()
 _waking = set()          # names whose wake() is in progress (claimed under _LOCK)
+_opened = {}             # name -> weakref to the instance this gate woke: one woken instance per name, ever
 _watch_thread = None
 
 
@@ -120,6 +122,11 @@ def open_for(name: str, source: str, directory=None, instance=None, log=None, ow
             return "refused:no-instance"
         if name in _waking:
             return "waking"
+        prev = _opened.get(name)
+        prev = prev() if prev is not None else None
+        if prev is not None and prev is not inst:
+            _log(log, "REFUSED %s (source=%s): another instance of this name was already woken by the gate" % (name, source))
+            return "refused:already-opened"
         if not getattr(inst, "_comatose", False):
             return "awake"
         wake = getattr(inst, "wake", None)
@@ -127,6 +134,10 @@ def open_for(name: str, source: str, directory=None, instance=None, log=None, ow
             _log(log, "REFUSED %s (source=%s): instance has no wake()" % (name, source))
             return "refused:no-wake"
         _waking.add(name)
+        try:
+            _opened[name] = weakref.ref(inst)
+        except TypeError:
+            _opened[name] = (lambda o=inst: o)
     try:
         wake(reason="coma_gate:%s" % source)
     except Exception as e:
