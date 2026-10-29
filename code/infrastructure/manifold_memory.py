@@ -2351,7 +2351,20 @@ class ManifoldMemory:
 
             # Remove edges (mark deleted)
             _evict_nb = self._csr_get_neighbors(min_slot) if self._use_csr else list(self._adjacency.get(min_slot, set()))
+            # W15 (switch AKASHIC_EDGE_SLOT_FIX, OFF when unset): on the CSR path
+            # _delete_edge never prunes the CSR row / overflow lists, so an entry
+            # here can name a slot that is ALREADY free (deleting it again puts it
+            # on _free_edge_slots twice -> two later edges share it) or that now
+            # holds an unrelated edge (deleting it throws that edge away). Only
+            # delete a slot whose record really is this node's live edge.
+            _w15 = os.environ.get("AKASHIC_EDGE_SLOT_FIX", "0") == "1"
             for neighbor_id, edge_slot in _evict_nb:
+                if _w15:
+                    _er = self._read_edge(edge_slot)
+                    if _er[4] == FLAG_DELETED or not (
+                            (_er[0] == min_slot and _er[1] == neighbor_id) or
+                            (_er[1] == min_slot and _er[0] == neighbor_id)):
+                        continue
                 self._delete_edge(edge_slot)
             if not self._use_csr:
                 self._adjacency.pop(min_slot, None)
@@ -2722,6 +2735,18 @@ class ManifoldMemory:
             slot = self._evict_weakest_edge()
             if slot is None:
                 return False
+            # W15 EDGE SLOT FIX 2026-10-29 (switch AKASHIC_EDGE_SLOT_FIX, OFF when unset):
+            # _evict_weakest_edge -> _delete_edge appended `slot` to _free_edge_slots,
+            # and the write below fills that same slot. Left on the free list, the
+            # NEXT new edge pops it and overwrites this one -- at capacity every other
+            # new edge was lost. The slot is being reused here, so it is not free.
+            # Which edge is evicted is unchanged; only the stale free-list entry goes.
+            if os.environ.get("AKASHIC_EDGE_SLOT_FIX", "0") == "1":
+                try:
+                    while slot in self._free_edge_slots:
+                        self._free_edge_slots.remove(slot)
+                except ValueError:
+                    pass
 
         self._write_edge(slot, a, b, weight, rel_type, FLAG_ACTIVE,
                          tracer_id, time.time() % 1e6)
