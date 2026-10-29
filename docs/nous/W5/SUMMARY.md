@@ -1,8 +1,42 @@
 # W5 — four boot fixes (B2, B3, B4, B5)
 
-Branch `nous/w5-boot-fixes`. No switch: these are boot-list / name / call-path fixes and add no new runtime path.
-Tests: `tests_nous/w5/test_w5_boot_fixes.py` (11 tests, AST/static, nothing of hers imported except `wake_cascade.py`, which only defines dicts and dataclasses at top level). Run with `python3 -I -m unittest discover -s tests_nous/w5`.
-Tags: [C] read in code, [M] measured here, [I] inference.
+Branch `nous/w5-boot-fixes`. Tags: [C] read in code, [M] measured here, [I] inference.
+
+## Fix round after REVIEW_W5 (10-29, branch `nous/w5-boot-fixes-review`, verdict FIX FIRST on B4 and B5)
+- **B4**: the reviewer was right [C]. The live caller is AutonomyFairy's cascade list, not `wake_cascade.py` (which
+  nothing imports). Renamed `"DreamSeedsFairy"` → `"DreamSeedFairy"` at `code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:2442`.
+  No `.py` file under code/ names `DreamSeedsFairy` any more [M]. The `wake_cascade.py` edits stay; they are harmless and consistent.
+- **B5**: the reviewer was right that the fairy is booted (`code/server.py:6484-6491`), so the earlier claim
+  "still sleeps, no runtime effect" was wrong. The new path now sits behind **`AKASHIC_HARMONIC_SUBSCRIBE`** (OFF when unset):
+  `_hsub = self.post.subscribe if os.environ.get("AKASHIC_HARMONIC_SUBSCRIBE", "0") == "1" else self.post.fabric.subscribe`
+  (`HarmonicCortexFairy/fairy.py:365-367`). With it off, the same AttributeError fires at the same point as today, so nothing is subscribed.
+  The out-of-brief publish edit at :834 is reverted (dead code: `_contribute_to_affect_loop` has no caller).
+  If the switch goes on, each audio frame starts publishing `harmonic.audio_analyzed`, `cortex.bind` and `harmonic.audio_received` (:669/732/760) [C].
+- **Tests** (13; `python3 tests_nous/w5/run_w5_matrix.py`) [M]:
+
+  | variant | result |
+  |---|---|
+  | CONTROL origin/main | FAIL 6/13 |
+  | CONTROL pre-review W5 tip `a6b2b02` | FAIL 3/13 |
+  | FIX | OK 13/13 |
+  | M1 switch ON when unset | FAIL |
+  | M2 bypass the bridge (`_fabric`) | FAIL |
+  | M3 a subscription loses its name | FAIL |
+  | M4 AutonomyFairy caller not renamed | FAIL |
+
+  The two mutants that survived the review (dropped `name=`, direct `_fabric`) are now caught.
+- **B3**: still skipped. The reviewer corrected my reason: nothing calls the librarian's `intent_status_citizens`, so
+  not waking the fairy would return a not-found error rather than break a live path (`Organ_Template_0_3_0.py:897-901`) [C].
+- **BaseFairy**: there is no `BaseFairy` entry in `_BOOT_EXCLUDE_NAMES` on main or this branch (`boot_orchestrator.py:972-977`).
+  The only entry is in `_PHANTOM_NAMES` (`server.py:2088`) [C]. Worth checking where the owner's staged edit lands.
+
+## CHECK THESE 3 (fix round)
+1. `code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:2442`: the cascade's deferred tier now names the registered `DreamSeedFairy`.
+2. `code/fairies/P30_Cognition/HarmonicCortexFairy/fairy.py:365-367`: unset, `"0"`, `""` or `"true"` all keep `self.post.fabric.subscribe`.
+3. `code/server.py:6484-6491`: HarmonicCortexFairy is booted, so `AKASHIC_HARMONIC_SUBSCRIBE=1` has a live effect (audio load).
+
+---
+## Original W5 report (a6b2b02), kept for the record; corrected above where marked
 
 ## Results (control = origin/main, mutant = a near-miss of the fix, fix = this branch) [M]
 | fix | control (orig) | mutant | fix |

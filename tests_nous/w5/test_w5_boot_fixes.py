@@ -21,6 +21,7 @@ WAKE_CASCADE = CODE / "fairies" / "P20_Somatic" / "SomaticMindFairy" / "wake_cas
 DREAM_SEED = CODE / "fairies" / "P00_Autonomic" / "nervous_system" / "dream_seed_fairy.py"
 HARMONIC = CODE / "fairies" / "P30_Cognition" / "HarmonicCortexFairy" / "fairy.py"
 TEMPLATE = CODE / "fairies" / "P00_Autonomic" / "organ_template" / "Organ_Template_0_3_0.py"
+AUTONOMY = CODE / "fairies" / "P00_Autonomic" / "AutonomyFairy" / "fairy.py"
 
 
 def _parse(path):
@@ -141,6 +142,19 @@ class TestB4DreamSeedName(unittest.TestCase):
         self.assertNotIn("DreamSeedsFairy", requested)
         self.assertEqual(wc._get_fairy_description(self.real), "Dream seed generation")
 
+    def test_autonomy_cascade_requests_real_name(self):
+        # REVIEW_W5 (10-29): the live caller is AutonomyFairy's domain list, not wake_cascade.py
+        # (which nothing imports). Its "deferred" tier asked for the misspelled name.
+        src = AUTONOMY.read_text(encoding="utf-8")
+        self.assertIn('"DreamSeedFairy",', src)
+        self.assertNotIn("DreamSeedsFairy", src)
+
+    def test_no_code_requests_misspelled_name(self):
+        hits = [str(p.relative_to(CODE)) for p in CODE.rglob("*.py")
+                if "DreamSeedsFairy" in p.read_text(encoding="utf-8", errors="replace")
+                and "tests_nous" not in p.parts]
+        self.assertEqual(hits, [])
+
     def test_server_registers_same_name_cascade_checks(self):
         # server.py registers name="DreamSeedFairy" and appends it to registered_fairies;
         # the cascade handler skips names already in that list.
@@ -181,7 +195,7 @@ def _harmonic_harness(method_names):
     mode_cls = _find_class(_parse(HARMONIC), "Mode")
     mod = ast.fix_missing_locations(ast.Module([mode_cls, base, harness], []))
     ns = {"Enum": __import__("enum").Enum, "_MUSIC_THEORY_AVAILABLE": False, "MusicTheoryEngine": None, "time": __import__("time"),
-          "Dict": dict, "Any": object}
+          "Dict": dict, "Any": object, "os": os}
     exec(compile(mod, str(HARMONIC), "exec"), ns)
     return ns["H"], ns
 
@@ -221,22 +235,40 @@ class TestB5HarmonicSubscribe(unittest.TestCase):
         self.assertFalse(hasattr(bridge, "fabric"))
         self.assertTrue(callable(getattr(bridge, "subscribe", None)))
 
-    def test_on_boot_wires_all_six_topics(self):
-        H, _ = _harmonic_harness(["on_boot"])
-        h, fab = self._instance(H)
-        result = h.on_boot()
+    NAMES = ["HarmonicCortexFairy_" + n for n in
+             ("query", "perspectives", "affect", "audio_frame", "audio_observation", "audio_speech")]
+
+    def _boot(self, switch):
+        saved = os.environ.pop("AKASHIC_HARMONIC_SUBSCRIBE", None)
+        if switch is not None:
+            os.environ["AKASHIC_HARMONIC_SUBSCRIBE"] = switch
+        try:
+            H, _ = _harmonic_harness(["on_boot"])
+            h, fab = self._instance(H)
+            calls = []
+            real = h.post.subscribe
+            h.post.subscribe = lambda *a, **k: (calls.append(a[0]), real(*a, **k))[1]
+            return h.on_boot(), fab, calls
+        finally:
+            os.environ.pop("AKASHIC_HARMONIC_SUBSCRIBE", None)
+            if saved is not None:
+                os.environ["AKASHIC_HARMONIC_SUBSCRIBE"] = saved
+
+    def test_switch_off_is_todays_behaviour(self):
+        # today: AttributeError on self.post.fabric -> swallowed -> nothing subscribed
+        for switch in (None, "0", "", "true"):
+            result, fab, calls = self._boot(switch)
+            self.assertTrue(str(result.get("subscriptions", "")).startswith("error"), (switch, result))
+            self.assertEqual(fab.subs, [], switch)
+            self.assertEqual(calls, [], switch)
+
+    def test_switch_on_wires_all_six_through_the_bridge(self):
+        result, fab, calls = self._boot("1")
         self.assertEqual(result.get("subscriptions"), "ok", result)
-        self.assertEqual([t for t, _ in fab.subs], self.TOPICS)
+        self.assertEqual(calls, self.TOPICS)                 # went through _FabricPostalBridge.subscribe
+        self.assertEqual(fab.subs, list(zip(self.TOPICS, self.NAMES)))   # names kept
         self.assertEqual(result.get("affect_loop"), "subscribed")
         self.assertEqual(result.get("audio_wire"), "subscribed")
-
-    def test_affect_contribution_publishes(self):
-        H, ns = _harmonic_harness(["_contribute_to_affect_loop"])
-        h, fab = self._instance(H)
-        mode = ns["Mode"].DORIAN
-        h._contribute_to_affect_loop("c", mode, "i")
-        self.assertEqual([t for t, _ in fab.pubs], ["cognition.harmonic.affect"])
-        self.assertEqual(fab.pubs[0][1]["valence_contribution"], 0.1)
 
 
 if __name__ == "__main__":

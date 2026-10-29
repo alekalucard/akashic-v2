@@ -2439,7 +2439,7 @@ class AutonomyFairy(Fairy):
         ],
         "deferred": [
             "NousFairy", "MemoryConsolidatorFairy",
-            "DreamSeedsFairy",
+            "DreamSeedFairy",
         ],
     }
 
