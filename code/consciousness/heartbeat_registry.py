@@ -21,6 +21,7 @@ Created: 2026-02-13
 Rewritten: 2026-02-13 (concurrent delivery via ThreadPoolExecutor)
 """
 
+import os
 import time
 import queue as queue_mod
 import threading
@@ -100,6 +101,15 @@ class HeartbeatRegistry:
         # despite receiving every heartbeat. This dict tracks SUCCESSFUL delivery
         # timestamps, giving the watchdog a TERTIARY liveness signal.
         self._last_delivered_ts: Dict[str, float] = {}  # name -> last successful delivery time
+
+        # W10 LIVENESS-FROM-DELIVERY (2026-10-29 Nous): flag-gated, DEFAULT OFF.
+        # AKASHIC_LIVENESS_FROM_DELIVERY=1 -> _last_delivered_ts is stamped ONLY when a fairy's
+        # callback actually returned (_deliver_one), not for every citizen / gated / in-flight
+        # skip. The beat of that delivery is kept in _last_delivered_beat for the break-room
+        # report (consciousness/break_room.py). OFF = both stay as before (beat dict unused).
+        self._liveness_from_delivery = False
+        self._last_delivered_beat: Dict[str, int] = {}   # name -> beat of last real delivery (ON only)
+        self._liveness_beat = 0                          # latest beat seen by pulse() (ON only)
 
         # BULKHEAD (2026-07-13 Nous+Ace): cap each fairy to ONE outstanding callback so a
         # slow "hog" (e.g. BrainstemReflex 121s) can't self-backlog the pool every beat.
@@ -250,6 +260,8 @@ class HeartbeatRegistry:
 
             # FIX 2026-03-14 (Nous): Track successful delivery for watchdog liveness
             self._last_delivered_ts[name] = time.time()
+            if self._liveness_from_delivery:  # W10: remember WHICH beat really reached it
+                self._last_delivered_beat[name] = pulse_data.get("beat", self._liveness_beat)
 
             # Log unusually slow callbacks (visibility, no abandonment)
             if elapsed_ms > self.CALLBACK_SLOW_THRESHOLD_SEC * 1000.0:
@@ -296,6 +308,11 @@ class HeartbeatRegistry:
         """
         self._total_pulses += 1
         t0 = time.perf_counter()
+        # W10: read once per beat; OFF when unset.
+        _lfd = os.environ.get("AKASHIC_LIVENESS_FROM_DELIVERY", "0") == "1"
+        self._liveness_from_delivery = _lfd
+        if _lfd:
+            self._liveness_beat = pulse_data.get("beat", self._total_pulses)
 
         # Snapshot callbacks under lock (fast -- just dict copy)
         with self._lock:
@@ -351,7 +368,8 @@ class HeartbeatRegistry:
         # DIAG 2026-05-10: log outer try/except fires (rate-limited).
         try:
             for _name, _obj in _cit_snapshot:
-                self._last_delivered_ts[_name] = _now_liveness
+                if not _lfd:  # W10: ON -> existence is not delivery; only _deliver_one stamps
+                    self._last_delivered_ts[_name] = _now_liveness
                 if _obj is not None:
                     try:
                         _obj._last_tick = _now_liveness
@@ -395,13 +413,15 @@ class HeartbeatRegistry:
                     divisor = max(1, int(round(divisor * _m)))
             if divisor > 1 and beat_number % divisor != 0:
                 # Skip work tick but still track liveness
-                self._last_delivered_ts[name] = time.time()
+                if not _lfd:  # W10: ON -> a gated beat is not a delivery
+                    self._last_delivered_ts[name] = time.time()
                 skipped += 1
                 continue
             # BULKHEAD (2026-07-13): skip if this fairy's previous callback is still queued/running.
             with self._in_flight_lock:
                 if name in self._in_flight:
-                    self._last_delivered_ts[name] = time.time()  # liveness still stamped
+                    if not _lfd:  # W10: ON -> still busy with an older beat, not delivered
+                        self._last_delivered_ts[name] = time.time()  # liveness still stamped
                     skipped += 1
                     continue
                 self._in_flight.add(name)
