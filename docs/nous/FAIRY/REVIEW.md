@@ -47,3 +47,17 @@ Nothing in the change was edited. Mutants and the probe were applied to a scratc
 | M12 | `pairs` ignored | changing_the_look_rebuilds |
 
 Commands: `CARGO_TARGET_DIR=/tmp/tgt cargo test --features sanctuary --lib fairy_body` (after `apt-get install libasound2-dev libudev-dev pkg-config`). Only synthetic data was used. No server, fairy, boot or launcher was run.
+
+## Addendum: delta to branch HEAD d40b3f3 (12a0403..d40b3f3: da2ff3a, d40b3f3)
+
+The table above reviews 12a0403. I re-checked the HEAD delta [C] and re-ran the tests on d40b3f3 [M]: the author's 11 tests pass. My wing-symmetry probe still FAILS with the same numbers as on 12a0403 (upper tips z = -0.241 left vs -0.076 right).
+
+| # | status at d40b3f3 |
+|---|---|
+| 1 wings flap asymmetrically (fairy_body.rs:874 now) | **still open** (MAJOR) [M] |
+| 2 no mutants committed | still open (MAJOR) [C] |
+| 3 picture_1 sets body.head_ratio (fairy_body.rs:228) | still open (MAJOR) [C]. Also new: the DEFAULT head_ratio moved 0.15 → 0.17 ("larger head"). That is a non-feature body value, so it should be documented as an OPEN/neutral choice. |
+| 13 SUMMARY.md missing | still open (MINOR) [C] |
+| 16 polyline dead `open` branch / n=0 underflow | **fixed** (`n.saturating_sub(1)`) [C] |
+| 19 renderer docstring `--test fairy_body` | still open (MINOR) [C] |
+| new | Tapered limbs, hands and feet use the neutral cloth/skin materials and add no new look. The halo strength now also drives base_color alpha, and the test follows it. OK [C] |
