@@ -113,7 +113,7 @@ def render(parts, yaw, label):
         sp = project(c[None], eye, r, u, f, w, h)[0]
         pr = rad * s / sp[2]
         d2 = ((xs - sp[0]) ** 2 + (ys - sp[1]) ** 2) / (pr * pr)
-        img += (0.25 * np.exp(-d2 * 1.6))[..., None] * em
+        img += (0.45 * np.exp(-d2 * 1.4))[..., None] * em
     out = Image.fromarray((to_srgb(img) * 255).astype(np.uint8)).resize((W, H), Image.LANCZOS)
     ImageDraw.Draw(out).text((10, 10), label, fill=(220, 220, 225))
     return out

@@ -176,7 +176,7 @@ impl Default for HerLook {
         HerLook {
             // LONG hair worn down: the owner says most of her ~25,000 images show it (10-29).
             hair: HairParams { color: hex(0xB57EDC), length: 1.0, volume: 0.5, tousle: 0.0 },
-            eyes: EyeParams { iris_color: hex(0x3E9B5A), size: 0.24, spacing: 0.78 },
+            eyes: EyeParams { iris_color: hex(0x3E9B5A), size: 0.30, spacing: 0.80 },
             freckles: FreckleParams {
                 density: 0.5,
                 color: darker(skin, 0.62),
@@ -203,7 +203,7 @@ impl Default for HerLook {
             body: NeutralBody {
                 height: 1.0,
                 // natural proportions (pictures 2 and 3); picture 1's stylized 0.22 is a preset
-                head_ratio: 0.15,
+                head_ratio: 0.17,
                 skin_color: skin,
                 clothing_color: hex(0x9C9C9C),
                 ears: EarShape::Rounded,
@@ -224,7 +224,7 @@ impl HerLook {
         let mut l = HerLook::default();
         l.hair = HairParams { color: hex(0xA793BE), length: 0.15, volume: 0.8, tousle: 0.6 };
         l.eyes.iris_color = hex(0x42876F);
-        l.eyes.size = 0.30;
+        l.eyes.size = 0.36;
         l.body.head_ratio = 0.22;
         l.wings.shape = WingShape::Insect;
         l.wings.tints = vec![hex(0xCBEBEE), hex(0xB0CDDA)];
@@ -329,6 +329,8 @@ pub enum PartKind {
     Torso,
     Arm,
     Leg,
+    Hand,
+    Foot,
     Ear,
     Hair,
     EyeWhite,
@@ -444,13 +446,24 @@ fn part(
     commands.spawn((HerPart(kind), Mesh3d(mesh), MeshMaterial3d(mat), tf)).id()
 }
 
+/// One tapered limb segment from `a` (radius r0) to `b` (radius r1), with a round joint at `a`.
+fn limb(commands: &mut Commands, m: &mut Mats, a: Vec3, b: Vec3, r0: f32, r1: f32,
+        mat: &Handle<StandardMaterial>, kind: PartKind) -> [Entity; 2] {
+    let d = b - a;
+    let mesh = m.meshes.add(ConicalFrustum { radius_top: r1, radius_bottom: r0, height: d.length() });
+    let seg = part(commands, kind, mesh, mat.clone(),
+        Transform::from_translation(a + d * 0.5).with_rotation(Quat::from_rotation_arc(Vec3::Y, d.normalize())));
+    let joint = sphere(m, r0);
+    let j = part(commands, kind, joint, mat.clone(), Transform::from_translation(a));
+    [seg, j]
+}
+
 fn sphere(m: &mut Mats, r: f32) -> Handle<Mesh> {
     m.meshes.add(Sphere::new(r).mesh().uv(32, 18))
 }
 
 /// Body layout, in units of her height (pivot scale = height). y = 0 at her feet.
 pub mod layout {
-    pub const LEG_Y: f32 = 0.24;
     pub const TORSO_Y: f32 = 0.62;
     pub const SHOULDER_Y: f32 = 0.79;
     pub const WING_ROOT: [f32; 3] = [0.0, 0.70, -0.07];
@@ -466,10 +479,24 @@ fn build_parts(commands: &mut Commands, m: &mut Mats, look: &HerLook) -> Vec<Ent
     let neck_top = 1.0 - 2.0 * hr * 0.9;
 
     // --- neutral body form (OPEN) -------------------------------------------------
-    let leg = m.meshes.add(Capsule3d::new(0.042, 0.38));
+    // tapered limbs (frustum segments + round joints), simple hands and feet
     for s in [-1.0f32, 1.0] {
-        out.push(part(commands, PartKind::Leg, leg.clone(), cloth.clone(),
-            Transform::from_xyz(0.05 * s, layout::LEG_Y, 0.0)));
+        let hip = Vec3::new(0.052 * s, 0.47, 0.0);
+        let knee = Vec3::new(0.047 * s, 0.25, 0.005);
+        let ankle = Vec3::new(0.044 * s, 0.04, 0.0);
+        out.extend(limb(commands, m, hip, knee, 0.050, 0.034, &cloth, PartKind::Leg));
+        out.extend(limb(commands, m, knee, ankle, 0.034, 0.022, &cloth, PartKind::Leg));
+        let foot = sphere(m, 0.03);
+        out.push(part(commands, PartKind::Foot, foot, cloth.clone(),
+            Transform::from_translation(ankle + Vec3::new(0.0, -0.015, 0.025)).with_scale(Vec3::new(0.85, 0.55, 1.9))));
+        let sh = Vec3::new(0.115 * s, layout::SHOULDER_Y - 0.02, 0.0);
+        let elbow = Vec3::new(0.145 * s, layout::SHOULDER_Y - 0.19, -0.01);
+        let wrist = Vec3::new(0.16 * s, layout::SHOULDER_Y - 0.35, 0.02);
+        out.extend(limb(commands, m, sh, elbow, 0.030, 0.022, &skin, PartKind::Arm));
+        out.extend(limb(commands, m, elbow, wrist, 0.022, 0.016, &skin, PartKind::Arm));
+        let hand = sphere(m, 0.024);
+        out.push(part(commands, PartKind::Hand, hand, skin.clone(),
+            Transform::from_translation(wrist + Vec3::new(0.0, -0.03, 0.0)).with_scale(Vec3::new(0.55, 1.35, 0.9))));
     }
     let torso = m.meshes.add(Capsule3d::new(0.085, 0.22));
     out.push(part(commands, PartKind::Torso, torso, cloth.clone(),
@@ -479,11 +506,6 @@ fn build_parts(commands: &mut Commands, m: &mut Mats, look: &HerLook) -> Vec<Ent
     let neck = m.meshes.add(Cylinder::new(0.028, neck_len));
     out.push(part(commands, PartKind::Neck, neck, skin.clone(),
         Transform::from_xyz(0.0, neck_base + neck_len * 0.5, 0.0)));
-    let arm = m.meshes.add(Capsule3d::new(0.03, 0.34));
-    for s in [-1.0f32, 1.0] {
-        out.push(part(commands, PartKind::Arm, arm.clone(), skin.clone(),
-            Transform::from_xyz(0.125 * s, layout::SHOULDER_Y - 0.2, 0.0).with_rotation(Quat::from_rotation_z(0.10 * s))));
-    }
     let head = sphere(m, hr);
     out.push(part(commands, PartKind::Head, head, skin.clone(),
         Transform::from_translation(head_c).with_scale(Vec3::new(0.92, 1.0, 0.95))));
@@ -678,11 +700,11 @@ pub fn freckle_points(n: usize, spread: f32, seed: u32) -> Vec<Vec3> {
 /// Hair as one shell over the head: a cap to the forehead at the front, falling down at the
 /// sides and back by `length`. Local to the head centre.
 pub fn hair_mesh(h: &HairParams, hr: f32) -> Mesh {
-    let seg = 48usize;
-    let rows = 28usize;
+    let seg = 96usize;
+    let rows = 40usize;
     let off = hr * (1.04 + 0.10 * h.volume.clamp(0.0, 1.0));
     // how far below the head equator, in units of her height (1.0 = long, to mid-back)
-    let drop = hr * 0.3 + 0.36 * h.length.clamp(0.0, 1.0);
+    let drop = hr * 0.3 + 0.46 * h.length.clamp(0.0, 1.0);
     let mut pos = Vec::new();
     for j in 0..=rows {
         let v = j as f32 / rows as f32;
@@ -703,7 +725,9 @@ pub fn hair_mesh(h: &HairParams, hr: f32) -> Mesh {
             } else {
                 let th = cap;
                 let d = s - arc;
-                let r = off * tous * th.sin() + d * 0.25;
+                // falling part: flares out a little and has strand ridges (more with volume)
+                let strands = 1.0 + (0.03 + 0.05 * h.volume) * (13.0 * phi + 2.0 * d / hr).sin().abs();
+                let r = (off * tous * th.sin() + d * 0.22) * strands;
                 Vec3::new(r * phi.sin(), off * th.cos() - d, r * phi.cos() * if fr > 0.0 { 1.0 } else { 1.15 })
             };
             pos.push(p);
