@@ -60,6 +60,27 @@ from pathlib import Path
 from typing import Dict, Optional, Any, List
 
 
+def _set_keepalive(sock, idle_s=30, interval_s=5, count=4):
+    """TCP keepalive with short timers (2026-09-30, _FARM_RETRY). Best effort: never raises."""
+    import socket
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    except OSError:
+        return
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, int(idle_s))
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, int(interval_s))
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, int(count))
+        except (AttributeError, OSError):
+            pass
+    except (AttributeError, OSError):
+        try:
+            sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, int(idle_s * 1000), int(interval_s * 1000)))
+        except Exception:
+            pass
+
+
 class _RemoteProc:
     """A Popen-shaped handle to a farm hosted by infrastructure/farm_remote_server.py.
 
@@ -75,8 +96,18 @@ class _RemoteProc:
         self._data = socket.create_connection((host, port), timeout=connect_timeout)
         self._data.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._data.settimeout(None)
-        self._log = socket.create_connection((host, port + 1), timeout=connect_timeout)
+        try:
+            self._log = socket.create_connection((host, port + 1), timeout=connect_timeout)
+        except Exception:
+            self._data.close()       # 2026-09-30: was leaked when the log port did not answer
+            raise
         self._log.settimeout(None)
+        # 2026-09-30 (Nous; Ace's go) _FARM_RETRY: TCP keepalive both ways. Without it a farm host that vanished
+        # without closing (power, network, a hung laptop) leaves these sockets open forever: every send() sits out
+        # its full timeout and is_open stays True, so nothing ever re-opens the farm. With it the read in
+        # _read_stdout_loop fails within about a minute and the farm is marked gone (see there).
+        for _s in (self._data, self._log):
+            _set_keepalive(_s)
         self.stdin = self._data.makefile("w", encoding="utf-8", errors="replace", newline="\n")
         self.stdout = self._data.makefile("r", encoding="utf-8", errors="replace", newline="\n")
         self.stderr = self._log.makefile("r", encoding="utf-8", errors="replace", newline="\n")
@@ -110,6 +141,22 @@ class _RemoteProc:
         if self._closed:
             return
         self._closed = True
+        # 2026-09-30 _FARM_RETRY: close the SOCKETS first, for real. _read_stdout_loop sits in stdout.readline()
+        # holding that file's lock, so closing the file first waited until the farm spoke again -- forever when it
+        # never does (an adapter stuck on a dead client: tests/test_farm_dead_client.py T1b). MEASURED on this box:
+        # shutdown() does not wake that blocked read; a real closesocket() (detach + socket.close) wakes it at once.
+        import socket as _sk
+        for sck in (self._data, self._log):
+            try:
+                sck.shutdown(_sk.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                _fd = sck.detach()
+                if _fd is not None and _fd != -1:
+                    _sk.close(_fd)
+            except Exception:
+                pass
         for f in (self.stdin, self.stdout, self.stderr):
             try:
                 f.close()
@@ -315,6 +362,12 @@ class GPUPortalGate:
             return True
         else:
             print(f"[GPUGate] Portal failed to boot: {ping_result}")
+            if isinstance(self._process, _RemoteProc):
+                # 2026-09-30 _FARM_RETRY: a remote farm that never answered the ping cannot answer a graceful
+                # shutdown either. close() would wait up to 300 s for the orphaned ping reply (send()'s orphan
+                # drain), then 5 s for the shutdown reply, then 60 s for EOF: ~8 min per failed open, ping
+                # included. Drop the sockets first; close() then returns at once. A local portal is unchanged.
+                self._process.kill()
             self.close()
             return False
 
@@ -436,6 +489,7 @@ class GPUPortalGate:
         per-call thread spawning to prevent orphan thread race under
         Python 3.14t (no GIL).
         """
+        _q = self._stdout_queue        # 2026-09-30: the queue THIS reader feeds (open() makes a new one)
         try:
             while self._process and self._process.poll() is None:
                 try:
@@ -452,9 +506,21 @@ class GPUPortalGate:
                             print(f"[GPUGate:{self.portal_id}] "
                                   f"Non-JSON on stdout (skipped): {line[:80]!r}")
                 except (ValueError, OSError):
+                    # 2026-09-30 _FARM_RETRY: a reset or keepalive-dead socket is a hang-up too. This path used
+                    # to leave returncode None, so is_open stayed True on a dead connection, forever.
+                    _p = self._process
+                    if _p is not None and hasattr(_p, "mark_eof"):
+                        _p.mark_eof()
                     break
         except Exception:
             pass
+        finally:
+            # 2026-09-30 _FARM_RETRY: wake a send() waiting for a reply that can no longer come. It reads "" =
+            # no reply (errors += 1, returns None, no orphan counted) instead of sitting out its whole timeout.
+            try:
+                _q.put("")
+            except Exception:
+                pass
 
     def _read_with_timeout(self, timeout: float) -> Optional[str]:
         """Read a line from the stdout queue with timeout.

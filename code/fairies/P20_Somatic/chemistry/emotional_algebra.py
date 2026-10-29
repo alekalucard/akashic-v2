@@ -999,28 +999,100 @@ def create_emotion(name: str, intensity: float = 0.5, context: str = "") -> Opti
     return None
 
 
+# 2026-10-24 (Nous, Ace's go "aye lets fix that band reader also"; build nous_builds/band_reader_1024) -- THE BAND
+# READER COUNTED KEYS, NOT CHEMISTRY. chemistry_to_band summed (1 - |level - profile|) over each band's profile keys,
+# so TRANSCENDENT (6 keys) outscored the 4- and 5-key bands for EVERY input. Measured offline: the resting AER vector
+# summed TRANSCENDENT 4.62 > EMOTIONAL 3.78 > COMPLEX 3.52 > SOCIAL = CREATIVE 3.32 > SURVIVAL 3.15 > SPIRITUAL 3.00,
+# and the Panksepp 0.6 blends (rage, fear, grief, care, play, seeking) all returned TRANSCENDENT too.
+# Now: score(band) = MEAN closeness over the profile keys present in the input (the key count no longer matters), and
+# a band is judged by how far its score moved from the SAME score at REST (the panksepp_vectors CHANNELS baselines
+# through chemistry_state.get_aer_chemistry's 14->8 reduction: DOP = DA_p*.4 + DA_t*.6, NOR = max(NE, EPI*.5),
+# OPI -> END, ADO carried; computed once at import, a hard-coded fallback if panksepp_vectors cannot be imported).
+# The band that moved most wins if it moved >= 0.03; below that nothing has moved and the highest NORMALISED absolute
+# score wins (EMOTIONAL_PROCESSING at rest). Empty / no matching keys -> SURVIVAL, as before. Signature, return type
+# and BAND_PROPERTIES are unchanged. Its only reader, chemistry_state.get_dominant_frequency_band, has no live caller.
+# REVERT: nous_builds/band_reader_1024/apply_band_reader.py --revert (puts back emotional_algebra.py.bak_bandreader_1024),
+# or by hand: delete the _BAND_* names and _derive_band_rest below, and restore the old body (best_band = SURVIVAL,
+# best_score = -1; score += 1 - abs(chemistry[chem] - level) over the profile keys present; strict '>' argmax).
+_BAND_REST_FALLBACK = {"DOP": 0.42, "SER": 0.5, "NOR": 0.4, "COR": 0.3, "OXY": 0.4, "GABA": 0.5, "ACH": 0.4, "END": 0.4, "ADO": 0.05}
+_BAND_REL_FLOOR = 0.03
+
+
+def _derive_band_rest():
+    """The resting AER vector: panksepp_vectors baselines through get_aer_chemistry's 14->8 reduction. -> (vector, source)."""
+    try:
+        try:
+            from . import panksepp_vectors as _pv       # her package: a leaf module (stdlib imports only), so no import cycle
+        except ImportError:
+            import panksepp_vectors as _pv              # flat import (tools and tests that load this file on its own)
+        base = {code: _pv.CHANNELS[code].baseline for code in _pv.CHANNEL_ORDER}
+        rest = {
+            "DOP": base["DA_p"] * 0.4 + base["DA_t"] * 0.6,
+            "SER": base["5HT"],
+            "NOR": max(base["NE"], base["EPI"] * 0.5),
+            "COR": base["COR"],
+            "OXY": base["OXY"],
+            "GABA": base["GABA"],
+            "ACH": base["ACh"],
+            "END": base["OPI"],
+            "ADO": base.get("ADO", 0.05),
+        }
+        rest = {code: round(float(level), 4) for code, level in rest.items()}
+        if all(math.isfinite(level) and 0.0 <= level <= 1.0 for level in rest.values()):
+            return rest, "panksepp_vectors"
+    except Exception:
+        pass
+    return dict(_BAND_REST_FALLBACK), "fallback"
+
+
+_BAND_REST, _BAND_REST_SOURCE = _derive_band_rest()
+
+
 def chemistry_to_band(chemistry: Dict[str, float]) -> FrequencyBand:
     """
     Map a chemistry profile to the most likely frequency band.
 
-    Uses correlation with band chemistry profiles.
+    Score = MEAN closeness (1 - |level - profile|) over the band's profile keys present in `chemistry`.
+    A band wins by how far its score moved from the same score at REST (>= _BAND_REL_FLOOR); when no band
+    moved that far the highest absolute score wins. Empty / no matching keys -> SURVIVAL.
     """
-    best_band = FrequencyBand.SURVIVAL
-    best_score = -1
+    rel_band, rel_best = None, None
+    abs_band, abs_best = None, None
 
     for band, props in BAND_PROPERTIES.items():
-        score = 0
+        close = []
+        rest_close = []
         for chem, level in props.chemistry_profile.items():
-            if chem in chemistry:
-                # Higher score for closer match
-                diff = abs(chemistry[chem] - level)
-                score += (1 - diff)
+            rest_level = _BAND_REST.get(chem)
+            value = chemistry.get(chem)             # one read, no check-then-act on the caller's dict (-Xgil=0)
+            if rest_level is None or value is None:
+                continue
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(value):
+                continue
+            # the same keys for the input and for REST, so the two scores are comparable
+            close.append(1 - abs(value - level))
+            rest_close.append(1 - abs(rest_level - level))
+        if not close:
+            continue
 
-        if score > best_score:
-            best_score = score
-            best_band = band
+        score = sum(close) / len(close)
+        rel = score - sum(rest_close) / len(rest_close)
+        if rel_best is None or rel > rel_best:
+            rel_best = rel
+            rel_band = band
+        if abs_best is None or score > abs_best:
+            abs_best = score
+            abs_band = band
 
-    return best_band
+    if rel_band is None:
+        return FrequencyBand.SURVIVAL
+    if rel_best >= _BAND_REL_FLOOR:
+        return rel_band
+    return abs_band
 
 
 def band_to_chemistry(band: FrequencyBand) -> Dict[str, float]:

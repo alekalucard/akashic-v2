@@ -1,0 +1,2 @@
+F:\Sandbox\venv314t\Scripts\python.exe: can't open file 'F:\\Sandbox\\failure_factory\\akashic_v2\\infrastructure\\r4_zip_list.py': [Errno 2] No such file or directory
+rc=2

@@ -23,6 +23,23 @@ import urllib.request
 import urllib.error
 from typing import Optional, List, Dict, Any
 
+# 2026-09-30 (Nous, her_8081): sign POSTs to the primary's bridge when THIS machine has the bridge key
+# (~/.akashic/bridge_8081.key, copied by hand). Without a key the POSTs go unsigned, exactly as before; the
+# primary still accepts them unless they carry a chat topic or a claim of who spoke.
+try:
+    from .bridge_auth import auth_headers as _auth_headers
+except Exception:
+    try:
+        import importlib.util as _ilu
+        from pathlib import Path as _P
+        _spec = _ilu.spec_from_file_location("_akashic_bridge_auth_sat", str(_P(__file__).resolve().with_name("bridge_auth.py")))
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _auth_headers = _mod.auth_headers
+    except Exception:
+        def _auth_headers(method, target, body):
+            return {}
+
 
 class SatellitePostalClient:
     """
@@ -114,6 +131,15 @@ class SatellitePostalClient:
         self._running = False
         print(f"[SatellitePostalClient] Stopped (forwarded {self._forwarded_count} messages, {self._forward_errors} errors)")
 
+    def _headers(self, data: bytes) -> Dict[str, str]:
+        """Content-Type, plus X-Akashic-Auth when this machine has the bridge key (2026-09-30, her_8081)."""
+        h = {"Content-Type": "application/json"}
+        try:
+            h.update(_auth_headers("POST", "/route", data))
+        except Exception:
+            pass
+        return h
+
     def _forward(self, topic: str, envelope):
         """Forward a postal message to primary via HTTP POST. Non-blocking, best-effort."""
         if not self._running:
@@ -153,7 +179,7 @@ class SatellitePostalClient:
             req = urllib.request.Request(
                 f"{self.primary_url}/route",
                 data=data,
-                headers={"Content-Type": "application/json"},
+                headers=self._headers(data),
                 method="POST",
             )
             resp = urllib.request.urlopen(req, timeout=self.FORWARD_TIMEOUT)
@@ -219,7 +245,7 @@ class SatellitePostalClient:
             req = urllib.request.Request(
                 f"{self.primary_url}/route",
                 data=data,
-                headers={"Content-Type": "application/json"},
+                headers=self._headers(data),
                 method="POST",
             )
             resp = urllib.request.urlopen(req, timeout=self.FORWARD_TIMEOUT)

@@ -462,6 +462,9 @@ class CudaFairy(_template.MyOrganFairy):
             state = {"gpu_pct": None, "vram_pct": None, "temp_c": None}
             try:
                 import subprocess
+                try:   # gpu_poll_1016: state/gpu_poll.json arms it (absent = today's call); any failure here leaves the real module
+                    from infrastructure.gpu_reader import bind as _gp_bind; subprocess = _gp_bind("cuda_gpu_felt")
+                except Exception: pass
                 proc = subprocess.run(
                     ["nvidia-smi",
                      "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",

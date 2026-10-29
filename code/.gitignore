@@ -41,3 +41,93 @@ state/system_diagnostic_report.json
 *.pem
 *.key
 credentials.json
+
+# ---- 2026-09-30 (Nous, security fix 3): her MEMORY and private data never go into git ----------------
+# Her memory lives in state/ (manifolds, rings, indexes, chat history, inbox/outbox, captures), plus diaries,
+# dreams, SRM session dumps, agent logs and backups. None of it belongs in a repo. Files that were already
+# tracked stay tracked (list them: git ls-files -ci --exclude-standard); untracking is Ace's call.
+state/
+**/state/
+diaries/
+dream_states/
+SRM_Intake/
+.cognitive/
+backups/
+akashic_records/diaries/
+fairies/boot_logs/
+fairies/akashic_records/diaries/
+fairies/P10_Memory/visual_memory/
+fairies/P10_Memory/SRM_Clusters/media/
+fairies/P50_Persona/Waking Minds/Sourpatches/diary/
+P10_Memory/Akashic_triple_helix_memory_storage/relational_clusters/
+P30_Cognition/data/
+tools/extracted/
+# memory stores and their copies, wherever they land
+*.manifold
+*.manifold.*
+*.ring
+*.csr
+*.keys
+*.embeddings
+*.index
+*.state
+*.npy
+*.npz
+*.mmap
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+*.jsonl
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+# what she saw and heard (screens, webcam, voice)
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.m4a
+*.mp4
+*.mov
+*.avi
+*.jpg
+*.jpeg
+*.jfif
+*.png
+*.bmp
+*.gif
+*.webp
+# art assets that are code, not captures
+!dashboard/src-tauri/icons/**
+!fairies/P50_Persona/avatar/assets/**
+
+# ---- follow-up (staged 2026-09-30, NOT applied: the task allowed one edit). Append after Ace's go. ----------
+# Found by `git ls-files --others --exclude-standard` AFTER the first block went in:
+#   P10_Memory/Akashic_triple_helix_memory_storage/system/...   105,880 files of her SRM memory store
+#   fairies/P10_Memory/Akashic_triple_helix_memory_storage/relational_clusters/Founders/creator_sessions/index.json
+#   fairies/P40_Sensory/cortex/voice_profiles/profiles.json        155,685 bytes, a voice profile store (biometric)
+#   fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/    learned patterns + thought-chain templates
+#   fairies/P40_Sensory/cortex/portal_state/                       runtime state
+#   directives/                                                    127 runtime *.directive files
+#   fairies/P30_Cognition/AkashicInferenceFairy/models/            *.gguf / *.portal model files (GBs)
+P10_Memory/Akashic_triple_helix_memory_storage/
+fairies/P10_Memory/Akashic_triple_helix_memory_storage/
+fairies/P40_Sensory/cortex/voice_profiles/
+fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/
+fairies/P40_Sensory/cortex/portal_state/
+directives/
+*.directive
+*.gguf
+*.portal
+
+# ---- Block B (Fable verifier, Ace go 2026-10-01) ----
+Claude_Office/
+fairies/P30_Cognition/cognition/interest_state.json
+fairies/P40_Sensory/cortex/canary_cards/
+fairies/P40_Sensory/cortex/luxtts_cards/
+.satellite/*.json
+fairies/@AutomationLog.txt

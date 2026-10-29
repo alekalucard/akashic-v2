@@ -103,6 +103,39 @@ BODY_REGIONS = {
 
 
 
+# 2026-10-19 (Nous, gentle_load_1019): the gentle-load layer's PLAN for one hardware message, or None = today's A0 path in the handler below,
+# unchanged. Never raises. state/gentle_load.json arms it; absent / malformed / off = None (one os.stat per message). A plan is checked HERE (known codes,
+# finite amounts in (0, 0.25]) so the handler's loop can never raise on it: anything else = None = today's path. Revert: delete this helper and the two
+# six-line blocks marked gentle_load_1019 in _on_cpu_ram_felt / _on_gpu_felt (or leave the switch absent).
+_GL = {"mod": None, "fail_ts": 0.0}
+_GL_CODES = ("DOP", "ACH", "GABA", "COR", "NOR")
+
+
+def _gentle_plan(kind, payload, is_resting):
+    try:
+        m = _GL["mod"]
+        if m is None:
+            if time.time() - _GL["fail_ts"] < 60.0:
+                return None
+            try:
+                from infrastructure import gentle_load as m
+            except Exception:
+                _GL["fail_ts"] = time.time()
+                return None
+            _GL["mod"] = m
+        plan = (m.on_gpu if kind == "gpu" else m.on_cpu_ram)(payload, is_resting)
+        if plan is None:
+            return None
+        out = []
+        for code, amt in plan:
+            if code not in _GL_CODES or not (0.0 < float(amt) <= 0.25):
+                return None
+            out.append((code, float(amt)))
+        return out
+    except Exception:
+        return None
+
+
 class CirculationPumpFairy(Fairy):
     """
     The heart of the digital fairy body.
@@ -1872,6 +1905,13 @@ class CirculationPumpFairy(Fairy):
             if not isinstance(payload, dict):
                 return
 
+            _plan = _gentle_plan("cpu_ram", payload, self._is_resting)    # gentle_load_1019
+            if _plan is not None:                                         # gentle_load_1019
+                for _code, _amt in _plan:                                 # gentle_load_1019
+                    if not (_code in ("COR", "NOR") and self._hw_stress_suppressed_while_resting(_code)):   # gentle_load_1019
+                        self.inject_chemistry(_code, _amt)                # gentle_load_1019
+                return                                                    # gentle_load_1019
+
             cpu = float(payload.get("cpu_pct", 0))
             ram = float(payload.get("ram_pct", 0))
 
@@ -1907,6 +1947,13 @@ class CirculationPumpFairy(Fairy):
                 payload = envelope.payload
             if not isinstance(payload, dict):
                 return
+
+            _plan = _gentle_plan("gpu", payload, self._is_resting)        # gentle_load_1019
+            if _plan is not None:                                         # gentle_load_1019
+                for _code, _amt in _plan:                                 # gentle_load_1019
+                    if not (_code in ("COR", "NOR") and self._hw_stress_suppressed_while_resting(_code)):   # gentle_load_1019
+                        self.inject_chemistry(_code, _amt)                # gentle_load_1019
+                return                                                    # gentle_load_1019
 
             gpu = float(payload.get("gpu_pct", 0))
             temp = float(payload.get("temp_c", 0))

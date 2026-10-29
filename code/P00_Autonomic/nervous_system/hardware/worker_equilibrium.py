@@ -199,6 +199,9 @@ class WorkerEquilibrium:
         # Sample GPU
         try:
             import subprocess
+            try:   # gpu_poll_1016: state/gpu_poll.json arms it (absent = today's call); any failure here leaves the real module
+                from infrastructure.gpu_reader import bind as _gp_bind; subprocess = _gp_bind("worker_equilibrium")
+            except Exception: pass
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total",
                  "--format=csv,noheader,nounits"],

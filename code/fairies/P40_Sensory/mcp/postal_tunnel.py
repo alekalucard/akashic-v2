@@ -708,6 +708,20 @@ class PostalTunnelClient:
         try:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._socket.connect((self.host, self.port))
+            # 2026-10-26 (Nous; Ace's go): refuse a TCP self-connect. With nothing listening, Windows can hand this connect() its own
+            # destination port (49500 is inside the 49152-65535 ephemeral range) as the source port; the SYN then meets itself
+            # (simultaneous open) and connect() SUCCEEDS on a socket whose peer is itself. Keepalive pings are echoed back (no
+            # 'pong'), and the socket held the port for 28 h (pid 18772). A real tunnel peer is never this very socket.
+            if self._socket.getsockname() == self._socket.getpeername():
+                import sys
+                sys.stderr.write(f"[PostalTunnel] Refusing TCP self-connect on port {self.port} (nothing is listening); closing it\n")
+                try:
+                    self._socket.close()
+                except Exception:
+                    pass
+                self._socket = None
+                self._connected = False
+                return False
             self._socket.settimeout(30.0)  # 30s timeout - matches server
             self._connected = True
             self._reconnect_attempts = 0  # Reset on successful connect
@@ -917,6 +931,33 @@ class PostalTunnelClient:
 HTTP_BRIDGE_PORT = 8081
 HTTP_BRIDGE_URL = f"http://127.0.0.1:{HTTP_BRIDGE_PORT}"
 
+# 2026-09-30 (Nous, her_8081): her bridge now refuses /intent, chat topics and speaker claims unless the POST
+# carries X-Akashic-Auth (HMAC with ~/.akashic/bridge_8081.key). bridge_auth.py is loaded by file path so this
+# module keeps importing nothing from the package (it runs inside the MCP servers).
+_BRIDGE_AUTH = None
+
+
+def _bridge_auth_headers(method: str, target: str, body: bytes) -> Dict[str, str]:
+    global _BRIDGE_AUTH
+    if _BRIDGE_AUTH is None:
+        try:
+            import importlib.util
+            p = Path(__file__).resolve().parents[2] / "P00_Autonomic" / "postal_bridge" / "bridge_auth.py"
+            spec = importlib.util.spec_from_file_location("_akashic_bridge_auth_client", str(p))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _BRIDGE_AUTH = mod
+        except Exception as e:
+            _BRIDGE_AUTH = False
+            import sys
+            sys.stderr.write(f"[PostalHTTP] bridge_auth unavailable ({e!r}); POSTs go unsigned\n")
+    if not _BRIDGE_AUTH:
+        return {}
+    try:
+        return _BRIDGE_AUTH.auth_headers(method, target, body)
+    except Exception:
+        return {}
+
 class PostalHTTPClient:
     """
     HTTP-based postal client - PRIMARY connection method.
@@ -988,11 +1029,20 @@ class PostalHTTPClient:
             req.add_header('User-Agent', 'PostalHTTPClient/1.0')
 
             with self._lock:
+                # 2026-09-30 her_8081: sign inside the lock, so a long wait cannot age the timestamp
+                for _hk, _hv in _bridge_auth_headers('POST', endpoint, body).items():
+                    req.add_header(_hk, _hv)
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     return json.loads(resp.read().decode('utf-8'))
         except Exception as e:
             import sys
-            sys.stderr.write(f"[PostalHTTP] Request error: {e}\n")
+            _why = ''
+            try:
+                if getattr(e, 'code', None) == 403:   # her bridge refused it: say why (one line)
+                    _why = ' ' + e.read().decode('utf-8', 'replace')[:240]
+            except Exception:
+                pass
+            sys.stderr.write(f"[PostalHTTP] Request error: {e}{_why}\n")
             self._connected = False
             return None
 

@@ -110,12 +110,11 @@ class InputSourceMonitor:
         
         self._running = True
         
-        # Start keyboard listener
-        self._keyboard_listener = keyboard.Listener(
-            on_press=self._on_key_press,
-            on_release=self._on_key_release
-        )
-        self._keyboard_listener.start()
+        # 2026-09-30 (Nous, privacy_fix A13, Ace said yes): NO keyboard listener. It put every key CHARACTER Ace typed on
+        # sensory.input.event and into subscribers (sensory_integration -> sensory_filter -> memory.ingest), passwords
+        # included. The mouse listener below is unchanged. Revert: privacy_fix/apply_privacy_fix.py --revert.
+        self._keyboard_listener = None
+        print("[InputMonitor] keyboard listener refused (privacy_fix A13): key characters are never sensed here; mouse only")
         
         # Start mouse listener
         self._mouse_listener = mouse.Listener(
@@ -228,11 +227,7 @@ class InputSourceMonitor:
         """Handle key press event."""
         source, action_id = self._get_current_source()
         
-        # Convert key to string
-        try:
-            key_str = key.char if hasattr(key, 'char') else str(key)
-        except:
-            key_str = str(key)
+        key_str = None   # 2026-09-30 (Nous, privacy_fix A13): never the character (str() of a pynput KeyCode is repr(char) too)
         
         event = InputEvent(
             timestamp=time.time(),
@@ -248,10 +243,7 @@ class InputSourceMonitor:
         """Handle key release event."""
         source, action_id = self._get_current_source()
         
-        try:
-            key_str = key.char if hasattr(key, 'char') else str(key)
-        except:
-            key_str = str(key)
+        key_str = None   # 2026-09-30 (Nous, privacy_fix A13): never the character
         
         event = InputEvent(
             timestamp=time.time(),

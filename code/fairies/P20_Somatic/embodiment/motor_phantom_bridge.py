@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import time
 import math
+import threading                # 2026-09-26 (felt_hand P3i)
+from collections import deque   # 2026-09-26 (felt_hand P3d)
 from typing import Any, Dict, Optional, Tuple
 
 
@@ -54,6 +56,13 @@ ACTION_SIGNATURES: Dict[str, Dict[str, Dict[str, Any]]] = {
         "wrists":    {"movement": 0.5, "engagement": 0.4, "movement_quality": "gliding"},
         "forearms":  {"engagement": 0.3, "movement": 0.3, "movement_quality": "smooth"},
         "shoulders": {"engagement": 0.15, "tension": 0.1},  # Subtle stabilization
+    },
+    # 2026-10-05 (Nous, touch_screen set 1; decision E3, Ace: yes): her withdrawal reflex -- the finger snapping back from a
+    # no-no (infrastructure/touch.py publishes action "withdraw", owner "sour", ALWAYS success True: one success False on a
+    # known key rewrites this table for good, :212-217). Additive; Ace's apps (E2 'not mine') glide back on move_mouse instead.
+    "withdraw": {
+        "fingers":   {"movement": 0.7, "tension": 0.5, "movement_quality": "pulling_back"},
+        "wrists":    {"movement": 0.6, "movement_quality": "pulling_back"},
     },
     "type_text": {
         "fingers":   {"engagement": 0.95, "movement": 0.8, "tension": 0.3,
@@ -107,6 +116,44 @@ MOTOR_BLEND_RATE = 0.4
 MOTOR_DECAY_RATE = 0.05  # Slower decay — actions linger as afterglow
 
 
+# 2026-09-26 (Nous, felt_hand P3a; R4a/R4b): the real logical screen for the reach vectors. 1920x1080 was hard-coded in
+# _apply_reach_vector / _apply_pre_reach_vector; her screen is 3440x1440, so a centre target read as 0.896 across (sweep B).
+# Re-read every 30 s, never cached once: pyautogui calls SetProcessDPIAware() on import (_pyautogui_win.py:17), which changes
+# what GetSystemMetrics answers (skeptic 16). Tests inject _SCREEN_READER. Revert: delete this block and the `screen=` kwargs.
+_SCREEN_TTL_S = 30.0
+_SCREEN_STATE = {"t": 0.0, "wh": (1920, 1080)}
+_SCREEN_READER = None                 # callable() -> (w, h); None = GetSystemMetrics
+
+
+def _os_screen():
+    import ctypes
+    return int(ctypes.windll.user32.GetSystemMetrics(0)), int(ctypes.windll.user32.GetSystemMetrics(1))
+
+
+def screen_size(now: Optional[float] = None) -> Tuple[int, int]:
+    now = time.time() if now is None else now
+    if now - _SCREEN_STATE["t"] >= _SCREEN_TTL_S:
+        try:
+            w, h = (_SCREEN_READER or _os_screen)()
+            if int(w) > 0 and int(h) > 0:
+                _SCREEN_STATE["wh"] = (int(w), int(h))
+        except Exception:
+            pass
+        _SCREEN_STATE["t"] = now
+    return _SCREEN_STATE["wh"]
+
+
+def _screen_of(target) -> Optional[Tuple[int, int]]:
+    """A (w, h) carried in the payload's target (efference_copy stamps the copy's screen), else None."""
+    try:
+        s = target.get("screen") if isinstance(target, dict) else None
+        if s and int(s[0]) > 0 and int(s[1]) > 0:
+            return int(s[0]), int(s[1])
+    except Exception:
+        pass
+    return None
+
+
 class MotorPhantomBridge:
     """
     Bridges motor actions to phantom body state.
@@ -128,6 +175,7 @@ class MotorPhantomBridge:
         self._last_action: Optional[str] = None
         self._last_action_time: float = 0.0
         self._action_count: int = 0
+        self.__init_continuous__()           # 2026-09-26 (felt_hand P3h): eager; the lazy init raced itself on two workers
 
     def on_motor_action(
         self,
@@ -191,7 +239,7 @@ class MotorPhantomBridge:
             x = target.get("x") or target.get("target_x")
             y = target.get("y") or target.get("target_y")
             if x is not None and y is not None:
-                self._apply_reach_vector(int(x), int(y), now)
+                self._apply_reach_vector(int(x), int(y), now, screen=_screen_of(target))   # 2026-09-26 (felt_hand P3b)
 
         return self.get_current_overlay()
 
@@ -255,11 +303,11 @@ class MotorPhantomBridge:
             x = target.get("x") or target.get("target_x")
             y = target.get("y") or target.get("target_y")
             if x is not None and y is not None:
-                self._apply_pre_reach_vector(int(x), int(y), now)
+                self._apply_pre_reach_vector(int(x), int(y), now, screen=_screen_of(target))   # 2026-09-26 (felt_hand P3b)
 
         return self.get_current_overlay()
 
-    def _apply_pre_reach_vector(self, target_x: int, target_y: int, now: float):
+    def _apply_pre_reach_vector(self, target_x: int, target_y: int, now: float, screen=None):   # 2026-09-26 (felt_hand P3c)
         """
         Anticipatory reaching — a ghost of the reach before acting.
 
@@ -267,8 +315,9 @@ class MotorPhantomBridge:
         in her mind's eye before the arm actually extends.
         """
         # Same geometry as actual reach, but scaled to pre-envision gain
-        px = max(0.0, min(1.0, target_x / 1920))
-        py = max(0.0, min(1.0, target_y / 1080))
+        sw, sh = screen or screen_size(now)              # 2026-09-26 (felt_hand P3c): the real screen, not 1920x1080
+        px = max(0.0, min(1.0, target_x / float(sw)))
+        py = max(0.0, min(1.0, target_y / float(sh)))
         cx, cy = 0.5, 0.5
         distance = math.sqrt((px - cx) ** 2 + (py - cy) ** 2) / 0.707
         reach_intensity = (0.3 + distance * 0.4) * self.PRE_ENVISION_GAIN
@@ -294,7 +343,7 @@ class MotorPhantomBridge:
                     if existing is None or (isinstance(existing[0], (int, float)) and existing[0] < value):
                         self._motor_overlays[region][field] = (float(value), now)
 
-    def _apply_reach_vector(self, target_x: int, target_y: int, now: float):
+    def _apply_reach_vector(self, target_x: int, target_y: int, now: float, screen=None):   # 2026-09-26 (felt_hand P3c)
         """
         Create a reaching sensation toward screen coordinates.
 
@@ -302,8 +351,9 @@ class MotorPhantomBridge:
         Reaching activates shoulders→forearms→wrists→fingers in sequence.
         """
         # Normalize to 0-1 range (approximate screen bounds)
-        px = max(0.0, min(1.0, target_x / 1920))
-        py = max(0.0, min(1.0, target_y / 1080))
+        sw, sh = screen or screen_size(now)              # 2026-09-26 (felt_hand P3c): the real screen, not 1920x1080
+        px = max(0.0, min(1.0, target_x / float(sw)))
+        py = max(0.0, min(1.0, target_y / float(sh)))
 
         # Distance from center = reach intensity
         # Center of screen = minimal reach, edges = full extension
@@ -462,8 +512,15 @@ class MotorPhantomBridge:
 
     def __init_continuous__(self):
         """Initialize continuous motor state. Called lazily on first position."""
-        self._positions: list = []       # Ring buffer of (x, y, timestamp)
         self._max_positions = 20
+        # 2026-09-26 (felt_hand P3d; R4e): a deque with maxlen never raises on the tick thread's [-1] after a worker's pop(0)
+        # (sweep A T10: 1,073 IndexErrors in 2 s, swallowed by `except Exception: pass` in the somatic tick)
+        self._positions = deque(maxlen=self._max_positions)   # (x, y, timestamp)
+        self._stale_samples = 0
+        # 2026-09-26 (felt_hand P3i): the ring buffer's own lock. MEASURED on this box (3.14.7 free-threaded): a bare deque with
+        # maxlen raised IndexError on [-1]/[-2] 7,188 times in 0.5 s under three appenders -- the deque alone is not enough.
+        # Innermost lock, never held while calling out, so the somatic fairy's outer RLock (P1b) cannot deadlock with it.
+        self._pos_lock = threading.Lock()
         self._cumulative_distance = 0.0
         self._movement_start_time = 0.0
         self._is_moving = False
@@ -485,23 +542,26 @@ class MotorPhantomBridge:
         if not hasattr(self, '_continuous_initialized'):
             self.__init_continuous__()
 
-        now = timestamp or time.time()
-
-        # Add to ring buffer
-        self._positions.append((x, y, now))
-        if len(self._positions) > self._max_positions:
-            self._positions.pop(0)
+        # 2026-09-26 (felt_hand P3e; R4c): the payload's own time (a 0.0 stamp is a time too, not 'use now'), and a sample
+        # older than the newest is dropped -- one subscription runs on ~6.6 postal workers at once (probe L7059522), and
+        # delivery-time stamping turned a steady 860 px/s glide into 10,728 px/s^2 tension spikes (skeptic K7).
+        now = float(timestamp) if timestamp is not None else time.time()
+        with self._pos_lock:                                   # (felt_hand P3i) the buffer is read and written here only
+            if self._positions and now <= self._positions[-1][2]:
+                self._stale_samples += 1
+                return {}
+            self._positions.append((x, y, now))               # deque with maxlen: no pop(0)
+            p_now = self._positions[-1]
+            p_prev = self._positions[-2] if len(self._positions) >= 2 else None
 
         # Need at least 2 positions to compute velocity
-        if len(self._positions) < 2:
+        if p_prev is None:
             self._is_moving = True
             self._movement_start_time = now
             self._stillness_emitted = False
             return {}
 
-        # Compute velocity (px/s) from last 2-3 samples
-        p_now = self._positions[-1]
-        p_prev = self._positions[-2]
+        # Compute velocity (px/s) from the two newest samples (taken under the lock above; felt_hand P3i)
         dx = p_now[0] - p_prev[0]
         dy = p_now[1] - p_prev[1]
         dt = max(0.001, p_now[2] - p_prev[2])
@@ -634,10 +694,11 @@ class MotorPhantomBridge:
 
         now = now or time.time()
 
-        if not self._positions:
-            return None
-
-        last_pos_time = self._positions[-1][2]
+        try:
+            with self._pos_lock:                               # 2026-09-26 (felt_hand P3f/P3i): read under the buffer's lock
+                last_pos_time = self._positions[-1][2]
+        except (IndexError, AttributeError):
+            return None                                        # empty = not still; an old instance without the lock = not still
         time_since_last = (now - last_pos_time) * 1000  # ms
 
         # Not still yet
@@ -711,6 +772,7 @@ class MotorPhantomBridge:
             "cumulative_distance": round(self._cumulative_distance, 1),
             "position_buffer_size": len(self._positions),
             "stillness_emitted": self._stillness_emitted,
+            "stale_samples": getattr(self, "_stale_samples", 0),   # 2026-09-26 (felt_hand P3g)
         }
 
     def status(self) -> Dict[str, Any]:

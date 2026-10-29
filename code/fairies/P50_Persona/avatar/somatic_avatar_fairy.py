@@ -91,7 +91,7 @@ class SomaticAvatarFairy:
     This is a lightweight fairy - no organ template, just a bridge.
     """
     
-    ACTOR_NAME = "SomaticAvatarFairy"
+    ACTOR_NAME: str = "SomaticAvatarFairy"
     ACTOR_VERSION = "1.1.0"
     
     def __init__(

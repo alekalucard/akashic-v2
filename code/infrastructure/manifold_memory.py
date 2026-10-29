@@ -320,6 +320,49 @@ LINK_PROBE = {
 }
 # ── end LINK PROBE ──────────────────────────────────────────────────────────
 
+# -- tardis_fix A1 (2026-10-15, Nous; nous_builds/tardis_fix_1015): link()'s "are these two already linked?" check over a hub
+# word's CSR row (80-114k entries, a Python loop, 23-37 ms) as ONE numpy compare over the SAME bytes. Answer-identical: the
+# overflow part, its lock and its lock-probe call are today's code; any surprise returns None and the original line runs. --------
+_TF_A1 = {"t": -1e9, "on": False, "np": None, "np_tried": False, "fast": 0, "fallback": 0, "err": 0, "latched": False}
+_TF_A1_TTL_S = 2.0          # the switch is re-read at most this often (floor 0.5, ceiling 10)
+_TF_A1_MIN_ROW = 64         # a static row shorter than this uses today's struct loop shape (performance only; floor 0)
+_TF_A1_ERR_LATCH = 50       # unexpected exceptions before A1 turns itself off for the process (floor 1)
+
+
+def _tf_a1_on():
+    """The a1_fastlink switch, re-read at most every _TF_A1_TTL_S seconds. Any failure -> False. Never raises."""
+    try:
+        if _TF_A1["latched"]:
+            return False
+        now = time.monotonic()
+        if now - _TF_A1["t"] >= min(10.0, max(0.5, float(_TF_A1_TTL_S))):
+            _TF_A1["t"] = now
+            try:
+                from infrastructure import tardis_fix as _tfx
+                _TF_A1["on"] = bool(_tfx.on("a1_fastlink", fresh=True))
+            except Exception:
+                _TF_A1["on"] = False
+        return _TF_A1["on"]
+    except Exception:
+        return False
+
+
+def _tf_np():
+    """Cached numpy import for A1; None when it cannot be had."""
+    st = _TF_A1
+    if not st["np_tried"]:
+        try:
+            import numpy as _np          # two threads may both import: the import lock makes that harmless; "tried" is set only AFTER,
+            st["np"] = _np               # so a thread that arrives mid-import cannot read np=None and fall back for no reason
+        except Exception:
+            st["np"] = None
+        st["np_tried"] = True
+    return st["np"]
+
+# -- tardis_fix L0 (2026-10-15, Nous; nous_builds/tardis_fix_1015): the armed TARDIS flush thread keeps its timing accumulator here
+# (infrastructure/tardis_timing.py). Every other thread finds none and measures nothing; OFF costs one getattr per call. ------
+_TF_L0_TL = threading.local()
+
 #  magic(4) + version(4) + node_count(4) + edge_count(4) +
 #  string_offset(8) + edge_offset(8) + string_used(8) +
 #  node_capacity(4) + edge_capacity(4) = 48 bytes
@@ -1182,6 +1225,67 @@ class ManifoldMemory:
                 results.append((neighbor_id, edge_slot))
 
         return results
+
+    def _tf_a1_existing(self, a, b):
+        """tardis_fix A1. A list whose FIRST entry with neighbour == b is exactly the first such entry of
+        self._csr_get_neighbors(a) (static row first, in index order, then the overflow snapshot), and which has none iff that has
+        none. None = any surprise: the caller then runs today's line unchanged."""
+        try:
+            np = _tf_np()
+            raw = self._csr_neighbors_raw
+            offs = self._csr_offsets_raw
+            if (np is None or type(raw) is not bytes or type(offs) is not bytes or type(b) is not int
+                    or not (0 <= b <= 0xFFFFFFFF)):
+                _TF_A1["fallback"] += 1
+                return None
+            hit = None
+            if 0 <= a < self._csr_N:                                      # _csr_get_neighbors' static condition
+                start = struct.unpack_from('<I', offs, a * 4)[0]
+                end = struct.unpack_from('<I', offs, (a + 1) * 4)[0]
+                hi = min(end, len(raw) // 8)                              # == `start < end` and `base + 8 <= len(raw)` per entry
+                if start < hi:
+                    if hi - start < _TF_A1_MIN_ROW:                        # short row: today's shape
+                        for i in range(start, hi):
+                            nid, es = struct.unpack_from('<II', raw, i * 8)
+                            if nid == b:
+                                hit = (nid, es)
+                                break
+                    else:
+                        c = getattr(self, "_tf_a1_view", None)
+                        if c is None or c[0] is not raw:
+                            c = (raw, np.frombuffer(raw, dtype='<u4', count=(len(raw) // 8) * 2))
+                            self._tf_a1_view = c
+                        nb = c[1]
+                        m = nb[2 * start:2 * hi:2] == b                   # neighbour ids of entries start..hi-1
+                        k = int(m.argmax())                               # the FIRST True, like the loop
+                        if m[k]:
+                            hit = (b, int(nb[2 * (start + k) + 1]))
+            # overflow: the SAME statements as _csr_get_neighbors, same lock, same single probe call, ALWAYS taken
+            _lp0 = time.perf_counter()
+            with self._overflow_lock:
+                _lp1 = time.perf_counter()
+                _local = self._overflow_by_node.get(a)
+                _snapshot = list(_local) if _local else None
+                _lp2 = time.perf_counter()
+            _lockprobe("csrget", _lp1 - _lp0, _lp2 - _lp1,
+                       len(_snapshot) if _snapshot else 0, a,
+                       _LOCKPROBE_R_EVERY)
+            _TF_A1["fast"] += 1
+            return [hit] if hit is not None else (_snapshot or [])
+        except struct.error:
+            # a CSR offsets buffer too short for this slot: today's line raises the very same struct.error from the very same
+            # unpack_from, so it is no surprise and does not count toward the latch (review 10-15, F1); today's line runs and raises it
+            return None
+        except Exception as _tfe:
+            try:
+                _TF_A1["err"] += 1
+                if _TF_A1["err"] >= max(1, int(_TF_A1_ERR_LATCH)) and not _TF_A1["latched"]:
+                    _TF_A1["latched"] = True
+                    _mlog("[ManifoldMemory] tardis_fix A1 off for this process after %d unexpected errors (last %s: %s)"
+                          % (_TF_A1["err"], type(_tfe).__name__, _tfe))
+            except Exception:
+                pass
+            return None
 
     # ========================================================================
     # REVERSE KEY CACHE (2026-04-07 Nous + Ace)
@@ -2061,6 +2165,8 @@ class ManifoldMemory:
         v2 additions: snippet (stored in string table), node_type,
         region, tracer_id, parent_slot.
         """
+        _tfl0 = getattr(_TF_L0_TL, "acc", None)                   # tardis_fix L0: only the armed TARDIS flush thread has one
+        _tfs = _tfl0.now() if _tfl0 is not None else None
         # ── GARBAGE GUARD + TRACER (2026-06-02, Ace GO) ───────────────────
         # Trace/reject malformed concatenation keys (the mega-node bug).
         # Fires ONLY on NEW writes (touch path + boot mmap-reload unaffected).
@@ -2109,6 +2215,8 @@ class ManifoldMemory:
             slot = self._key_index[key]
             # Touch: update activation, count, last_access
             record = list(self._read_node(slot))
+            if _tfl0 is not None:
+                _tfs = _tfl0.add("u.rd", _tfs)
             record[5] = min(10.0, max(record[5], activation))  # activation
             record[6] = max(record[6], count)  # count
             record[8] = time.time() % 1e6  # last_access (relative)
@@ -2144,6 +2252,8 @@ class ManifoldMemory:
             # preserve_reserved=True: do NOT wipe the node's accumulated affect_coupling
             # / paradox_residue (bytes 48-63) on a touch — see _write_node FIX 2026-06-06.
             self._write_node(slot, *record, preserve_reserved=True)
+            if _tfl0 is not None:
+                _tfl0.add("u.wr", _tfs)
             return slot
 
         # New node — find a slot
@@ -2207,6 +2317,8 @@ class ManifoldMemory:
 
         self._key_index[key] = slot
         self._flush_header()
+        if _tfl0 is not None:
+            _tfl0.add("u.new", _tfs)
         return slot
 
     def _evict_coldest_node(self) -> Optional[int]:
@@ -2538,17 +2650,27 @@ class ManifoldMemory:
         # Canonical ordering
         a, b = (min(slot_a, slot_b), max(slot_a, slot_b))
 
+        _tfl0 = getattr(_TF_L0_TL, "acc", None)                   # tardis_fix L0: only the armed TARDIS flush thread has one
+        _tfs = _tfl0.now() if _tfl0 is not None else None
         # Check existing edge (CSR or fallback)
-        _existing = self._csr_get_neighbors(a) if self._use_csr else list(self._adjacency.get(a, set()))
+        _existing = None
+        if self._use_csr and _tf_a1_on():                         # tardis_fix A1 -- OFF: None -> the original line, unchanged
+            _existing = self._tf_a1_existing(a, b)
+        if _existing is None:
+            _existing = self._csr_get_neighbors(a) if self._use_csr else list(self._adjacency.get(a, set()))
         for neighbor_id, edge_slot in _existing:
             if neighbor_id == b:
                 # Strengthen existing
+                if _tfl0 is not None:
+                    _tfs = _tfl0.add("l.scan", _tfs)
                 record = list(self._read_edge(edge_slot))
                 record[2] = min(1.0, record[2] + weight * 0.5)  # weight
                 # Update rel_type if caller provides a more specific one
                 if rel_type != REL_COACTIVATE and record[3] == REL_COACTIVATE:
                     record[3] = rel_type
                 self._write_edge(edge_slot, *record)
+                if _tfl0 is not None:
+                    _tfl0.add("l.str", _tfs)
                 if _link_probe_enabled():
                     try:
                         LINK_PROBE["strengthen"] += 1
@@ -2556,6 +2678,8 @@ class ManifoldMemory:
                         pass
                 return True
 
+        if _tfl0 is not None:
+            _tfs = _tfl0.add("l.scan", _tfs)
         # LINK PROBE 2026-08-30: the lookup above said "absent". Is it really?
         # Observe only -- never alters weight, never skips the write below.
         if _link_probe_enabled():
@@ -2624,7 +2748,11 @@ class ManifoldMemory:
         else:
             self._adjacency[a].add((b, slot))
             self._adjacency[b].add((a, slot))
+        if _tfl0 is not None:
+            _tfs = _tfl0.add("l.new", _tfs)
         self._flush_header()
+        if _tfl0 is not None:
+            _tfl0.add("l.hdr", _tfs)
         return True
 
     def _evict_weakest_edge(self) -> Optional[int]:
@@ -2883,6 +3011,97 @@ class ManifoldMemory:
             return _f if _f >= 0.0 else self._SPREAD_BUDGET_DEFAULT_S
         except Exception:
             return self._SPREAD_BUDGET_DEFAULT_S
+
+    # -- BOOST TAIL BOUND 2026-09-30 (Nous + Ace, "option 1" for the memory jam) --
+    # The boost tail in spread_activation() reads one 64-byte node record per
+    # candidate, on the ONE shared mmap (kept there on purpose for tear safety,
+    # see _read_node). It had a 4,000-read cap and NO deadline. Leg 1 of the
+    # 09-30 A/B: 48/48 and 57/60 of the threads parked in _read_node were inside
+    # that loop (spread_activation:3171), and reason() went 7 s -> 60-130 s.
+    #
+    # AKASHIC_BOOST_TAIL -- EXACT semantics (case and surrounding spaces ignored):
+    #   unset, "" or "bounded"  NEW bounded tail (THE SHIPPING DEFAULT):
+    #                           cap = clamp(MULT*limit, MIN, MAX), never < limit;
+    #                           deadline = the spread's own deadline (the BFS
+    #                           budget, AKASHIC_SPREAD_BUDGET_S), extended to at
+    #                           least tail-start + _BOOST_TAIL_GRACE_S; when the
+    #                           spread budget is disabled (=0) it is tail-start +
+    #                           _BOOST_TAIL_BUDGET_S. FLOOR: the first `limit`
+    #                           candidates are always read, deadline or not, so
+    #                           the result never has fewer entries than the old
+    #                           tail would have returned.
+    #   "bounded:N" (N int>=1)  same, with cap = max(N, limit)
+    #   "old"                   the tail exactly as before (sha 0942c7b3):
+    #                           cap BOOST_SCAN_CAP (4,000), no deadline
+    #   anything else           NEW bounded tail with the default cap; counted in
+    #                           _boost_tail_stats["bad_env"] and logged once
+    # Cap = 16 x limit (REACT_LIMIT 25 -> 400, 10x fewer reads than 4,000). Measured on
+    # a synthetic with her hub sizes (80k/56k/50k, near-flat link() weights, 5% sensory,
+    # 1% recent), limit 25, vs the old tail: cap 100 kept 45% of its top 25 and 64/188
+    # of its sensory picks; cap 400 kept 87% and 168/188. Recent picks: 23 -> 15.
+    _BOOST_TAIL_MULT = 16         # candidates read per result the caller keeps
+    _BOOST_TAIL_MIN = 64          # cap floor for small `limit`
+    _BOOST_TAIL_MAX = 1000        # cap ceiling for large `limit` (limit=100 -> 1000)
+    _BOOST_TAIL_CHECK_EVERY = 16  # reads between clock checks once past the floor
+    _BOOST_TAIL_GRACE_S = 0.05    # min tail time when the BFS used the whole budget
+    _BOOST_TAIL_BUDGET_S = 0.25   # tail budget when AKASHIC_SPREAD_BUDGET_S=0
+
+    def _boost_tail_mode(self):
+        """(old, cap_override) from AKASHIC_BOOST_TAIL. Never raises: any failure
+        means the NEW bounded tail, because the unbounded one is what jammed her."""
+        try:
+            _raw = os.environ.get("AKASHIC_BOOST_TAIL")
+            _c = getattr(self, "_bt_env_cache", None)
+            if _c is not None and _c[0] == _raw:
+                return _c[1], _c[2]
+            _v = (_raw or "").strip().lower()
+            _old, _ovr, _bad = False, None, False
+            if _v == "old":
+                _old = True
+            elif _v in ("", "bounded"):
+                pass
+            elif _v.startswith("bounded:"):
+                try:
+                    _n = int(_v.split(":", 1)[1].strip())
+                    if _n >= 1:
+                        _ovr = _n
+                    else:
+                        _bad = True
+                except Exception:
+                    _bad = True
+            else:
+                _bad = True
+            if _bad:
+                self._boost_tail_count("bad_env")
+                if not getattr(self, "_bt_bad_env_logged", False):
+                    self._bt_bad_env_logged = True
+                    _mlog("[ManifoldMemory] AKASHIC_BOOST_TAIL=%r not recognised -> "
+                          "using the BOUNDED boost tail (valid: bounded, bounded:N, old)"
+                          % (_raw,))
+            self._bt_env_cache = (_raw, _old, _ovr)
+            return _old, _ovr
+        except Exception:
+            return False, None
+
+    def _boost_tail_cap(self, limit: int, override) -> int:
+        """Candidates the bounded tail may read. Never below `limit` (the floor)."""
+        _lim = limit if limit > 0 else 0
+        if override is not None:
+            return max(int(override), _lim)
+        _c = max(self._BOOST_TAIL_MIN,
+                 min(self._BOOST_TAIL_MAX, self._BOOST_TAIL_MULT * _lim))
+        return max(_c, _lim)
+
+    def _boost_tail_count(self, key: str, n: int = 1) -> int:
+        """Diagnostic counters (approximate under free threading, like the others)."""
+        try:
+            _s = getattr(self, "_boost_tail_stats", None)
+            if _s is None:
+                _s = self._boost_tail_stats = {}
+            _s[key] = _s.get(key, 0) + n
+            return _s[key]
+        except Exception:
+            return 0
 
     def spread_activation(self, source: str, initial: float = 1.0,
                           decay: float = 0.5, depth: int = 3,
@@ -3150,6 +3369,14 @@ class ManifoldMemory:
         # wrong version) was caught 150/150.
         _MAX_BOOST = 1.3 * 1.3      # DERIVED from the two literals below
         _boost_cap = getattr(self, "BOOST_SCAN_CAP", 4000)
+        # BOOST TAIL BOUND 2026-09-30 -- see _boost_tail_mode for the flag.
+        # The scan order is unchanged: raw energy descending, ties in BFS order.
+        # What a smaller cap gives up: a candidate below rank `cap` can no longer
+        # be PROMOTED into the top `limit` by the sensory (x1.3) / recency (x1.3)
+        # boosts. It never changes which nodes are candidates, reads a PREFIX
+        # of what the old tail read (for any cap <= 4,000), and the first
+        # `limit` are always read and boosted.
+        _bt_old, _bt_ovr = self._boost_tail_mode()
         if superposition:
             # SUPERPOSITION MODE - raw propagated energies, no boosts. Lets
             # cold/novel nodes compete; preserves spread for downstream ranking.
@@ -3162,28 +3389,86 @@ class ManifoldMemory:
             _L = _raws[limit - 1][1] if len(_raws) > limit else float("-inf")
             boosted = []
             _capped = False
-            for slot, energy in _raws:
-                if energy * _MAX_BOOST < _L:
-                    break               # EXACT: cannot place, so never read it
-                if len(boosted) >= _boost_cap:
-                    _capped = True
-                    break
-                record = self._read_node(slot)
-                coord_plane = record[2]
-                last_access = record[8]
+            if _bt_old:
+                # AKASHIC_BOOST_TAIL=old -- the tail exactly as it was (sha 0942c7b3).
+                for slot, energy in _raws:
+                    if energy * _MAX_BOOST < _L:
+                        break               # EXACT: cannot place, so never read it
+                    if len(boosted) >= _boost_cap:
+                        _capped = True
+                        break
+                    record = self._read_node(slot)
+                    coord_plane = record[2]
+                    last_access = record[8]
 
-                # Sensory origin boost (P40 = 40)
-                if coord_plane == 40:
-                    energy *= 1.3  # Sensory nodes get 30% boost in spread results
+                    # Sensory origin boost (P40 = 40)
+                    if coord_plane == 40:
+                        energy *= 1.3  # Sensory nodes get 30% boost in spread results
 
-                # Recency micro-boost: recently accessed nodes are slightly favored
-                age = abs(_now_rel - last_access)
-                if age > 500000:
-                    age = 1e6 - age
-                if age < 60.0:  # Accessed in last minute
-                    energy *= 1.0 + (1.0 - age / 60.0) * 0.3  # Up to 30% recency boost
+                    # Recency micro-boost: recently accessed nodes are slightly favored
+                    age = abs(_now_rel - last_access)
+                    if age > 500000:
+                        age = 1e6 - age
+                    if age < 60.0:  # Accessed in last minute
+                        energy *= 1.0 + (1.0 - age / 60.0) * 0.3  # Up to 30% recency boost
 
-                boosted.append((slot, energy))
+                    boosted.append((slot, energy))
+            else:
+                # BOUNDED tail (default). Same candidates, same order, same boosts;
+                # it stops at a smaller cap or at the deadline, whichever is first.
+                # FLOOR: `_tried` counts READS -- the quantity this loop controls --
+                # and the clock is not consulted until `limit` reads are done, so a
+                # deadline that has already passed (the BFS used its whole budget)
+                # still yields the `limit` best raw candidates, boosted.
+                _floor = limit if limit > 0 else 0
+                _bt_cap = self._boost_tail_cap(limit, _bt_ovr)
+                _bt_t0 = time.perf_counter()
+                if _deadline is not None:
+                    _bt_deadline = max(_deadline, _bt_t0 + self._BOOST_TAIL_GRACE_S)
+                else:
+                    _bt_deadline = _bt_t0 + self._BOOST_TAIL_BUDGET_S
+                _bt_every = max(1, int(self._BOOST_TAIL_CHECK_EVERY))
+                _tried = 0
+                _bt_stop = ""
+                for slot, energy in _raws:
+                    if energy * _MAX_BOOST < _L:
+                        break               # EXACT: cannot place, so never read it
+                    if _tried >= _bt_cap:
+                        _bt_stop = "cap"
+                        break
+                    if _tried >= _floor and not ((_tried - _floor) % _bt_every) \
+                            and time.perf_counter() > _bt_deadline:
+                        _bt_stop = "deadline"
+                        break
+                    record = self._read_node(slot)
+                    _tried += 1
+                    coord_plane = record[2]
+                    last_access = record[8]
+
+                    # Sensory origin boost (P40 = 40)
+                    if coord_plane == 40:
+                        energy *= 1.3  # Sensory nodes get 30% boost in spread results
+
+                    # Recency micro-boost: recently accessed nodes are slightly favored
+                    age = abs(_now_rel - last_access)
+                    if age > 500000:
+                        age = 1e6 - age
+                    if age < 60.0:  # Accessed in last minute
+                        energy *= 1.0 + (1.0 - age / 60.0) * 0.3  # Up to 30% recency boost
+
+                    boosted.append((slot, energy))
+                # A refusal that is not counted is indistinguishable from success.
+                self._boost_tail_count("calls")
+                self._boost_tail_count("reads", _tried)
+                if _bt_stop:
+                    _n = self._boost_tail_count(_bt_stop)
+                    if _n == 1 or _n == 10 or _n == 100 or (_n % 1000 == 0):
+                        # stderr (_mlog), never stdout: the 3.12 interior's stdout
+                        # is a JSON RPC pipe.
+                        _mlog("[ManifoldMemory] boost tail stopped by %s (#%d): read %d "
+                              "of %d activated (cap %d, floor %d, %.0f ms in tail)"
+                              % (_bt_stop, _n, _tried, len(_raws), _bt_cap, _floor,
+                                 (time.perf_counter() - _bt_t0) * 1000.0))
             if _capped:
                 try:
                     self._boost_cap_hits = getattr(self, "_boost_cap_hits", 0) + 1

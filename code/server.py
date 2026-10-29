@@ -1630,6 +1630,9 @@ def _start_gpu_monitor():
 
     def _gpu_monitor_loop():
         import subprocess
+        try:   # gpu_poll_1016: state/gpu_poll.json arms it (absent = today's call); any failure here leaves the real module
+            from infrastructure.gpu_reader import bind as _gp_bind; subprocess = _gp_bind("gpu_monitor")
+        except Exception: pass
         while not _GPU_MONITOR_STOP.is_set():
             try:
                 result = subprocess.run(
@@ -3694,6 +3697,7 @@ class StatusHandler(BaseHTTPRequestHandler):
                 print("[Server] Shutdown already in progress — ignoring duplicate HTTP request")
                 return {"success": True, "message": "Shutdown already in progress"}
 
+            _sdfix_arm()   # SHUTDOWN FIX: reads state/shutdown_fix.json BEFORE the flag is set; OFF/absent = no-op
             SYSTEM.shutdown_requested = True
 
             # Signal global shutdown IMMEDIATELY so all fairies stop
@@ -3710,6 +3714,7 @@ class StatusHandler(BaseHTTPRequestHandler):
             # Background thread: wait for fairy, then run shutdown_system, then exit
             def _do_shutdown():
                 import os
+                _sdfix_bind()   # SHUTDOWN FIX: this is the route's shutdown thread (switch ON only)
                 # ---- _SHUTDOWN_TRACE (2026-08-27, Nous + Ace) ----------------
                 # The shutdown's own markers only ever went to the console, so when
                 # she wedged for 25 minutes the evidence died with the window, and
@@ -3795,6 +3800,7 @@ class StatusHandler(BaseHTTPRequestHandler):
                     print(f"[Server]   SAVE-FIRST cortex FAILED: {_e}", flush=True)
                 print("[Server]   SAVE-FIRST done -> waiting for shutdown fairy", flush=True)
                 _trace("SAVE-FIRST done")
+                _sdfix_early()   # SHUTDOWN FIX: the manifold flush starts NOW, on its own thread (never waits)
 
                 # Wait for fairy's context-save phase (max 8s)
                 if hasattr(SYSTEM, 'shutdown_fairy') and SYSTEM.shutdown_fairy:
@@ -3810,12 +3816,16 @@ class StatusHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f"[Server] Shutdown error (forcing exit anyway): {e}", flush=True)
                 finally:
+                    # SHUTDOWN FIX (switch ON): no atexit on this path; DONE -> the main thread exits. Never returns.
+                    if _sdfix_here():
+                        _sdfix_done_and_exit()
                     # ---- _RUN_DISARMED_ATEXIT -- FALLBACK ONLY -------------------
-                    # UNREACHABLE in practice: shutdown_system() exits the process
-                    # via os._exit(0) at :8817, so this finally never runs. The
-                    # real call is now ABOVE, before shutdown_system(). Kept only
-                    # in case shutdown_system() ever returns normally; atexit
-                    # clears handlers as it runs them, so a second call is a no-op.
+                    # (corrected 2026-10-12) Reached only when shutdown_system() RETURNS -- it has no
+                    # os._exit of its own -- before the main thread's exit timer cuts it: 1 of 145
+                    # traced route shutdowns (08-30). The 08-27 variant that ran these handlers
+                    # BEFORE shutdown_system() wedged 2 of 2 times and was reverted; D1 (09-30) ran
+                    # them here, after the manifold was CLOSED, and froze. atexit clears handlers
+                    # as it runs them, so a second call is a no-op.
                     # os._exit() skips Python atexit and this file has TEN os._exit
                     # sites, so SIX in-process handlers have never run:
                     #   process_hygiene.py:271        run_shutdown_hooks  <- orphans
@@ -4191,6 +4201,19 @@ class StatusHandler(BaseHTTPRequestHandler):
                 return {"success": True, "track": track, "reason": reason}
             else:
                 return {"error": "Track switch not available"}
+
+        elif action == "thread_snapshot":
+            # ---- _THREAD_SNAPSHOT (2026-09-30, Nous; Ace's go) ------------------------------------
+            # ONE sys._current_frames() on request, tallied to state/thread_snapshots/. It replaces the
+            # 5 Hz probe's _STALL_AUTOPSY: the probe is off because a stop-the-world call during
+            # fabric.shutdown()'s attached join froze 5 of 5 shutdowns (probe_ab FINDINGS W1-W5).
+            # take() refuses during boot, after shutdown starts, while another snapshot runs, and more
+            # often than once per 10 s. Client: nous_builds/thread_snapshot/thread_snapshot_client.py
+            try:
+                from infrastructure import thread_snapshot as _tsnap
+            except Exception as _tse:
+                return {"ok": False, "error": "thread_snapshot unavailable: %s" % _tse}
+            return _tsnap.take(system=SYSTEM, reason=str(cmd.get("reason", ""))[:120])
 
         elif action == "guild_status":
             # Get guild cluster status
@@ -5608,6 +5631,16 @@ def boot_system() -> bool:
         except ImportError as e:
             print(f"[Server]   - GoalSchedulerFairy: Skipped ({e})")
 
+        # -- K2 (engines E2a / 14b, 2026-10-14 Nous): ONE cortex. infrastructure/one_cortex.py holds the logic; switch
+        # state/k2_serial_owned.json {"on": true}, read once. Absent / malformed / module missing / any error here = None =
+        # today's behaviour exactly (two cortexes). Floor: never skip before the serial block starts; re-ask once if it fails.
+        try:
+            from infrastructure import one_cortex as _one_cortex
+            print("[Server] [K2] serial-owned: %s" % _one_cortex.describe())
+        except Exception as _k2_imp_err:
+            _one_cortex = None
+            print("[Server] [K2] serial-owned: OFF (module unavailable: %s)" % type(_k2_imp_err).__name__)
+
         # ═══════════════════════════════════════════════════════════════════
         # WAKE CASCADE: Trigger organic boot alongside BootOrchestrator
         # The cascade lets gates boot their domain fairies in priority order.
@@ -5831,14 +5864,31 @@ def boot_system() -> bool:
                 print(f"[Server] [CASCADE] {fairy_name} already alive, skipping")
                 return
 
+            # K2 (E2a/14b): _k2_fb marks the floor's own re-request (published once by infrastructure/one_cortex.py when the
+            # serial cortex failed after a skip); it bypasses the two "already alive" checks below. OFF / any error = False.
+            _k2_fb = False
+            try:
+                if _one_cortex is not None:
+                    _k2_fb = _one_cortex.is_fallback(fairy_name, payload) is True
+            except Exception:
+                _k2_fb = False
+
             # Also check registered_fairies list
-            if fairy_name in registered_fairies:
+            if fairy_name in registered_fairies and not _k2_fb:   # K2 (E2a) floor bypass
                 print(f"[Server] [CASCADE] {fairy_name} already registered, skipping")
                 return
 
+            # K2 (E2a/14b): once the serial block has STARTED building AssociationCortexFairy, the cascade does not build a
+            # second copy. OFF / any error = today's path.
+            try:
+                if _one_cortex is not None and _one_cortex.cascade_should_skip(fairy_name, payload):
+                    return
+            except Exception:
+                pass
+
             # Check if running in directory (may have been booted by GoBootOrchestrator)
             try:
-                if SYSTEM.directory:
+                if SYSTEM.directory and not _k2_fb:   # K2 (E2a) floor bypass
                     record = SYSTEM.directory.get_fairy(fairy_name)
                     if record and record.status in ("running", "awake", "booted"):
                         # Fairy already alive — either has instance or was booted by orchestrator
@@ -6276,6 +6326,12 @@ def boot_system() -> bool:
 
         # P30: AssociationCortexFairy (concept graph for memory associations)
         print("[Server] >>> STARTING AssociationCortex boot...")
+        _k2_boot_ok = None                                      # K2 (E2a): cortex.boot()'s own verdict, for the floor
+        try:                                                    # K2 (E2a): builder A has started (OFF = a no-op)
+            if _one_cortex is not None:
+                _one_cortex.serial_started("AssociationCortexFairy")
+        except Exception:
+            pass
         try:
             # NOUS-TEST (Gate 1b, Nous+Ace 2026-06-14): skip the ENTIRE cortex subsystem.
             # Gate 1 nulls SYSTEM.manifold, which (perversely) makes AssociationCortex.on_boot
@@ -6374,7 +6430,7 @@ def boot_system() -> bool:
             # Boot the cortex so it loads graph and subscribes to events
             # CRITICAL: Use boot() for full phase sequence including consciousness wiring
             if hasattr(cortex, 'boot'):
-                cortex.boot()
+                _k2_boot_ok = cortex.boot()   # K2 (E2a): kept (False = on_boot failed)
             else:
                 cortex.on_boot()
 
@@ -6385,6 +6441,13 @@ def boot_system() -> bool:
             print(f"[Server]   - AssociationCortex: {node_count} nodes, {edge_count} edges loaded")
 
             registered_fairies.append("AssociationCortexFairy")
+            try:                                                # K2 (E2a): stamp the directory now, on the main thread,
+                if _one_cortex is not None:                     # before BootWave starts (GoBoot cannot build a third copy);
+                    _one_cortex.serial_succeeded(               # boot() False = the floor re-asks the cascade once
+                        "AssociationCortexFairy", SYSTEM.directory, cortex, _k2_boot_ok,
+                        SYSTEM.fabric.publish if SYSTEM.fabric else None)
+            except Exception:
+                pass
             print("[Server]   - AssociationCortexFairy: BOOTED (self-registered via boot())")
             print(f"[Server]   - SYSTEM.association_cortex = {SYSTEM.association_cortex is not None}")
 
@@ -6441,8 +6504,20 @@ def boot_system() -> bool:
 
         except ImportError as e:
             print(f"[Server]   - AssociationCortexFairy: Skipped (IMPORT ERROR: {e})")
+            try:                                                # K2 (E2a) floor: re-ask the cascade once if it was skipped
+                if _one_cortex is not None:
+                    _one_cortex.serial_failed("AssociationCortexFairy",
+                                              SYSTEM.fabric.publish if SYSTEM.fabric else None)
+            except Exception:
+                pass
         except Exception as e:
             print(f"[Server]   - AssociationCortexFairy: FAILED ({type(e).__name__}: {e})")
+            try:                                                # K2 (E2a) floor: re-ask the cascade once if it was skipped
+                if _one_cortex is not None:
+                    _one_cortex.serial_failed("AssociationCortexFairy",
+                                              SYSTEM.fabric.publish if SYSTEM.fabric else None)
+            except Exception:
+                pass
             import traceback
             traceback.print_exc()
 
@@ -8825,6 +8900,238 @@ def _restore_dream_seed(seed: dict):
     print(f"[Server] [DREAM] ════════════════════════════════════════════════════")
 
 
+# ---- SHUTDOWN FIX (2026-10-12, Nous; nous_builds/shutdown_cut_1012) -- OFF unless state/shutdown_fix.json says so -------
+# Ace 10-12: "lets fix that shutdown cut". MEASURED (DIAGNOSE.md): once the route set shutdown_requested, the main thread
+# counted 20 x sleep(1.0) and os._exit(0)'d while shutdown_system() was still in Phase 4 -- 7 of 11 saved route logs (Boot J
+# :137825-826); Phase 5 (manifold flush, Cardinal save) never ran; 144 of 145 traced shutdowns have no end line. The same cut
+# usually lands just before P00's fabric.shutdown() (directory/fairy.py:414), the proven freeze trigger (card
+# the-probe-ab-verdict-and-the-shutdown-wedge), so "just wait longer" would trade the cut for a hang (D1, 09-30).
+# With {"on": true}, and ONLY on the shutdown ROUTE (Ace's button, shutdown_sour.py / guard_only.sh, E1 M0 in-process --
+# never reboot, never Ctrl+C):
+#   EARLY   the manifold flush starts right after SAVE-FIRST (~T0+0.5 s) on its own thread: nothing later can pre-empt it,
+#           and it never delays the fairy wait or WAVE (the fairy's own watchdog kills at T0+15 s until WAVE extends it)
+#   MARKS   each phase writes one "SDFIX +12.3s ..." line to state/shutdown_trace.log (and the console)
+#   FINISH  at the P00 boundary the route runs Phase 5's PERSISTING steps, each bounded (StatusProxy terminate 4 s,
+#           SomaticMindFairy.shutdown = the Cardinal save to state/cardinal_learned.json 10 s, manifold flush 10 s); it
+#           never closes the manifold (writers are still alive: D1 :14063-14095), never enters P00 / fabric.shutdown(),
+#           runs no atexit handler, and signals DONE
+#   WAIT    the main thread waits for DONE against the ABSOLUTE deadline T0 + wait_s (30..50 s, default 45; the counted
+#           "20 s" ran 24-43 s under load, so the floor of 30 never cuts earlier than it did); at the cap it traces where
+#           the shutdown was, flushes once more (5 s) and exits
+# Every SDFIX deadline and "+N s" offset is on time.monotonic() (_sdfix_clock): a wall-clock step moves none of them.
+# "returned" in a trace line means the call came back -- not that every byte reached the disk (flush_all swallows each
+# region's exception, akashic_manifold.py:905-912).
+# Absent / unreadable / malformed switch: _SDFIX["cfg"] stays None, every helper below is a no-op, today's code runs as is.
+_SDFIX = {"cfg": None, "t0": None, "tid": None, "done": threading.Event(), "finished": False, "last": "-"}
+_SDFIX_WAIT_DEFAULT = 45.0
+_SDFIX_WAIT_MIN = 30.0          # not below today's fastest measured cut (J, +24 s): the fix is never the sharper knife
+_SDFIX_WAIT_MAX = 50.0          # + the 5 s cap flush stays inside the fairy watchdog (WAVE + 60 s, WAVE >= T0 + 1 s)
+_SDFIX_POLL_S = 0.2
+_SDFIX_GRACE_S = 5.0            # DONE -> the main thread exits; if no main loop takes it (--mcp/--both), this thread does
+
+
+def _sdfix_clock():
+    """Monotonic seconds: every SDFIX deadline and trace offset (a wall-clock step can stretch none of the caps)."""
+    return time.monotonic()
+
+
+def _sdfix_path(name):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "state", name)
+
+
+def _sdfix_read_switch():
+    """state/shutdown_fix.json -> {"wait_s": float} only for a JSON object whose "on" is exactly true and whose optional
+    "wait_s" is a number in [30, 50]; anything else (absent, unreadable, malformed, out of range) -> None = today."""
+    try:
+        with open(_sdfix_path("shutdown_fix.json"), "rb") as f:
+            d = json.loads(f.read(65536).decode("utf-8-sig"))
+        if not isinstance(d, dict) or d.get("on") is not True:
+            return None
+        w = d.get("wait_s", _SDFIX_WAIT_DEFAULT)
+        if isinstance(w, bool) or not isinstance(w, (int, float)) or not (_SDFIX_WAIT_MIN <= w <= _SDFIX_WAIT_MAX):
+            return None
+        return {"wait_s": float(w)}
+    except Exception:
+        return None
+
+
+def _sdfix_trace(msg, echo=True):
+    """One line in state/shutdown_trace.log (same file and format as _do_shutdown's _trace), then the console. Never raises."""
+    if _SDFIX["cfg"] is None:
+        return
+    line = "SDFIX +%.1fs %s" % (_sdfix_clock() - (_SDFIX["t0"] or _sdfix_clock()), msg)
+    try:
+        with open(_sdfix_path("shutdown_trace.log"), "a", encoding="utf-8", newline="") as f:
+            f.write("[%s] pid=%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), os.getpid(), line))
+    except Exception:
+        pass
+    if echo:
+        try:
+            print("[Server] [SDFIX] " + line[6:], flush=True)
+        except Exception:
+            pass
+
+
+def _sdfix_arm():
+    """The shutdown route only, BEFORE it sets SYSTEM.shutdown_requested (so the main thread never sees the flag without the
+    switch decision). Reads the switch once per shutdown; OFF -> nothing changes."""
+    cfg = _sdfix_read_switch()
+    if cfg is None:
+        return
+    _SDFIX["t0"] = _sdfix_clock()
+    _SDFIX["cfg"] = cfg
+    _sdfix_trace("switch ON (wait_s=%g): early flush, phase marks, finish at the P00 boundary, main waits for DONE"
+                 % cfg["wait_s"])
+
+
+def _sdfix_bind():
+    """_do_shutdown's first line: THIS thread is the route's shutdown thread (switch ON only)."""
+    if _SDFIX["cfg"] is not None:
+        _SDFIX["tid"] = threading.get_ident()
+
+
+def _sdfix_here():
+    """True only on the route's own shutdown thread with the switch ON -- never reboot, never Ctrl+C."""
+    return _SDFIX["cfg"] is not None and _SDFIX["tid"] == threading.get_ident()
+
+
+def _sdfix_phase(msg):
+    """A phase mark from shutdown_system(): written only by the route's shutdown thread with the switch ON."""
+    if _sdfix_here():
+        _SDFIX["last"] = msg
+        _sdfix_trace(msg)
+
+
+def _sdfix_bounded(name, fn, cap_s, inline_ok):
+    """fn() on a daemon thread, waited for at most cap_s against an ABSOLUTE monotonic deadline (polled: a late wake still
+    ends on time). -> "returned" | "error: ..." | "timeout after Ns" | "skipped (no thread)". "returned" = fn came back,
+    nothing more. With no thread to be had (the memory wall E1 M0 fires at), inline_ok runs fn() right here, UNCAPPED --
+    the one wait without its own cap: the main thread's cap ends it (HTTP mode, her launch mode), the fairy watchdog
+    (WAVE + 60 s) and the route watchdog (120 s) in --mcp/--both -- else it is skipped."""
+    box = {}
+
+    def _run():
+        try:
+            fn()
+            box["r"] = "returned"
+        except BaseException as e:
+            box["r"] = "error: %s: %s" % (type(e).__name__, str(e)[:120])
+
+    try:
+        t = threading.Thread(target=_run, daemon=True, name="sdfix-" + name)
+        t.start()
+    except Exception:
+        if not inline_ok:
+            return "skipped (no thread)"
+        _run()
+        return box.get("r", "error: ?") + " (inline: no thread)"
+    deadline = _sdfix_clock() + cap_s
+    while t.is_alive() and _sdfix_clock() < deadline:
+        time.sleep(0.05)
+    return box.get("r") or "timeout after %gs" % cap_s
+
+
+def _sdfix_flush_once():
+    """AkashicManifold.flush_all() = header stamp + FlushViewOfFile per region (akashic_manifold.py:905-912). It iterates the
+    live handle dict, so a region opened meanwhile raises RuntimeError: retry once. Flush only -- never close."""
+    m = getattr(SYSTEM, "manifold", None)
+    if m is None or not callable(getattr(m, "flush_all", None)):
+        raise RuntimeError("no manifold")
+    try:
+        m.flush_all()
+    except RuntimeError:
+        m.flush_all()
+
+
+def _sdfix_early():
+    """Right after SAVE-FIRST on the route (switch ON): say why the graph-cortex save printed nothing, and START the manifold
+    flush on its own thread. Returns at once -- it must never delay the fairy wait or WAVE."""
+    if not _sdfix_here():
+        return
+    _SDFIX["last"] = "SAVE-FIRST"
+    _sdfix_trace("SAVE-FIRST graph cortex: %s" % (
+        "saved above" if getattr(SYSTEM, "graph_cortex", None) is not None else
+        "not configured (Path B off) -- her cortex lives in the manifold, the EARLY flush covers it"))
+
+    def _run():
+        t = _sdfix_clock()
+        try:
+            _sdfix_flush_once()
+            r = "returned"
+        except BaseException as e:
+            r = "error: %s: %s" % (type(e).__name__, str(e)[:120])
+        _sdfix_trace("EARLY manifold.flush_all %s in %.1fs" % (r, _sdfix_clock() - t))
+
+    _sdfix_trace("EARLY manifold.flush_all starting (own thread)")
+    try:
+        threading.Thread(target=_run, daemon=True, name="sdfix-early").start()
+    except Exception as e:
+        _sdfix_trace("EARLY manifold.flush_all skipped (no thread: %s) -- the P00-boundary flush still runs" % type(e).__name__)
+
+
+def _sdfix_finish():
+    """The P00 boundary (route + switch ON): Phase 5's PERSISTING steps, each bounded, in Phase 5's order. Skipped: P00 and the
+    Phase-5 teardown -- fabric.shutdown() (the freeze trigger), tunnel, SpellPool, AKP, the manifold CLOSE, directory."""
+    _SDFIX["finished"] = True
+    _SDFIX["last"] = "phase 5 persist"
+    _sdfix_trace("P00 boundary: P00 and the Phase-5 teardown are skipped (fabric.shutdown never entered); Phase-5 persist")
+    pp = getattr(SYSTEM, "status_proxy_proc", None)
+    if pp is not None:
+        def _term():
+            pp.terminate()
+            pp.join(timeout=3.0)
+        _sdfix_trace("phase 5 StatusProxy terminate: %s" % _sdfix_bounded("proxy", _term, 4.0, True))
+    umf = getattr(SYSTEM, "umf", None)
+    if umf is not None and callable(getattr(umf, "shutdown", None)):
+        _sdfix_trace("phase 5 SomaticMindFairy.shutdown (Cardinal save -> state/cardinal_learned.json): %s"
+                     % _sdfix_bounded("somatic", umf.shutdown, 10.0, False))
+    t = _sdfix_clock()
+    r = _sdfix_bounded("flush", _sdfix_flush_once, 10.0, True)
+    _sdfix_trace("phase 5 manifold.flush_all %s in %.1fs (flush only, not closed)" % (r, _sdfix_clock() - t))
+    _sdfix_trace("FINISH: Phase-5 persist done")
+
+
+def _sdfix_done_and_exit():
+    """The route's shutdown thread is through (switch ON). No atexit handlers on this path (1 run in 145 shutdowns; the runs
+    wedged 3 of 3: 08-27 x2, D1). Runs the Phase-5 persist if shutdown_system() never reached it (it raised), signals DONE,
+    gives the main thread _SDFIX_GRACE_S to take the exit it waits for, then exits from here (--mcp/--both have no main loop)."""
+    if not _SDFIX["finished"]:
+        try:
+            _sdfix_trace("shutdown_system() ended before the P00 boundary (last: %s) -- Phase-5 persist now" % _SDFIX["last"])
+            _sdfix_finish()
+        except BaseException as e:
+            _sdfix_trace("Phase-5 persist failed: %s: %s" % (type(e).__name__, str(e)[:120]))
+    _sdfix_trace("DONE -> the main thread exits", echo=False)
+    _SDFIX["done"].set()
+    end = _sdfix_clock() + _SDFIX_GRACE_S
+    while _sdfix_clock() < end:
+        time.sleep(_SDFIX_POLL_S)
+    _sdfix_trace("EXIT by the shutdown thread: no main loop took the exit within %gs of DONE" % _SDFIX_GRACE_S, echo=False)
+    os._exit(0)
+
+
+def _sdfix_main_wait():
+    """The main thread, once it saw SYSTEM.shutdown_requested. Switch OFF, or not the shutdown route (reboot shares the flag):
+    returns False and the caller runs today's 20 counted sleeps. ON: waits for DONE until the ABSOLUTE deadline T0 + wait_s,
+    traces the outcome, flushes once more if it hit the cap (5 s), returns True; the caller then exits exactly as before."""
+    cfg, t0 = _SDFIX["cfg"], _SDFIX["t0"]
+    if cfg is None or t0 is None:
+        return False
+    deadline = t0 + cfg["wait_s"]
+    done = _SDFIX["done"]
+    while not done.is_set() and _sdfix_clock() < deadline:
+        time.sleep(_SDFIX_POLL_S)
+    if done.is_set():
+        _sdfix_trace("MAIN: DONE -> exit", echo=False)
+        return True
+    _sdfix_trace("MAIN: CAP %gs reached, shutdown still in '%s' -> one more flush (5 s), then exit" % (cfg["wait_s"], _SDFIX["last"]),
+                 echo=False)   # file only: nothing new on the console between the cap and the exit
+    t = _sdfix_clock()
+    r = _sdfix_bounded("capflush", _sdfix_flush_once, 5.0, False)
+    _sdfix_trace("MAIN: CAP manifold.flush_all %s in %.1fs -> exit" % (r, _sdfix_clock() - t), echo=False)
+    return True
+
+
 def shutdown_system():
     """
     Graceful shutdown using biological sleep model.
@@ -8845,6 +9152,18 @@ def shutdown_system():
     """
     import threading
 
+    # ---- _THREAD_SNAPSHOT gate (2026-09-30, Nous; Ace's go) -- FIRST, before anything else ---------
+    # After close() returns no snapshot is running and none can start, so no stop-the-world call can
+    # meet fabric.shutdown()'s attached join (directory/fairy.py:414 -> postal_core lib.rs:201).
+    # Every shutdown path reaches this line: HTTP shutdown (_do_shutdown), reboot, and Ctrl+C.
+    try:
+        from infrastructure import thread_snapshot as _tsnap
+        if not _tsnap.close("shutdown_system", wait_s=5.0):
+            print("[Server] thread_snapshot: a snapshot was still running after 5 s", flush=True)
+    except Exception as _tse:
+        print(f"[Server] thread_snapshot gate close failed: {_tse}", flush=True)
+    _sdfix_phase("shutdown_system entered, snapshot gate passed")   # SHUTDOWN FIX marks: no-op unless route + switch ON
+
     print("[Server] ╔════════════════════════════════════════════════════════════╗")
     print("[Server] ║  SHUTDOWN WAVE - The Mind Goes to Sleep                    ║")
     print("[Server] ╚════════════════════════════════════════════════════════════╝")
@@ -8853,7 +9172,7 @@ def shutdown_system():
     _STATUS_REFRESH_STOP.set()
 
     # PATH B — PERSIST THE GRAPH CORTEX FIRST (2026-07-19 Nous + Ace).
-    # Deliberately before any wind-down step: the HTTP shutdown path arms a 30s force-exit watchdog,
+    # Deliberately before any wind-down step: the HTTP shutdown path arms a 120 s force-exit watchdog (30 s until 08-27),
     # and this session's new concepts/edges live ONLY in the growable store until save() writes them.
     # Saving first means her learning survives even if a later shutdown step stalls.
     try:
@@ -8872,6 +9191,7 @@ def shutdown_system():
             SYSTEM.shutdown_fairy.extend_watchdog("system_shutdown")
         except Exception:
             pass  # Old fairy without extend_watchdog — watchdog stays at 15s
+    _sdfix_phase("WAVE (fairy watchdog extended to now + 60 s)")
 
     # Helper to run shutdown with timeout (used throughout)
     def _shutdown_with_timeout(name: str, func, timeout: float = 5.0):
@@ -8908,6 +9228,7 @@ def shutdown_system():
     # ══════════════════════════════════════════════════════════════════════════
     print("[Server]")
     print("[Server] ── Phase 1: Sleep Onset ──────────────────────────────────────")
+    _sdfix_phase("phase 1 sleep onset")
 
     fairy_handled = (
         hasattr(SYSTEM, 'shutdown_fairy')
@@ -8930,6 +9251,7 @@ def shutdown_system():
     # ══════════════════════════════════════════════════════════════════════════
     print("[Server]")
     print("[Server] ── Phase 2: Dream Seed Capture ───────────────────────────────")
+    _sdfix_phase("phase 2 dream seed")
     _capture_dream_seed()
 
     # Also let DreamFairy's system_shutdown capture its own seed (if available)
@@ -8949,6 +9271,7 @@ def shutdown_system():
     # ══════════════════════════════════════════════════════════════════════════
     print("[Server]")
     print("[Server] ── Phase 3: Consciousness Wind-Down ──────────────────────────")
+    _sdfix_phase("phase 3 consciousness stop (cap 5 s)")
     if SYSTEM.consciousness:
         print("[Server]   Stopping consciousness loop...")
         _shutdown_with_timeout("ConsciousnessLoop", SYSTEM.consciousness.stop, timeout=5.0)
@@ -8962,6 +9285,7 @@ def shutdown_system():
     if hasattr(SYSTEM, 'batteries') and SYSTEM.batteries:
         print("[Server]")
         print("[Server] ── Phase 3.4: Dimension Battery Shutdown ───────────────────────")
+        _sdfix_phase("phase 3.4 batteries")
         for name, bat in SYSTEM.batteries.items():
             try:
                 bat.stop_circulation(wait=False)
@@ -8991,9 +9315,11 @@ def shutdown_system():
     if SYSTEM.cognition_guild:
         print("[Server]")
         print("[Server] ── Phase 3.5: Cognition Guild Battery Save ──────────────────")
+        _sdfix_phase("phase 3.5 CognitionGuild battery save (cap 30 s)")
         # 30s timeout: battery_save dumps 5MB+ graph JSON which takes 10-15s
         _shutdown_with_timeout("CognitionGuild", SYSTEM.cognition_guild.shutdown, timeout=30.0)
         print("[Server]   - CognitionGuild shutdown (battery saved, cards persisted)")
+        _sdfix_phase("phase 3.5 done")
 
     # ══════════════════════════════════════════════════════════════════════════
     # PHASE 4: PLANE-BY-PLANE SHUTDOWN - Reverse order, generous timeouts
@@ -9003,6 +9329,7 @@ def shutdown_system():
     # ══════════════════════════════════════════════════════════════════════════
     print("[Server]")
     print("[Server] ── Phase 4: Fairy Shutdown (P60→P00) ─────────────────────────")
+    _sdfix_phase("phase 4 portals + planes P60..P10")
 
     # ── Close Russian Doll Plane Portals (reverse order) ──
     if hasattr(SYSTEM, 'plane_portals') and SYSTEM.plane_portals:
@@ -9032,6 +9359,9 @@ def shutdown_system():
 
     if SYSTEM.directory:
         for plane in PLANES_REVERSE:
+            if plane == "P00" and _sdfix_here():
+                break   # SHUTDOWN FIX: the route never enters P00 (fabric.shutdown(), directory/fairy.py:414 = the freeze trigger)
+            _sdfix_phase("phase 4 plane %s" % plane)
             plane_timeout = PLANE_TIMEOUTS.get(plane, DEFAULT_TIMEOUT)
             print(f"[Server] [SHUTDOWN] Shutting down plane {plane} (timeout={plane_timeout}s)...")
             try:
@@ -9096,6 +9426,11 @@ def shutdown_system():
             print(f"[Server]   Shutdown timing profiles saved")
         except Exception as _e:
             print(f"[Server]   Shutdown timing persist failed (non-fatal): {_e}")
+
+    # SHUTDOWN FIX (route + switch ON): Phase 5's persisting steps only (bounded), then back to _do_shutdown -> DONE.
+    if _sdfix_here():
+        _sdfix_finish()
+        return
 
     # ══════════════════════════════════════════════════════════════════════════
     # PHASE 5: INFRASTRUCTURE CLEANUP
@@ -9423,11 +9758,14 @@ def main():
 
             if SYSTEM.shutdown_requested:
                 print("[Server] Shutdown requested via HTTP — waiting for daemon thread...")
-                # The daemon thread runs shutdown_system() → os._exit(0)
-                # Wait up to 20s for it, then fall through to our own shutdown
-                for _ in range(20):
-                    time.sleep(1.0)
-                print("[Server] WARNING: Daemon thread didn't exit — running shutdown manually")
+                # (corrected 2026-10-12) shutdown_system() has no os._exit of its own, and the fall-through below never
+                # runs it (guarded by `if not SYSTEM.shutdown_requested`): this is an unconditional exit timer, 20
+                # COUNTED sleeps (24-43 s of wall time under load), then os._exit(0) -- the shutdown cut.
+                # SHUTDOWN FIX (switch ON, shutdown route only): wait for DONE against an absolute deadline instead.
+                if not _sdfix_main_wait():
+                    for _ in range(20):
+                        time.sleep(1.0)
+                    print("[Server] WARNING: Daemon thread didn't exit — running shutdown manually")
 
         except KeyboardInterrupt:
             pass

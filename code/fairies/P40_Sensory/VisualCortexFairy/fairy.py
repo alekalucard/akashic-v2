@@ -57,6 +57,34 @@ except Exception as _vss_e:
     _FovealReader = None
     print(f"[VisualCortexFairy] visual_shared_state preload warning: {_vss_e}")
 
+# recall_eyes_1020 (Nous, 2026-10-20): Ace's switch state/recall_eyes_fix.json arms passive_spread_single_flight (infrastructure/
+# recall_eyes_fix.py). Imported here, at load, on the main thread (see the note above on free-threaded imports). Absent / malformed / the
+# module missing = OFF = the eyes spread is the unguarded call it was.
+try:
+    from infrastructure import recall_eyes_fix as _RX0
+except Exception:
+    _RX0 = None
+_RX = [_RX0, -1e9]
+
+
+def _rx_flight():
+    """The single-flight guard of the eyes spread, or None (key OFF, module missing, any error = today's unguarded call)."""
+    try:
+        m = _RX[0]
+        if m is None:
+            now = time.monotonic()
+            if now - _RX[1] < 60.0:
+                return None
+            _RX[1] = now
+            from infrastructure import recall_eyes_fix as m
+            _RX[0] = m
+        if m.on("passive_spread_single_flight"):
+            return m.flight("vcf_passive_spread")
+    except Exception:
+        pass
+    return None
+
+
 # Visual cortex gate - subprocess-based capture (Python 3.12 with dxcam/OpenCV/imagehash)
 try:
     from fairies.P40_Sensory.cortex.visual_cortex_gate import VisualCortexGate
@@ -308,6 +336,18 @@ class GazeController:
             except Exception:
                 pass  # Somatic feedback is best-effort
 
+    def set_frame(self, w: int, h: int) -> bool:
+        """eyes_fix F11 'gaze_size': size the gaze to the REAL frame (the one the change grid is computed on). The interior
+        reports it as frame_wh; built 1920x1080 for her 3440x1440 frame, a change in grid column 3 cropped x 1440..1920.
+        The gaze point keeps its place. True when the size changed."""
+        w, h = int(w), int(h)
+        if w <= 0 or h <= 0 or (w, h) == (self.screen_w, self.screen_h):
+            return False
+        fx, fy = w / float(self.screen_w), h / float(self.screen_h)
+        self.screen_w, self.screen_h = w, h
+        self._gaze_x, self._gaze_y = int(self._gaze_x * fx), int(self._gaze_y * fy)
+        return True
+
     def needs_foveal_analysis(self) -> bool:
         """Check if it's time for a foveal OCR of the gaze region."""
         return (time.time() - self._last_foveal_ts) > self.FOVEAL_INTERVAL
@@ -331,6 +371,42 @@ class GazeController:
             "saliency": [round(s, 2) for s in self._saliency],
             "hottest_region": self._saliency.index(max(self._saliency)),
         }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EYES_FIX F11 (2026-10-09, nous_builds/eyes_fix_1009): her gaze in the real frame's pixels
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_EF_GAZE = {"sized": False, "orig": None}
+
+
+def _eyes_fix_gaze_frame(gaze, data, who: str = "VisualCortexFairy") -> None:
+    """eyes_fix F11 'gaze_size' (Ace's eyes switch state/eyes_fix.json): with the key, the gaze is sized to the frame the
+    interior reports (frame_wh, the same frame its 4x3 change grid is computed on); without it the gaze is the size it was
+    built with (1920x1080 -- today), restored if an earlier frame resized it. Never raises."""
+    try:
+        if gaze is None:
+            return
+        try:
+            from infrastructure import eyes_fix as _efm
+            on = _efm.on("gaze_size")
+        except Exception:
+            on = False
+        if not on:
+            if _EF_GAZE["sized"] and _EF_GAZE["orig"]:
+                gaze.set_frame(*_EF_GAZE["orig"])
+                _EF_GAZE["sized"] = False
+            return
+        wh = data.get("frame_wh") if isinstance(data, dict) else None
+        if not wh:
+            return
+        if _EF_GAZE["orig"] is None:
+            _EF_GAZE["orig"] = (gaze.screen_w, gaze.screen_h)
+        if gaze.set_frame(int(wh[0]), int(wh[1])):
+            _EF_GAZE["sized"] = True
+            print("[%s] [GAZE] sized to the real frame %dx%d (eyes_fix gaze_size)" % (who, int(wh[0]), int(wh[1])), flush=True)
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1125,12 +1201,20 @@ class VisualCortexFairyV2(Fairy):
                         _vis_gate = getattr(_vis_cortex, '_portal_gate', None) if _vis_cortex else None
                         _vis_gate_ok = getattr(_vis_cortex, '_portal_gate_enabled', False) if _vis_cortex else False
                         if _vis_gate and _vis_gate_ok:
-                            _vis_spread = _vis_gate.spread_many(
-                                sources=_vis_seeds,
-                                depth=3,
-                                limit=20,
-                                mode="visual_inject",
-                            )
+                            _rx_sf = _rx_flight()         # recall_eyes_1020: None unless passive_spread_single_flight is armed (then: today's call)
+                            if _rx_sf is not None and not _rx_sf.enter():
+                                _vis_spread = None        # an earlier eyes spread has not returned: skipped, counted by the guard
+                            else:
+                                try:
+                                    _vis_spread = _vis_gate.spread_many(
+                                        sources=_vis_seeds,
+                                        depth=3,
+                                        limit=20,
+                                        mode="visual_inject",
+                                    )
+                                finally:
+                                    if _rx_sf is not None:
+                                        _rx_sf.leave()
                             if _vis_spread and _vis_spread.get("status") == "ok":
                                 _vis_activated = _vis_spread.get("activated", {})
                                 if _vis_activated:
@@ -1161,6 +1245,7 @@ class VisualCortexFairyV2(Fairy):
 
             # ── GAZE: Update saliency from peripheral change detection ──
             try:
+                _eyes_fix_gaze_frame(self._gaze, data, self.ACTOR_NAME)   # eyes_fix F11: the gaze in the real frame's pixels
                 changed_regions = data.get("changed_regions", [])
                 if changed_regions:
                     self._gaze.update_saliency(changed_regions)

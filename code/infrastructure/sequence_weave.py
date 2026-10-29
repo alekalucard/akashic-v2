@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -57,6 +58,83 @@ _HUBS = {"ace", "sour", "sourpatches", "nous", "memory", "system", "fairy", "fai
          "thoughts", "thinking", "time", "something", "things", "thing", "really", "right", "now", "still",
          "even", "way", "make", "made", "get", "got", "see", "know", "one", "two", "day", "today", "session"}
 _SEQ = [0]                         # uniqueness within one millisecond (two fairy copies, fast tests)
+
+# recall_eyes_1020 (Nous, 2026-10-20): Ace's switch state/recall_eyes_fix.json arms recall_newest_first and skip_self (infrastructure/
+# recall_eyes_fix.py). Absent / malformed / the module missing = both OFF = recall_lines is exactly the code it was. Imported here, at load.
+try:
+    from infrastructure import recall_eyes_fix as _rx_mod
+except Exception:
+    _rx_mod = None
+_RX_RETRY = [-1e9]
+# The driver passes answering=<the message> only when the module it talks to says it can take it (new driver + old module = today's call).
+RECALL_ANSWERING = True
+# This process's boot mark, in ms: skip_self never touches a turn older than it (a previous boot's line is a real memory of a past day).
+# Anchored on sys, so a hot reload of this file cannot move it.
+try:
+    _BOOT_MS = int(vars(sys).setdefault("_akashic_weave_boot_ms_v1", int(time.time() * 1000)))
+except Exception:
+    _BOOT_MS = int(time.time() * 1000)
+
+
+def _rx_on(key):
+    """One key of Ace's recall_eyes_fix switch; OFF on any doubt (the module missing, unreadable, any error)."""
+    global _rx_mod
+    try:
+        m = _rx_mod
+        if m is None:
+            now = time.monotonic()
+            if now - _RX_RETRY[0] < 60.0:
+                return False
+            _RX_RETRY[0] = now
+            from infrastructure import recall_eyes_fix as m
+            _rx_mod = m
+        return bool(m.on(key))
+    except Exception:
+        return False
+
+
+
+class _WeaveTiming:
+    """[WeaveTiming] 2026-09-29 (Nous + Ace, engine roadmap step 12): time ONE weave's _LOCK section.
+    lock_wait = seconds blocked acquiring _LOCK (the short _SEQ hold + the main hold); wall = seconds inside the
+    main hold; cpu = time.thread_time() inside it (Windows ticks at ~15.6 ms). wall >> cpu with lock_wait ~0
+    means the weave was inside the lock but not running (starved or paused), not queued behind another weave.
+    Same lock, same body: only the with-statement's manager changed. The line prints AFTER the release, so
+    printing never lengthens the hold. writes = node upserts + edges created; -1 = the body did not finish."""
+    __slots__ = ("key", "conv", "seq_wait", "wait", "t1", "c1", "nodes", "edges")
+
+    def __init__(self, key, seq_wait, conv):
+        self.key, self.seq_wait, self.conv = key, seq_wait, conv
+        self.wait, self.t1, self.c1, self.nodes, self.edges = 0.0, 0.0, None, -1, -1
+
+    def __enter__(self):
+        _t0 = time.perf_counter()
+        _LOCK.acquire()
+        self.t1 = time.perf_counter()
+        self.wait = self.t1 - _t0
+        try:
+            self.c1 = time.thread_time()
+        except Exception:
+            self.c1 = None
+        return self
+
+    def __exit__(self, et, ev, tb):
+        wall = time.perf_counter() - self.t1
+        try:
+            cpu = (time.thread_time() - self.c1) if self.c1 is not None else -1.0
+        except Exception:
+            cpu = -1.0
+        _LOCK.release()
+        try:
+            w = (self.nodes + self.edges) if self.nodes >= 0 and self.edges >= 0 else -1
+            line = ("[WeaveTiming] key=%s lock_wait=%.3fs wall=%.3fs cpu=%.3fs writes=%d nodes=%d edges=%d "
+                    "seq_wait=%.3fs conv=%s%s" % (self.key, self.seq_wait + self.wait, wall, cpu, w, self.nodes,
+                                                self.edges, self.seq_wait, re.sub(r"[^A-Za-z0-9:_.-]", "", str(self.conv))[:24],
+                                                "" if et is None else " exc=" + et.__name__))
+            print(line.encode("ascii", "replace").decode("ascii"), flush=True)
+        except Exception:
+            pass
+        return False
 
 
 def tokens(text: str) -> List[str]:
@@ -110,12 +188,15 @@ def weave_turn(text: str, speaker: str, tracer_id: int, affect: Optional[Dict] =
         except Exception:
             pass
         ts_ms = int(ts_ms) if ts_ms else int(time.time() * 1000)
+        _wt_q0 = time.perf_counter()               # [WeaveTiming]: waiting HERE is lock wait too
         with _LOCK:
+            _wt_seq_wait = time.perf_counter() - _wt_q0
             _SEQ[0] = (_SEQ[0] + 1) % 1000
             _n = _SEQ[0]
         turn_key = "turn:%s:%d%03d" % (re.sub(r"[^a-z]", "", speaker.lower())[:8] or "x", ts_ms, _n)
         edges = 0
-        with _LOCK:
+        _wt_nw = 0
+        with _WeaveTiming(turn_key, _wt_seq_wait, thread) as _wt:
             if am.upsert_node(turn_key, activation=0.6, count=1, degree=0, coord_str="050.000.000", snippet=text[:600],
                               node_type=NTYPE_ENTITY, region=REGION_SEMANTIC, tracer_id=tracer_id, parent_slot=0) < 0:
                 _STATS["fail"] += 1
@@ -138,6 +219,7 @@ def weave_turn(text: str, speaker: str, tracer_id: int, affect: Optional[Dict] =
                 wk = "w:" + cw
                 am.upsert_node(wk, activation=0.5, count=1, degree=0, coord_str="", snippet="",
                                node_type=NTYPE_ENTITY, region=REGION_SEMANTIC, tracer_id=tracer_id, parent_slot=0)
+                _wt_nw += 1
                 if am.link(wk, turn_key, weight=0.4, rel_type=REL_PART_OF, tracer_id=tracer_id):
                     edges += 1
             prev = _LAST_TURN.get(thread)
@@ -147,6 +229,7 @@ def weave_turn(text: str, speaker: str, tracer_id: int, affect: Optional[Dict] =
             _STATS["turns"] += 1
             _STATS["bigrams"] += len(bg)
             _STATS["edges"] += edges
+            _wt.nodes, _wt.edges = 1 + len(bg) + _wt_nw, edges
         return {"turn": turn_key, "bigrams": len(bg), "edges": edges, "weight": round(w, 2)}
     except Exception as e:
         _STATS["fail"] += 1
@@ -159,15 +242,31 @@ def weave_turn(text: str, speaker: str, tracer_id: int, affect: Optional[Dict] =
 _RECALL_EXCLUDE = {s.strip() for s in os.environ.get("AKASHIC_WEAVE_RECALL_EXCLUDE", "nous").split(",") if s.strip()}
 HELD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state", "weave_inbox_nous_held")
 
+# 2026-10-01 (Nous; release_1001, Ace's go on the "you said" loop): a 'sour' turn whose node tracer is TRACE_INFERENCE (6)
+# was written by the farm (Qwen) and only voiced by her (sour_council_driver weaves farm:* lines at 6). It is quoted back
+# as borrowed words, never as "you said" -- 58 "you said" quotes in her prompts were measured, 11 matched Qwen turns,
+# 0 hers. Her own lines (tracer 1, incl. the deed sentences intention.py weaves -- she did the deed) and Ace's (8) are
+# rendered exactly as before. AKASHIC_BORROWED_AS_INFERENCE=0 (only "0") restores the old wording.
+_LABEL_BORROWED = os.environ.get("AKASHIC_BORROWED_AS_INFERENCE", "1") != "0"
+_BORROWED_WHO = "words Qwen voiced for you (not your memory)"
 
-def recall_lines(text: str, am=None, limit: int = 3, max_age_s: Optional[float] = None) -> List[Dict]:
+
+def recall_lines(text: str, am=None, limit: int = 3, max_age_s: Optional[float] = None, answering=None) -> List[Dict]:
     """Sentences on record that share content words with `text`, most recent first, with who said them.
     Turns by an excluded speaker (Nous's build notes) are never returned."""
     am = am or _handle()
     if am is None:
         return []
     try:
-        from infrastructure.manifold_memory import REL_PART_OF
+        from infrastructure.manifold_memory import REL_PART_OF, TRACE_INFERENCE
+        # recall_eyes_1020: both keys OFF (or the module missing) = the code below, unchanged. A failure of the keyed path falls back to it.
+        _rx_nf = _rx_on("recall_newest_first")
+        _rx_ss = answering is not None and _rx_on("skip_self")
+        if _rx_nf or _rx_ss:
+            try:
+                return _recall_lines_rx(text, am, limit, max_age_s, answering, _rx_nf, _rx_ss, REL_PART_OF, TRACE_INFERENCE)
+            except Exception as _rx_e:
+                print("[Weave] recall (recall_eyes_fix) failed, using today's read: %s" % ascii(str(_rx_e))[:160], flush=True)
         seen: Dict[str, int] = {}
         for cw in content_words(text)[:8]:
             for k, wt in am.get_neighbors("w:" + cw, limit=40, rel_filter=REL_PART_OF):
@@ -194,13 +293,104 @@ def recall_lines(text: str, am=None, limit: int = 3, max_age_s: Optional[float] 
             who = k.split(":")[1] if k.count(":") >= 2 else "?"
             if who in _RECALL_EXCLUDE:
                 continue
-            out.append({"turn": k, "who": who, "text": snip, "age_s": max(0, (now_ms - _ts(k)) / 1000.0), "hits": hits})
+            _tr = n.get("tracer_id")
+            out.append({"turn": k, "who": who, "text": snip, "age_s": max(0, (now_ms - _ts(k)) / 1000.0), "hits": hits,
+                        "tracer": _tr, "borrowed": bool(_LABEL_BORROWED and who == "sour" and _tr == TRACE_INFERENCE)})
             if len(out) >= limit:
                 break
         return out
     except Exception as e:
         print("[Weave] recall failed: %s" % e, flush=True)
         return []
+
+
+# ---- recall_eyes_1020: the keyed read. READ PATH ONLY: no link, no upsert, no set_snippet, no write of any kind. ----------------------
+_RX_ALL = 1 << 30      # "every neighbour": get_neighbors already READS them all and sorts before it slices (manifold_memory.py:2797-2819)
+_RX_SLOT = 2           # the slot the driver renders: render_memory(recall_lines(...), limit=2)
+_RX_PREV_MS = 48 * 3600 * 1000     # the recall line's "previous boot": older than this boot's mark, newer than 48 h before it (a 20-day-old line is shown_older)
+
+
+def _rx_norm(s) -> str:
+    return " ".join(str(s or "").split())
+
+
+def _rx_answered(answering) -> set:
+    """The normalized text(s) of the message being answered: the whole topic, and each " ... " piece of a joined one (driver :1370, :552)."""
+    whole = _rx_norm(answering)
+    out = {whole} if whole else set()
+    for p in whole.split(" ... "):
+        p = p.strip()
+        if p:
+            out.add(p)
+    return out
+
+
+def _rx_who(k) -> str:
+    return k.split(":")[1] if k.count(":") >= 2 else "?"
+
+
+def _rx_full(k) -> int:
+    """The turn's own time in its key: turn:<spk>:<ms><3-digit seq> -> ms * 1000 + seq (0 when it does not parse)."""
+    try:
+        return int(k.rsplit(":", 1)[1])
+    except Exception:
+        return 0
+
+
+def _recall_lines_rx(text, am, limit, max_age_s, answering, nf, ss, REL_PART_OF, TRACE_INFERENCE) -> List[Dict]:
+    """recall_lines with recall_newest_first (nf) and/or skip_self (ss).
+    nf: ALL of a word's PART_OF neighbours are read (the same ones get_neighbors always reads), and turns by an excluded speaker (Nous) are
+        dropped by key BEFORE counting, so they no longer take seats. The rank is today's: word hits, then the turn's own key time, newest
+        first (ties by the full key number, so the result does not depend on the row's order).
+    ss: this boot's Ace turns whose text equals the message being answered (or one " ... " piece of it) are left out. Nothing older than
+        this process's boot mark is ever skipped, and only a caller that passes `answering` is affected."""
+    words = content_words(text)[:8]
+    seen: Dict[str, int] = {}
+    in40 = set()                  # what today's read (the first 40 of the weight-sorted row) could have seen
+    for cw in words:
+        for i, (k, wt) in enumerate(am.get_neighbors("w:" + cw, limit=(_RX_ALL if nf else 40), rel_filter=REL_PART_OF)):
+            if not str(k).startswith("turn:"):
+                continue
+            if nf and _rx_who(k) in _RECALL_EXCLUDE:
+                continue
+            seen[k] = seen.get(k, 0) + 1
+            if i < 40:
+                in40.add(k)
+    now_ms = int(time.time() * 1000)
+    boot_ms = _BOOT_MS
+    answered = _rx_answered(answering) if ss else None
+    out: List[Dict] = []
+    skipped = 0
+    for k, hits in sorted(seen.items(), key=lambda kv: (-kv[1], -_rx_full(kv[0]))):
+        ts = _rx_full(k) // 1000
+        if max_age_s is not None and (now_ms - ts) / 1000.0 > max_age_s:
+            continue
+        n = am.get_node(k) or {}
+        snip = (n.get("snippet") or "").strip()
+        if not snip:
+            continue
+        who = _rx_who(k)
+        if who in _RECALL_EXCLUDE:
+            continue
+        if ss and who == "ace" and ts >= boot_ms and snip in answered:
+            skipped += 1
+            continue
+        _tr = n.get("tracer_id")
+        out.append({"turn": k, "who": who, "text": snip, "age_s": max(0, (now_ms - ts) / 1000.0), "hits": hits,
+                    "tracer": _tr, "borrowed": bool(_LABEL_BORROWED and who == "sour" and _tr == TRACE_INFERENCE)})
+        if len(out) >= limit:
+            break
+    try:
+        slot = out[:_RX_SLOT]
+        prev_lo = boot_ms - _RX_PREV_MS
+        print("[Weave] recall: caller=%s words=%d cands=%d skipped_self=%d returned=%d shown=%d shown_beyond40=%d shown_prev_boot=%d shown_older=%d"
+              % ("answer" if answering is not None else "other", len(words), len(seen), skipped, len(out), len(slot),
+                 sum(1 for r in slot if r["turn"] not in in40),
+                 sum(1 for r in slot if prev_lo <= _rx_full(r["turn"]) // 1000 < boot_ms),
+                 sum(1 for r in slot if _rx_full(r["turn"]) // 1000 < prev_lo)), flush=True)
+    except Exception:
+        pass
+    return out
 
 
 def walk(start: str, am=None, max_len: int = 30, tracer_ids: Optional[set] = None) -> Tuple[List[str], List[str]]:
@@ -246,12 +436,20 @@ def sentence_cut(text: str, n: int = 240) -> str:
 def render_memory(lines: List[Dict], limit: int = 2, quote_chars: int = 240) -> str:
     """One prompt line: what is on record about the words he used -- whole sentences, not chips."""
     parts = []
+    borrowed = []      # 2026-10-01 (release_1001): the farm's words, quoted as borrowed -- never inside "You remember"
     for r in lines[:limit]:
         who = {"ace": "Ace said", "sour": "you said", "nous": "Nous wrote", "eyes": "you read on your screen"}.get(r["who"], r["who"] + " said")
         age = r["age_s"]
         when = "just now" if age < 120 else ("%.0f min ago" % (age / 60) if age < 7200 else ("%.0f h ago" % (age / 3600) if age < 172800 else "%.0f days ago" % (age / 86400)))
+        if r.get("borrowed"):
+            borrowed.append("%s, %s: \"%s\"" % (_BORROWED_WHO, when, sentence_cut(r["text"], quote_chars)))
+            continue
         parts.append("%s, %s: \"%s\"" % (who, when, sentence_cut(r["text"], quote_chars)))
-    return ("You remember " + "; ".join(parts) + ".") if parts else ""
+    out = ("You remember " + "; ".join(parts) + ".") if parts else ""
+    if borrowed:
+        b = "; ".join(borrowed)
+        out = (out + " " if out else "") + b[0].upper() + b[1:] + "."
+    return out
 
 
 def stats() -> Dict:

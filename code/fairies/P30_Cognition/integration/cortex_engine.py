@@ -140,6 +140,195 @@ def _reason_budget_s() -> float:
         return _REASON_BUDGET_DEFAULT_S
 
 
+# -- REASON DROP 2026-10-12 (Nous, engines E1 / step 10a) ----------------------
+# MEASURED (nous_builds/engines_1012/PLAN.md 1.1, 1.4): in Boot J 1,395 of 1,411 postal reasons
+# finished AFTER the asker had stopped waiting (fastest reason 6.03 s against waits of 0.15-2.5 s),
+# 16,101 s = 57.9% of all reason-seconds. Five of the askers cannot use the reply even if it were in
+# time, they read keys it never carries: GoalSchedulerFairy / AutopilotFairy read "content"
+# (goal_scheduler_fairy.py:1561, :1716, :3219; AutopilotFairy/fairy.py:1792), Embodiment, ActionChain
+# and SomaticMind read team_result.synthesis / .logic (the reply carries team_result.interpretation,
+# handle_reason_request below). InnerNarratorFairy (2.5 s) and ThoughtChainEngine_P20 (0.15 s) read
+# "text" and could only use a reply that beat those waits, which reason()'s 6 s budget never does.
+# SourpatchesFairy_reflection waits 15 s and DOES use its reply (16 of 21 in J): never dropped.
+#
+# THE SWITCH -- state/reason_drop.json, re-read when it changes (mtime + size):
+#   {"on": true, "requesters": ["GoalSchedulerFairy", ...], "keep_every": 25}
+#   No file, a file that does not parse, "on" anything but JSON true, or no usable "requesters" list
+#   = today's behaviour exactly (every request reaches reason()). Revert: delete the file.
+#
+# WHAT A DROP IS: the handler returns before reason() and before _cognition_evaluate. It publishes
+# NOTHING. The askers time out exactly as they do today, so ThoughtChainEngine_P20's circuit breaker
+# (SomaticMindFairy/thought_chains.py:728, skips all but 1 in 60 asks after 5 timeouts in a row) sees
+# the same silence; an instant empty reply would count as an answer, reset that breaker, and P20
+# would go back to asking on every beat.
+#
+# THE FLOOR (card a-bound-that-can-return-nothing-is-a-kill-switch). A drop list with no floor
+# would starve the engine of every reason from these askers for the whole boot, and the next time
+# reason() gets fast (step 14) the askers would still never see an answer. So:
+#   - keep_every (default 25, clamped 1..1000, anything unusable -> 25, never "off"): each listed
+#     requester's 1st arrival and then every keep_every-th arrival runs reason() and publishes as
+#     today. The counter advances on ARRIVAL, not on a run, so no filter downstream can starve it
+#     (the card's second lesson: a floor must count what the loop controls, not what it produces).
+#     It counts from the moment the switch is armed: a re-arm, or a changed list or keep_every, starts
+#     it again, so the 1st arrival after any arming still runs.
+#   - _REASON_DROP_NEVER: SourpatchesFairy_reflection is never dropped, whatever the file says.
+#   - mode "chat" (Ace's conversational turn) is never dropped.
+#   - A requester that is not listed is never dropped (default unknown/other names included).
+#   - Any error in this logic = no drop (fail open to today's path).
+#
+# One line every 100 drops (and one for the first): "[CortexEngine] REASON DROP n=... | dropped: ...
+# | floor-ran: ... | passed: ...". "passed" counts arrivals that were not listed/protected, so the
+# reflection arrivals (the must-not-move counter) sit on the same line as the drops. ASCII only.
+# Dropped arrivals print no "REASON ->", "REASON CPU" or "REASON PHASES" line, so the existing
+# reason-seconds instruments see KEPT reasons only; arrivals come from this counter.
+_REASON_DROP_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+    "state", "reason_drop.json")
+_REASON_DROP_NEVER = frozenset({"SourpatchesFairy_reflection"})
+_REASON_DROP_NEVER_MODES = frozenset({"chat"})
+_REASON_DROP_KEEP_DEFAULT = 25
+_REASON_DROP_KEEP_MAX = 1000
+_REASON_DROP_MAX_LISTED = 64
+_REASON_DROP_MAX_TRACKED = 32
+_RD_NAME = re.compile(r"[A-Za-z0-9_.:\-]{1,80}\Z")      # a requester is an ACTOR_NAME-like identifier
+_RD_UNSAFE = re.compile(r"[^A-Za-z0-9_.:\-]")             # anything else is masked before it reaches a log line
+_RD_LOCK = threading.Lock()
+_RD_CACHE = (None, None)            # (file key, parsed config); replaced whole, never mutated
+_RD_STAT = {"arr": {}, "dropped": {}, "ran": {}, "passed": {}, "n_drop": 0, "sig": None}
+
+
+def _reason_drop_cfg():
+    """The parsed switch as (frozenset(requesters), keep_every), or None when OFF. Never raises."""
+    global _RD_CACHE
+    try:
+        st = os.stat(_REASON_DROP_FILE)
+    except OSError:
+        return None
+    key = (st.st_mtime_ns, st.st_size)
+    _k, _cfg = _RD_CACHE
+    if key == _k:
+        return _cfg
+    try:
+        import json as _json
+        with open(_REASON_DROP_FILE, "rb") as f:
+            d = _json.loads(f.read().decode("utf-8"))
+    except Exception:
+        _RD_CACHE = (None, None)    # torn or bad: today's path now, read again on the next call
+        return None
+    cfg = None
+    if isinstance(d, dict) and d.get("on") is True:
+        names = []
+        rq = d.get("requesters")
+        if isinstance(rq, list):
+            for x in rq[:_REASON_DROP_MAX_LISTED]:
+                x = x.strip() if isinstance(x, str) else ""
+                if _RD_NAME.match(x) and x not in _REASON_DROP_NEVER:
+                    names.append(x)
+        ke = d.get("keep_every")
+        if isinstance(ke, bool) or not isinstance(ke, int) or ke < 1:
+            ke = _REASON_DROP_KEEP_DEFAULT
+        cfg = (frozenset(names), min(ke, _REASON_DROP_KEEP_MAX))
+    _RD_CACHE = (key, cfg)
+    return cfg
+
+
+def _rd_join(d, limit=12):
+    items = sorted(d.items(), key=lambda kv: -kv[1])
+    s = " ".join("%s=%d" % (k, v) for k, v in items[:limit])
+    if len(items) > limit:
+        s += " +%d more" % (len(items) - limit)
+    return s or "-"
+
+
+def _rd_count(table, requester):
+    k = _RD_UNSAFE.sub("?", requester[:48]) if isinstance(requester, str) and requester else "other"
+    if k not in table and len(table) >= _REASON_DROP_MAX_TRACKED:
+        k = "other"
+    table[k] = table.get(k, 0) + 1
+
+
+def _reason_drop_decide(requester, mode):
+    """True = skip reason() for this arrival. Never raises; any error means False (today's path)."""
+    try:
+        cfg = _reason_drop_cfg()
+        if cfg is None and _RD_STAT["sig"] is None:
+            return False                       # OFF and never armed: the whole cost is one failed stat
+        msgs = []
+        drop = False
+        with _RD_LOCK:
+            st = _RD_STAT
+            sig = None if cfg is None else (tuple(sorted(cfg[0])), cfg[1])
+            if sig != st["sig"]:
+                if sig is not None:
+                    msgs.append("[CortexEngine] REASON DROP armed: requesters=%s keep_every=%d "
+                                "(1st and every %dth arrival of a listed requester still runs reason(); "
+                                "never dropped: %s, mode chat, unlisted names)"
+                                % (",".join(sig[0]) or "-", sig[1], sig[1],
+                                   ",".join(sorted(_REASON_DROP_NEVER))))
+                else:
+                    msgs.append("[CortexEngine] REASON DROP disarmed after n=%d | dropped: %s | "
+                                "floor-ran: %s | passed: %s"
+                                % (st["n_drop"], _rd_join(st["dropped"]), _rd_join(st["ran"]),
+                                   _rd_join(st["passed"])))
+                st["arr"] = {}                         # a new arming restarts the floor: its 1st arrival runs (verify_safety F4)
+                st["sig"] = sig
+            if cfg is not None:
+                listed = (isinstance(requester, str) and requester in cfg[0]
+                          and requester not in _REASON_DROP_NEVER
+                          and mode not in _REASON_DROP_NEVER_MODES)
+                if listed:
+                    n = st["arr"].get(requester, 0)
+                    st["arr"][requester] = n + 1           # ARRIVALS advance the floor, not runs
+                    if n % cfg[1] == 0:
+                        _rd_count(st["ran"], requester)
+                    else:
+                        drop = True
+                        _rd_count(st["dropped"], requester)
+                        st["n_drop"] += 1
+                        if st["n_drop"] == 1 or st["n_drop"] % 100 == 0:
+                            msgs.append("[CortexEngine] REASON DROP n=%d keep_every=%d | dropped: %s | "
+                                        "floor-ran: %s | passed: %s"
+                                        % (st["n_drop"], cfg[1], _rd_join(st["dropped"]),
+                                           _rd_join(st["ran"]), _rd_join(st["passed"])))
+                else:
+                    _rd_count(st["passed"], requester)
+        for m in msgs:
+            try:
+                print(m)
+            except Exception:
+                pass
+        return drop
+    except Exception:
+        return False
+
+
+
+# -- XO (engines E2a / 14b, 2026-10-14 Nous): the autonomous explore comes off the tick thread ------------------------------
+# tick() ran _autonomous_explore inline every 15th tick (a full react() with its own 6 s deadline) on whichever driver hit it
+# (CortexTick or the heartbeat exec thread); the serial cortex is the only fairy that drops heartbeat ticks (Boot N 2,301).
+# infrastructure/explore_offload.py runs it on ONE worker, one in flight. SWITCH: state/explore_offload.json {"on": true},
+# re-read on change (live). False from here = switch off / module missing / the floor (stuck or dead worker) = today's inline
+# call. Never raises. Revert: delete the file (live).
+_XO_MOD = None                      # None = not tried yet; False = unavailable (today's path)
+
+
+def _xo_submit(engine, now, energy):
+    global _XO_MOD
+    try:
+        m = _XO_MOD
+        if m is None:
+            try:
+                from infrastructure import explore_offload as m
+            except Exception:
+                m = False
+            _XO_MOD = m
+        if m is False:
+            return False
+        return m.submit(engine, now, energy) is True
+    except Exception:
+        return False
+
+
 class CortexEngine:
     """
     The cortex breathes. Every stimulus triggers activation.
@@ -1405,7 +1594,8 @@ class CortexEngine:
             self._promote_to_wm(now)
 
         if self._total_ticks % 15 == 0 and now - self._last_explore_time >= 10.0:
-            self._autonomous_explore(now, energy)
+            if not _xo_submit(self, now, energy):          # XO (E2a/14b): False = switch off / floor = today's inline call
+                self._autonomous_explore(now, energy)
 
     def _check_surface(self, now: float):
         """Check if current activation state should be surfaced as a thought."""
@@ -2730,6 +2920,12 @@ class CortexEngine:
             print(f"[CortexEngine] handle_reason_request SKIPPED — "
                   f"missing: {_missing}, keys: {list(payload.keys())[:10]}, "
                   f"requester: {requester}")
+            return
+
+        # REASON DROP 2026-10-12 (E1 / 10a): a listed requester that cannot read the reply in time
+        # gets silence, not an answer (see _reason_drop_decide for the switch and the floor).
+        # Returns BEFORE reason() and _cognition_evaluate; publishes nothing. OFF = never True.
+        if _reason_drop_decide(requester, mode):
             return
 
         # Map old mode names

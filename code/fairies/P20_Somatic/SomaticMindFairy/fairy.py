@@ -4872,6 +4872,7 @@ Your thoughts become actions when you're specific about intent."""
         # herself think", thought chains lose energy proportional to loudness.
         # Very loud audio (>0.7) skips thought chain tick entirely — she's
         # overwhelmed. If she "gave in" to music, chains are fully paused.
+        self._sh_audio_expire()   # 2026-10-06 senses_hub (skeptic F3): no frame for > 3 s -> not drowned out any more
         _audio_ok = (self._audio_loudness < 0.7 and not self._audio_gave_in)
         if beat % 2 == 1 and self._chains_wired and self._thought_chain_engine and _audio_ok:
             new_thoughts = self._thought_chain_engine.tick()
@@ -7413,10 +7414,26 @@ Your thoughts become actions when you're specific about intent."""
             is_music = payload.get("is_music", False)
             is_speech = payload.get("is_speech", False)
 
+            # 2026-10-06 senses_hub (skeptic F3): a gap of > 3 s since the last frame ends the earlier episode (its 30 s
+            # grace restarts), then this frame is stamped; the tick expires the state when frames stop.
+            _sh_now0 = time.time()
+            self._sh_audio_expire(_sh_now0)
+            self._sh_last_frame_t = _sh_now0
             # Normalize level to 0-1 (silence=-60dB, loud=-15dB)
             loudness = max(0.0, min(1.0, (level_db + 60) / 45))
             self._audio_loudness = loudness
             self._audio_is_music = is_music
+            # 2026-10-06 senses_hub (Fe-F6): numbers only, at most once a minute, so the felt-loudness step can be read.
+            _sh_now = time.time()
+            if _sh_now - getattr(self, "_sh_audio_print_t", 0.0) >= 60.0:
+                self._sh_audio_print_t = _sh_now
+                try:
+                    _sh_fr = (self._pain_system.drives.get("frustration")
+                              if (self._pain_system and hasattr(self._pain_system, 'drives')) else None)
+                    print("[audio] loudness=%.2f frustration=%s" % (
+                        loudness, ("%.2f" % _sh_fr.pain_level) if _sh_fr is not None else "n/a"), flush=True)
+                except Exception:
+                    pass
 
             # ── Suppress inner monologue when audio is dominant ──
             # Loudness > 0.5 starts suppressing, > 0.8 nearly silences inner voice
@@ -7458,7 +7475,16 @@ Your thoughts become actions when you're specific about intent."""
                             if self._pain_system and hasattr(self._pain_system, 'drives'):
                                 frust = self._pain_system.drives.get("frustration")
                                 if frust:
-                                    frust.pain_level = min(1.0, frust.pain_level + 0.03)
+                                    # 2026-10-06 senses_hub (Ace): frustration builds per SECOND of loud noise, with a
+                                    # cap -- never per packet, so a sender's rate can never set her feeling. Each
+                                    # packet adds rate x (seconds since the last one, at most 1 s), never above cap.
+                                    _sh_t = time.time()
+                                    _sh_last = getattr(self, "_sh_loud_last_t", 0.0)
+                                    self._sh_loud_last_t = _sh_t
+                                    _sh_dt = min(1.0, max(0.0, _sh_t - _sh_last)) if _sh_last > 0.0 else 0.0
+                                    _sh_rate, _sh_cap = self._sh_loud_knobs()
+                                    if frust.pain_level < _sh_cap:
+                                        frust.pain_level = min(_sh_cap, frust.pain_level + _sh_rate * _sh_dt)
                 else:
                     # Audio quiet enough — inner voice can breathe
                     if self._audio_suppression_start > 0:
@@ -7473,9 +7499,58 @@ Your thoughts become actions when you're specific about intent."""
                             )
                         self._audio_suppression_start = 0.0
                         self._audio_gave_in = False
+                        self._sh_loud_last_t = 0.0                # 2026-10-06 senses_hub: a new episode starts at 0 s
 
         except Exception:
             pass  # Never crash on audio handler
+
+    def _sh_audio_expire(self, now=None):
+        """2026-10-06 senses_hub (skeptic F3). The room's loudness is known only while frames arrive. When none came for
+        > 3 s (the hub paused, was minimized, switched OFF, closed), loudness is not held against her: loudness 0, not
+        music, not given in, the suppression episode over. Without this, the last frame's state stayed until the next
+        session and her thought chains stayed stopped. -> True when it expired something."""
+        try:
+            last = getattr(self, "_sh_last_frame_t", 0.0)
+            if last <= 0.0:
+                return False
+            now = time.time() if now is None else now
+            if now - last <= 3.0:
+                return False
+            self._audio_loudness = 0.0
+            self._audio_is_music = False
+            self._audio_suppression_start = 0.0
+            self._audio_gave_in = False
+            self._sh_loud_last_t = 0.0
+            self._sh_last_frame_t = 0.0
+            return True
+        except Exception:
+            return False
+
+    def _sh_loud_knobs(self):
+        """2026-10-06 senses_hub: (rate per second, cap) for loud-noise frustration, read live from
+        <her root>/state/senses_hub.json ("loud_frustration_per_s" 0..0.1, "loud_frustration_cap" 0..1). Absent,
+        unreadable or out of bounds = the defaults 0.03 / 0.6: Ace's per-second, capped rule always holds."""
+        rate, cap = 0.03, 0.6
+        try:
+            p = Path(__file__).resolve().parents[3] / "state" / "senses_hub.json"
+            st = p.stat()
+            sig = (st.st_mtime_ns, st.st_size)
+            hit = getattr(self, "_sh_knob_cache", None)
+            if hit is not None and hit[0] == sig:
+                return hit[1]
+            import json as _json
+            d = _json.loads(p.read_bytes()[:65536].decode("utf-8-sig"))
+            if isinstance(d, dict):
+                r = d.get("loud_frustration_per_s")
+                c = d.get("loud_frustration_cap")
+                if isinstance(r, (int, float)) and not isinstance(r, bool) and 0.0 <= r <= 0.1:
+                    rate = float(r)
+                if isinstance(c, (int, float)) and not isinstance(c, bool) and 0.0 <= c <= 1.0:
+                    cap = float(c)
+            self._sh_knob_cache = (sig, (rate, cap))
+        except Exception:
+            pass
+        return rate, cap
 
     def _on_fairy_event(self, envelope) -> None:
         """Monitor all fairy events - inner world awareness."""

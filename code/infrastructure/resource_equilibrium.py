@@ -388,6 +388,9 @@ def _query_system_resources() -> dict:
     if not gpu_detected:
         try:
             import subprocess
+            try:   # gpu_poll_1016: state/gpu_poll.json arms it (absent = today's call); any failure here leaves the real module
+                from infrastructure.gpu_reader import bind as _gp_bind; subprocess = _gp_bind("resource_equilibrium")
+            except Exception: pass
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=name,memory.total,memory.free,memory.used,compute_cap",
                  "--format=csv,noheader,nounits"],

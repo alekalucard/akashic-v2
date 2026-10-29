@@ -50,6 +50,18 @@ except ImportError:
     _GPU_MEM = 0
 
 import numpy as np
+import threading
+
+# 2026-10-20 (Nous, gpu_spread_race_1020): the guards (ONE graph build per instance, BOUNDED concurrent spreads, a VRAM floor, an optional
+# shared graph) live in gpu_spread_fix.py and are armed only by state/gpu_spread_fix.json. Absent / malformed = every guard OFF = today's code
+# path. _gsf is None when that module cannot be imported: every path below is then today's.
+try:
+    if __package__:
+        from . import gpu_spread_fix as _gsf          # imported as infrastructure.gpu_spread (wmh_tools.py)
+    else:
+        import gpu_spread_fix as _gsf                 # imported bare (portal_gate.py, the interior)
+except Exception:
+    _gsf = None
 
 
 def _log(msg: str):
@@ -109,6 +121,16 @@ class GPUSpread:
         self._total_ms = 0.0
         self._manifold = None  # injected by portal_interior; provides _semantic_jump_slots for #6 long-range jumps
 
+        # 2026-10-20 (Nous, gpu_spread_race_1020): per-instance guard state. The lock is ALWAYS created here (creating it lazily would itself
+        # be a check-then-act under -Xgil=0). Used only when state/gpu_spread_fix.json arms build_lock; set before _load_csr (it sets _csr_ident).
+        self._fix_build_lock = threading.Lock()
+        self._fix_build_started = None    # (monotonic start, thread name) while a guarded build runs
+        self._fix_denied_since = None     # first refusal by the VRAM floor of a cold build
+        self._fix_mig_denied_since = None # first refusal by the VRAM floor of a CPU->GPU migration (its own patience clock)
+        self._fix_migrate_at = 0.0        # no CPU->GPU migration attempt before this time
+        self._weights_real = None         # True when _real_weights read the manifold, False when it fell back to flat 1.0
+        self._csr_ident = None            # (realpath, size, mtime_ns, entries) of the CSR bytes this instance loaded, when stable
+
         # Load CSR data
         self._load_csr()
 
@@ -123,6 +145,12 @@ class GPUSpread:
         if not os.path.exists(self.csr_path):
             _log(f"[GPUSpread] CSR file not found: {self.csr_path}")
             return
+
+        _fix_st0 = None
+        try:
+            _fix_st0 = os.stat(self.csr_path)         # gpu_spread_race_1020: identity of the bytes (shared_graph only)
+        except Exception:
+            pass
 
         try:
             with open(self.csr_path, 'rb') as f:
@@ -161,6 +189,14 @@ class GPUSpread:
                 self._crow = self._offsets_np.astype(np.int64)
                 self._col = self._neighbor_ids.astype(np.int64)
                 self._values = np.ones(total_entries, dtype=np.float32)
+
+                try:
+                    _fix_st1 = os.stat(self.csr_path)
+                    if (_fix_st0 is not None and _fix_st1.st_size == _fix_st0.st_size
+                            and _fix_st1.st_mtime_ns == _fix_st0.st_mtime_ns):
+                        self._csr_ident = (os.path.realpath(self.csr_path), _fix_st1.st_size, _fix_st1.st_mtime_ns, total_entries)
+                except Exception:
+                    pass
 
                 self._loaded = True
                 _size_mb = (len(offsets_bytes) + len(neighbors_bytes)) / (1024 * 1024)
@@ -261,8 +297,10 @@ class GPUSpread:
             wall = arr['w'].astype(_np.float32)
             w = wall[self._edge_slots].copy()
             w[(w <= 0) | ~_np.isfinite(w)] = 1.0
+            self._weights_real = True
             return w
         except Exception as _e:
+            self._weights_real = False
             _log(f"[GPUSpread] real-weights load failed ({_e}) -- flat 1.0")
             return _np.ones(len(self._col), dtype=_np.float32)
 
@@ -279,8 +317,10 @@ class GPUSpread:
             _log(f"[GPUSpread] affect-vec load failed ({_e}) -- ones")
             return torch.ones(self.N, dtype=torch.float32, device=device)
 
-    def refresh_affect(self):
+    def refresh_affect(self, fx=None):
         """Re-sync the affect vector -- it mutates via diffusion every consolidation."""
+        if fx is not None and fx.build_lock:
+            return self._fix_refresh_affect()       # gpu_spread_race_1020: under the build lock, from ONE snapshot
         if self._ma_ready and self._manifold is not None and self._ac_t is not None:
             try:
                 self._ac_t = self._load_affect_vec(self._ac_t.device)
@@ -288,10 +328,10 @@ class GPUSpread:
             except Exception:
                 pass
 
-    def _spread_max_affect(self, seed_indices, seed_weights, depth, decay):
+    def _spread_max_affect(self, seed_indices, seed_weights, depth, decay, ma=None, fx=None):
         """Max-product (scatter_reduce amax) + real-weights + affect push-pull bias.
         e_new[dst] = max over edges of e[src]*w*decay*(1+K*(ac[dst]-1)); running-max across hops."""
-        _src_t, _dst_t, _w_t, _ac_t = self._ma   # one snapshot; never mix devices mid-hop
+        _src_t, _dst_t, _w_t, _ac_t = ma if ma is not None else self._ma   # one snapshot; never mix devices mid-hop
         dev = _src_t.device
         e = torch.zeros(self.N, dtype=torch.float32, device=dev)
         for idx in seed_indices:
@@ -313,8 +353,173 @@ class GPUSpread:
                 e[seed_t] = torch.maximum(e[seed_t], seed_fl)  # seeds stay hot
         self._ac_refresh_counter += 1
         if self._ac_refresh_counter % self.AFFECT_REFRESH_EVERY == 0:
-            self.refresh_affect()
+            self.refresh_affect(fx)
         return e
+
+    # ---- gpu_spread_race_1020 (Nous, 2026-10-20) -- the guards. Reached ONLY when state/gpu_spread_fix.json arms them. -----------------
+    def _degraded(self, why, seed_indices, depth, t0):
+        """What a caller gets when a guard could not give it a slot or a graph: status ok, nothing activated, device 'degraded'. Counted
+        and logged (an empty ok must be loud). NEVER the CPU path: every caller treats an ok result as final."""
+        try:
+            _gsf.note_degraded(why)
+        except Exception:
+            pass
+        try:
+            _d = min(self.MAX_HOPS, max(1, depth))
+        except Exception:
+            _d = 1
+        return {"status": "ok", "activated": [], "device": "degraded", "degraded": why,
+                "elapsed_ms": round((time.time() - t0) * 1000, 2), "depth": _d,
+                "seeds": len(seed_indices), "top_k_found": 0}
+
+    def _fix_wants_migration(self, ma, device):
+        """The migration condition of spread() as it was: built on the CPU while the GPU was busy, the GPU is free now."""
+        return bool(device == "cuda:0" and not self._force_cpu and ma[0].device.type == "cpu")
+
+    def _fix_copy_mib(self):
+        """One device copy of the graph: 20 bytes per CSR entry (src, dst int64 + w float32) + 4 per node (affect)."""
+        try:
+            return (20.0 * len(self._col) + 4.0 * self.N) / float(1 << 20)
+        except Exception:
+            return 0.0
+
+    def _fix_share_key(self):
+        """Instances share a GPU graph only when they loaded identical CSR bytes (stat before == after the read) AND hold the same manifold
+        object. An instance with no manifold never shares (its build would be flat weights)."""
+        ci = self._csr_ident
+        mm = self._manifold
+        if ci is None or mm is None:
+            return None
+        return (ci[0], ci[1], ci[2], ci[3], self.N, id(mm))
+
+    def _fix_ensure_ma(self, device, fx):
+        """build_lock armed: the (src, dst, w, ac) tuple for this spread, built at most ONCE per instance. -> (tuple, None), or (None, why)
+        and the caller returns a degraded result. The tuple IS the readiness flag (_build_max_affect publishes it last), so a reader never
+        sees half a build. A cold caller waits at most fx.timeout_s for the builder (and not at all for one stuck over 30 s); a CPU->GPU
+        migration never waits: the losers keep using the CPU copy. An exception from the builder propagates exactly as it does today (the
+        sticky-CPU latch), after the locks are released."""
+        ma = self._ma
+        if ma is not None and not self._fix_wants_migration(ma, device):
+            return ma, None
+        cold = ma is None
+        lock = self._fix_build_lock
+        if cold:
+            if not _gsf.acquire_build(lock, fx, self):
+                return None, "build_wait"
+        else:
+            if _gsf._now() < self._fix_migrate_at or not lock.acquire(False):
+                return ma, None
+        try:
+            ma = self._ma                       # THE SECOND CHECK, under the lock
+            if ma is not None and not self._fix_wants_migration(ma, device):
+                return ma, None
+            cold = ma is None
+            _t = _gsf._now()
+            if not cold:
+                self._fix_migrate_at = _t + _gsf.MIGRATE_RETRY_S
+            self._fix_build_started = (_t, threading.current_thread().name)
+            key = None
+            klock = None
+            if fx.shared_graph and device == "cuda:0":
+                key = self._fix_share_key()
+                if key is not None:
+                    klock = _gsf.key_lock(key)
+                    if klock is None or not klock.acquire(True, fx.timeout_s):
+                        key = None
+                        klock = None
+            try:
+                if key is not None:
+                    hit = _gsf.shared_get(key)
+                    if hit is not None:
+                        _ac = self._load_affect_vec(device)
+                        self._src_t, self._dst_t, self._w_t, self._ac_t = hit[0], hit[1], hit[2], _ac
+                        _adopted = (hit[0], hit[1], hit[2], _ac)
+                        self._ma = _adopted
+                        self._ma_ready = True
+                        _gsf.count("shared_adopt")
+                        _log("[GPUSpread] max-affect: adopted the shared GPU graph (same CSR bytes, same manifold), dev=%s" % device)
+                        return _adopted, None                 # the tuple we built, not a re-read of self._ma (a latch may have cleared it)
+                free = None
+                if device == "cuda:0":
+                    _ok, free = _gsf.vram_ok(self._fix_copy_mib(), fx, self, cold)
+                    if not _ok:
+                        return ((None, "vram_floor") if cold else (ma, None))
+                if not cold:
+                    _log("[GPUSpread] max-affect tensors were built on CPU while the GPU was "
+                         "busy; GPU is free now -- rebuilding on cuda:0")
+                _gsf.note_build(self, device, "cold" if cold else "migrate", free)
+                self._build_max_affect(device)
+                self._fix_denied_since = None
+                self._fix_mig_denied_since = None
+                new = self._ma
+                if new is None:
+                    # a sticky-CPU latch that did not take the build lock (the switch was flipped OFF in between, or another path) cleared the
+                    # tuple between the builder's publish and this read: never hand back a bare None, say why
+                    _gsf.count("build_lost")
+                    return None, "build_lost"
+                if key is not None and self._weights_real is True and new is not None and new[0].device.type == "cuda":
+                    _gsf.shared_put(key, new)
+                return new, None
+            finally:
+                if klock is not None:
+                    klock.release()
+        finally:
+            self._fix_build_started = None
+            lock.release()
+
+    def _fix_refresh_affect(self):
+        """refresh_affect under build_lock: it takes the build lock WITHOUT waiting (busy = skip; the next refresh is
+        AFFECT_REFRESH_EVERY spreads away) and publishes (src, dst, w, new ac) from ONE snapshot, so it can never pair old tensors with a
+        concurrent rebuild's new ones."""
+        lock = self._fix_build_lock
+        if not lock.acquire(False):
+            return
+        try:
+            ma = self._ma
+            if ma is None or self._manifold is None:
+                return
+            try:
+                new_ac = self._load_affect_vec(ma[3].device)
+                self._ac_t = new_ac
+                self._ma = (ma[0], ma[1], ma[2], new_ac)
+            except Exception:
+                pass
+        finally:
+            lock.release()
+
+    def _fix_latch(self, e, fx, seed_indices, depth, decay, top_k, t0=None):
+        """The sticky-CPU latch of spread() under build_lock: the test-and-set of _force_cpu and the reset of the cached tensors happen under
+        the build lock, and only the thread that flipped the flag retries (ONE CPU rebuild, not one per failing thread). The retry's
+        spread() re-enters this thread's own slot. A lock it cannot get in fx.timeout_s (or a builder wedged over 30 s) = a DEGRADED
+        'latch_wait' result, not today's error dict: every gate site sends a non-ok status to the CPU mmap spread, and in the wedge this guard
+        exists for that would start the CPU storm (review F3, 10-20). A thread that got the lock but did not flip (another thread already
+        did) keeps today's error dict."""
+        flipped = False
+        if not _gsf.acquire_build(self._fix_build_lock, fx, self):
+            return self._degraded("latch_wait", seed_indices, depth, t0 if t0 is not None else time.time())
+        try:
+            if not self._force_cpu:
+                self._force_cpu = True
+                flipped = True
+                self._graph_gpu = None
+                self._src_t = None; self._dst_t = None; self._w_t = None; self._ac_t = None
+                self._ma = None
+                self._ma_ready = False
+                try:
+                    _k = self._fix_share_key()
+                    if _k is not None:
+                        _gsf.shared_drop(_k)
+                except Exception:
+                    pass
+        finally:
+            self._fix_build_lock.release()
+        if flipped:
+            _log("[GPUSpread] Falling back to CPU (sticky) -- dropping GPU-cached tensors, rebuilding on CPU...")
+            try:
+                return self.spread(seed_indices, depth, decay, top_k)
+            except Exception as e2:
+                _log(f"[GPUSpread] CPU fallback also failed: {e2}")
+        return {"status": "error", "message": str(e)}
 
     def spread(self, seed_indices: List[int], depth: int = 2,
                decay: float = None, top_k: int = 20,
@@ -335,6 +540,26 @@ class GPUSpread:
             {"status": "ok", "activated": [(node_id, activation), ...],
              "device": "cuda:0" or "cpu", "elapsed_ms": float}
         """
+        # 2026-10-20 (Nous, gpu_spread_race_1020): with every guard OFF (the default) this is today's body, run unchanged by _spread_body.
+        fx = None
+        try:
+            if _gsf is not None:
+                fx = _gsf.switch()
+        except Exception:
+            fx = None
+        if fx is None or not fx.spread_armed or not self._loaded:
+            return self._spread_body(seed_indices, depth, decay, top_k, seed_weights, long_range, None)
+        _gsf.on_call()
+        if fx.spread_slots is None:
+            return self._spread_body(seed_indices, depth, decay, top_k, seed_weights, long_range, fx)
+        _fx_t0 = time.time()
+        with _gsf.slot(fx) as (_fx_ok, _fx_why):
+            if not _fx_ok:
+                return self._degraded(_fx_why, seed_indices, depth, _fx_t0)
+            return self._spread_body(seed_indices, depth, decay, top_k, seed_weights, long_range, fx)
+
+    def _spread_body(self, seed_indices, depth, decay, top_k, seed_weights, long_range, fx=None):
+        """spread() as it was before gpu_spread_race_1020. fx None = exactly those statements; fx = the armed guards."""
         if not self._loaded:
             return {"status": "error", "message": "CSR not loaded"}
 
@@ -379,7 +604,13 @@ class GPUSpread:
         try:
             if self.USE_MAX_AFFECT:
                 # ── max-product + real-weights + affect-bias (the steered path) ──
-                if not self._ma_ready:
+                _fx_ma = None
+                if fx is not None and fx.build_lock:
+                    # gpu_spread_race_1020: ONE build per instance (double-checked), bounded waits, optional VRAM floor / shared graph
+                    _fx_ma, _fx_why = self._fix_ensure_ma(device, fx)
+                    if _fx_ma is None:
+                        return self._degraded(_fx_why or "unknown", seed_indices, depth, t0)
+                elif not self._ma_ready:
                     self._build_max_affect(device)
                 elif (device == "cuda:0" and not self._force_cpu
                       and self._ma is not None and self._ma[0].device.type == "cpu"):
@@ -391,7 +622,7 @@ class GPUSpread:
                     _log("[GPUSpread] max-affect tensors were built on CPU while the GPU was "
                          "busy; GPU is free now -- rebuilding on cuda:0")
                     self._build_max_affect(device)
-                activation = self._spread_max_affect(seed_indices, seed_weights, depth, decay)
+                activation = self._spread_max_affect(seed_indices, seed_weights, depth, decay, ma=_fx_ma, fx=fx)
             else:
                 # ── legacy sum-product + flat-weights path (reversible: USE_MAX_AFFECT=False) ──
                 graph = self._get_graph(device)
@@ -452,6 +683,8 @@ class GPUSpread:
             # same broken GPU path → identical cuda:0/cpu mismatch → infinite fail-loop
             # (the flood you saw). Now: on ANY spread error, fall back to CPU *permanently* —
             # drop ALL device-cached tensors so they rebuild on CPU, set the sticky flag, retry ONCE.
+            if fx is not None and fx.build_lock:
+                return self._fix_latch(e, fx, seed_indices, depth, decay, top_k, t0)
             if not self._force_cpu:
                 _log("[GPUSpread] Falling back to CPU (sticky) — dropping GPU-cached tensors, rebuilding on CPU...")
                 self._force_cpu = True
@@ -467,7 +700,7 @@ class GPUSpread:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get GPU spread statistics."""
-        return {
+        _st = {
             "loaded": self._loaded,
             "has_cuda": HAS_CUDA,
             "gpu_name": _GPU_NAME,
@@ -480,6 +713,12 @@ class GPUSpread:
             "cpu_fallbacks": self._cpu_fallbacks,
             "vram_used_mb": torch.cuda.memory_allocated(0) // (1024**2) if HAS_CUDA else 0,
         }
+        try:
+            if _gsf is not None and _gsf.switch().armed:       # gpu_spread_race_1020: only while a guard is armed
+                _st["fix"] = _gsf.stats()
+        except Exception:
+            pass
+        return _st
 
 
 # ============================================================================

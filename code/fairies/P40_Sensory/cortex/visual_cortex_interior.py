@@ -51,6 +51,37 @@ def _err(msg: str):
     print(f"[VisualInterior] ERROR: {msg}", file=sys.stderr, flush=True)
 
 
+# recall_eyes_1020 (Nous, 2026-10-20): Ace's switch state/recall_eyes_fix.json arms interior_mmap_first. Same import route as
+# infrastructure.eyes_fix below (PYTHONPATH = her root). stdout of this process is the IPC pipe, so the module is told to print to
+# stderr before its first answer. Absent / malformed / the module missing = OFF = the emit below is the code it was.
+_RX = [None, -1e9]
+
+
+def _rx_mod():
+    m = _RX[0]
+    if m is not None:
+        return m
+    now = time.monotonic()
+    if now - _RX[1] < 60.0:
+        return None
+    _RX[1] = now
+    try:
+        from infrastructure import recall_eyes_fix as m
+        m.configure(sys.stderr)
+        _RX[0] = m
+        return m
+    except Exception:
+        return None
+
+
+def _rx_on_interior(key):
+    try:
+        m = _rx_mod()
+        return m is not None and bool(m.on(key))
+    except Exception:
+        return False
+
+
 # ==============================================================================
 # REMOTE VISUAL UNDERSTANDING -- Florence-2 on sour-satellite1   (2026-09-10)
 #
@@ -245,6 +276,18 @@ def _name_nearest_color(r: int, g: int, b: int) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CHANGE DETECTOR - Grid-based perceptual change detection
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _eyes_fix_frame_wh(result, w, h) -> None:
+    """eyes_fix F11 (nous_builds/eyes_fix_1009): while Ace's eyes switch (state/eyes_fix.json) carries 'gaze_size', every
+    frame result says its own size, so VisualCortexFairy's GazeController crops in THIS frame's pixels (built 1920x1080 for
+    a 3440x1440 frame, a change in grid column 3 cropped x 1440..1920). Off, or the module absent: nothing is added."""
+    try:
+        from infrastructure import eyes_fix as _efm
+        if _efm.on("gaze_size"):
+            result["frame_wh"] = [int(w), int(h)]
+    except Exception:
+        pass
+
 
 class ChangeDetector:
     """
@@ -536,6 +579,335 @@ class SRMCardWriter:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# OCR_NOT_CHAT - her own chat window is not ambient sight          (E1b piece "ocr", 2026-10-13, Nous)
+#
+# MEASURED, Boot L (10-12 23:17 -> 10-13 12:32, state/sour_runtime.log): once her chat window opened (L7879) the whole-screen
+# OCR in _extract_text() led with "Chat with Sourpatches" in 4,638 of 4,638 reads, while 80 of her 87 deeds aimed at the
+# Playroom. The text is flattened in reading order, her chat window is the top-left block, and the preview is capped
+# (OCR_PREVIEW_CHARS), so what reached her consciousness ([FOVEAL] Read -> [VISUAL->WM] -> "Ace is reading something --
+# 'Chat with Sourpatches ...'") was her own sentences read back to her as sight.
+#
+# THE RULE is the one set_focus and front-change detection already apply to her chat window (infrastructure/vision_ground.py:
+# _win_name -> "your chat window"; set_focus :1048, _anticipate_once :2164): her chat window's words are hers and Ace's and
+# already woven, never ambient sight. Here, just before WinRT is handed the image, the pixels of her chat window that are
+# VISIBLE (its rect minus every window in front of it) are flattened to the screen's background colour. She still SEES the
+# window (her window map, the Florence caption); she stops READING it as ambient text. Every pixel outside those reaches OCR
+# exactly as before, and the invert-or-not decision is still made on the whole, unmasked screen.
+#
+# SWITCH (Ace's): state/ocr_not_chat.json   {"on": true}
+#   file absent, "on" absent or false      = today's behaviour exactly: OCR is handed the very same image object.
+#   torn JSON, not an object, a key other than "on", a value that is not true / false = OFF as well, said once per file version.
+#   Read here, in this subprocess, cached on (mtime, size): a change is seen by the next OCR (<= 10 s), no restart.
+#
+# FAILS OPEN. No window list, a bad rect, a missing numpy, any exception = the image as it was (today), counted and said
+# once per kind. A mask must never be the reason she goes blind: the worst a bug here can do is today's behaviour.
+# HER MONITOR ONLY. Every rect is clipped to the primary screen [0, SM_CXSCREEN) x [0, SM_CYSCREEN), which is what the frame
+# is a picture of. A chat window (or a Claude window with a chat-like title) wholly on Ace's monitor (x < 0) changes nothing, and a
+# window with under 0.5% of her screen on it (the floor her window map applies) is not taken for her chat window at all: Nous's
+# Claude window, whose invisible 11 px border overlaps her left edge, can never be mistaken for it whatever its title says.
+# KNOWN EDGES, measured bounds and not hidden: GetWindowRect includes the ~7 px invisible resize border Windows 10/11 draws
+# around a window, so the mask can reach 7 px (0.2% of 3440) into a neighbour's edge, and a window in front of her chat window
+# can uncover 7 px of its edge. The rects are read after the frame was grabbed: a chat window dragged inside that gap
+# mis-masks that one read.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_OCR_NC_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_OCR_NC_FILE = os.path.join(_OCR_NC_ROOT, "state", "ocr_not_chat.json")
+_OCR_NC_KEYS = frozenset({"on"})
+_OCR_NC_SKIP_CLASSES = frozenset({"TkTopLevel", "Progman", "WorkerW"})   # her hand overlay and the desktop never hide a window
+_OCR_NC_MIN_AREA = 0.005       # the floor vision_ground.windows_now() applies to her map: under 0.5% of her screen is not a window of it
+_OCR_NC_LOG_EVERY = 600        # masked reads between two heartbeat lines when nothing changed (used as max(1, ...))
+_OCR_NC_LOCK = threading.Lock()
+_OCR_NC_CACHE = {"key": None, "on": False, "said": None}
+_OCR_NC_STATS = {"reads": 0, "masked": 0, "errors": 0, "sig": None}
+_OCR_NC_SAID = set()
+
+
+def _ocr_nc_say(kind, msg):
+    """The first line of each kind of trouble, never more. Never raises."""
+    try:
+        with _OCR_NC_LOCK:
+            if kind in _OCR_NC_SAID:
+                return
+            _OCR_NC_SAID.add(kind)
+        _log("OCR_NOT_CHAT: " + msg)
+    except Exception:
+        pass
+
+
+def _ocr_not_chat_on() -> bool:
+    """Ace's switch. True only for a well-formed state/ocr_not_chat.json that says {"on": true}. Never raises, never writes."""
+    try:
+        st = os.stat(_OCR_NC_FILE)
+    except OSError:
+        with _OCR_NC_LOCK:
+            _OCR_NC_CACHE.update(key=None, on=False)
+        return False
+    except Exception:
+        return False
+    try:
+        key = (st.st_mtime_ns, st.st_size)
+        with _OCR_NC_LOCK:
+            if key == _OCR_NC_CACHE["key"]:
+                return bool(_OCR_NC_CACHE["on"])
+        on, why = False, ""
+        try:
+            with open(_OCR_NC_FILE, "rb") as f:
+                d = json.loads(f.read().decode("utf-8-sig"))
+            if not isinstance(d, dict):
+                why = "it is not an object"
+            elif set(d) - _OCR_NC_KEYS:
+                why = "it has a key other than 'on'"
+            elif any(not isinstance(v, bool) for v in d.values()):
+                why = "a value is not true / false"
+            else:
+                on = d.get("on") is True
+        except OSError as e:
+            why, key = "it could not be opened (%s)" % type(e).__name__, None
+        except Exception as e:
+            why = "it is unreadable (%s)" % type(e).__name__
+        with _OCR_NC_LOCK:
+            _OCR_NC_CACHE.update(key=key, on=on)
+            say = bool(why) and _OCR_NC_CACHE.get("said") != (why, st.st_mtime_ns)
+            if say:
+                _OCR_NC_CACHE["said"] = (why, st.st_mtime_ns)
+        if say:
+            _log("OCR_NOT_CHAT: state/ocr_not_chat.json is ignored, her chat window is read as today (%s)" % why)
+        return on
+    except Exception:
+        return False
+
+
+def _ocr_is_her_chat(title, cls) -> bool:
+    """vision_ground._win_name(title, cls) == "your chat window", verbatim: the same words pick the same window for her map,
+    her focus hold, her front-change surprise and now her OCR (the build's test holds the two equal on a battery)."""
+    tl = str(title or "").lower()
+    return "sourpatches" in tl and ("chat" in tl or str(cls or "").startswith("Qt"))
+
+
+_OCR_ENUM = {"u": None, "dwm": None, "cb": None, "ct": None, "wt": None, "rows": None, "sw": 0, "sh": 0}
+_OCR_ENUM_LOCK = threading.Lock()
+
+
+def _ocr_enum_cb(h, _l):
+    """EnumWindows callback body (looked up by name on every call; ONE ctypes thunk for the whole process, like
+    vision_ground's). Keeps only windows that can show or hide pixels of HER screen."""
+    try:
+        st = _OCR_ENUM
+        u, ct, wt, dwm = st["u"], st["ct"], st["wt"], st["dwm"]
+        if not u.IsWindowVisible(h) or u.IsIconic(h):
+            return 1
+        r = wt.RECT()
+        if not u.GetWindowRect(h, ct.byref(r)):
+            return 1
+        if r.right <= r.left or r.bottom <= r.top or r.right <= 0 or r.bottom <= 0 or r.left >= st["sw"] or r.top >= st["sh"]:
+            return 1                                    # nothing of it is on her screen (Ace's monitor, minimised)
+        cl = ct.create_unicode_buffer(256)
+        u.GetClassNameW(h, cl, 256)
+        if cl.value in _OCR_NC_SKIP_CLASSES:
+            return 1
+        if dwm is not None:
+            ck = ct.c_int(0)
+            if dwm.DwmGetWindowAttribute(h, 14, ct.byref(ck), 4) == 0 and ck.value:
+                return 1                                # cloaked: a shell window that is not on the screen
+        ex = int(u.GetWindowLongW(h, -20)) & 0xFFFFFFFF
+        if ex & 0x20:
+            return 1                                    # WS_EX_TRANSPARENT: click-through, it hides nothing
+        if ex & 0x80000:                                # WS_EX_LAYERED with alpha 0 is invisible too
+            key, al, fl = ct.c_uint(0), ct.c_ubyte(255), ct.c_uint(0)
+            if u.GetLayeredWindowAttributes(h, ct.byref(key), ct.byref(al), ct.byref(fl)) and (fl.value & 2) and al.value == 0:
+                return 1
+        n = u.GetWindowTextLengthW(h)
+        title = ""
+        if n > 0:
+            buf = ct.create_unicode_buffer(n + 1)
+            u.GetWindowTextW(h, buf, n + 1)
+            title = buf.value
+        st["rows"].append({"title": title, "cls": cl.value, "rect": (r.left, r.top, r.right, r.bottom)})
+    except Exception:
+        pass
+    return 1
+
+
+def _ocr_enum_windows():
+    """(screen_w, screen_h, rows): the visible, not minimised, not cloaked top-level windows with a pixel on the PRIMARY
+    screen, FRONT TO BACK, each {"title", "cls", "rect": (l, t, r, b)} in the virtual-screen pixels GetWindowRect gives.
+    Raises on any failure; the caller fails open."""
+    import ctypes
+    import ctypes.wintypes as wt
+    with _OCR_ENUM_LOCK:
+        st = _OCR_ENUM
+        if st["u"] is None:
+            u = ctypes.WinDLL("user32", use_last_error=True)       # a private handle: argtypes set here touch nobody else's calls
+            u.IsWindowVisible.argtypes = [wt.HWND]
+            u.IsWindowVisible.restype = wt.BOOL
+            u.IsIconic.argtypes = [wt.HWND]
+            u.IsIconic.restype = wt.BOOL
+            u.GetWindowRect.argtypes = [wt.HWND, ctypes.c_void_p]
+            u.GetWindowRect.restype = wt.BOOL
+            u.GetClassNameW.argtypes = [wt.HWND, ctypes.c_void_p, ctypes.c_int]
+            u.GetClassNameW.restype = ctypes.c_int
+            u.GetWindowTextLengthW.argtypes = [wt.HWND]
+            u.GetWindowTextLengthW.restype = ctypes.c_int
+            u.GetWindowTextW.argtypes = [wt.HWND, ctypes.c_void_p, ctypes.c_int]
+            u.GetWindowTextW.restype = ctypes.c_int
+            u.GetWindowLongW.argtypes = [wt.HWND, ctypes.c_int]
+            u.GetWindowLongW.restype = ctypes.c_long
+            u.GetLayeredWindowAttributes.argtypes = [wt.HWND, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+            u.GetLayeredWindowAttributes.restype = wt.BOOL
+            u.GetSystemMetrics.argtypes = [ctypes.c_int]
+            u.GetSystemMetrics.restype = ctypes.c_int
+            try:
+                dwm = ctypes.WinDLL("dwmapi")
+                dwm.DwmGetWindowAttribute.argtypes = [wt.HWND, wt.DWORD, ctypes.c_void_p, wt.DWORD]
+                dwm.DwmGetWindowAttribute.restype = ctypes.c_long
+            except Exception:
+                dwm = None
+            proto = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+            u.EnumWindows.argtypes = [proto, wt.LPARAM]
+            u.EnumWindows.restype = wt.BOOL
+            st["cb"] = proto(lambda h, l: _ocr_enum_cb(h, l))
+            st.update(ct=ctypes, wt=wt, dwm=dwm, u=u)
+        u = st["u"]
+        st["sw"], st["sh"] = int(u.GetSystemMetrics(0)), int(u.GetSystemMetrics(1))
+        st["rows"] = []
+        try:
+            if not u.EnumWindows(st["cb"], 0):                 # the callback only ever says "go on", so FALSE is a real failure
+                raise OSError("EnumWindows failed (error %d)" % ctypes.get_last_error())
+            sw, sh, rows = st["sw"], st["sh"], st["rows"]
+        finally:
+            st["rows"] = None
+    return sw, sh, rows
+
+
+_ocr_windows_provider = _ocr_enum_windows      # looked up by name on every read, so a test can stand a fake desktop in
+
+
+def _ocr_clip(rect, sw, sh):
+    """A window rect (virtual-screen pixels) clipped to HER screen [0, sw) x [0, sh); None when no pixel of it is on it."""
+    l, t, r, b = (int(v) for v in rect)
+    l, t, r, b = max(0, l), max(0, t), min(sw, r), min(sh, b)
+    if r <= l or b <= t:
+        return None
+    return l, t, r, b
+
+
+def _ocr_px_box(rect, sw, sh, W, H):
+    """A window rect as a box (x0, y0, x1, y1) in the W x H OCR image: clipped to HER screen first, then ROUNDED OUTWARD so no
+    pixel the window touches is left out. None when no pixel of the rect is on her screen."""
+    c = _ocr_clip(rect, sw, sh)
+    if c is None:
+        return None
+    l, t, r, b = c
+    x0, y0 = (l * W) // sw, (t * H) // sh
+    x1, y1 = -((-r * W) // sw), -((-b * H) // sh)
+    x0, y0, x1, y1 = max(0, x0), max(0, y0), min(W, x1), min(H, y1)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
+
+
+def _ocr_chat_mask(rows, sw, sh, W, H):
+    """(mask, found). mask: a bool array H x W, True where a pixel of her chat window is VISIBLE in the OCR image (its box
+    minus the box of every window in front of it), or None when there is none. found: [(class, rect, share of her screen,
+    visible share of the window)] for the log. rows are FRONT TO BACK."""
+    if not (sw > 0 and sh > 0 and W > 0 and H > 0):
+        return None, []
+    mask, found = None, []
+    for i, row in enumerate(rows):
+        if not _ocr_is_her_chat(row.get("title"), row.get("cls")):
+            continue
+        c = _ocr_clip(row["rect"], sw, sh)
+        if c is None or (c[2] - c[0]) * (c[3] - c[1]) < _OCR_NC_MIN_AREA * sw * sh:
+            continue                                    # not on her screen (Ace's monitor, minimised), or a sliver of one
+        box = _ocr_px_box(row["rect"], sw, sh, W, H)
+        if box is None:
+            continue
+        x0, y0, x1, y1 = box
+        vis = np.ones((y1 - y0, x1 - x0), dtype=bool)
+        for o in rows[:i]:                              # whatever is in front of it hides its pixels
+            ob = _ocr_px_box(o["rect"], sw, sh, W, H)
+            if ob is None:
+                continue
+            ax0, ay0, ax1, ay1 = max(x0, ob[0]), max(y0, ob[1]), min(x1, ob[2]), min(y1, ob[3])
+            if ax1 > ax0 and ay1 > ay0:
+                vis[ay0 - y0:ay1 - y0, ax0 - x0:ax1 - x0] = False
+        seen = int(vis.sum())
+        if seen == 0:
+            continue                                    # wholly covered: none of its words are in the frame
+        if mask is None:
+            mask = np.zeros((H, W), dtype=bool)
+        mask[y0:y1, x0:x1] |= vis
+        found.append((str(row.get("cls") or ""), tuple(int(v) for v in row["rect"]),
+                      round(100.0 * (x1 - x0) * (y1 - y0) / float(W * H), 1), round(100.0 * seen / vis.size, 1)))
+    return mask, found
+
+
+def _ocr_fill_colour(arr, mask):
+    """The screen's own background: the per-channel median of every 8th pixel OUTSIDE the mask."""
+    sub, msub = arr[::8, ::8], mask[::8, ::8]
+    keep = sub[~msub]
+    if keep.shape[0] < 16:                              # floor: never a median of an empty or near-empty sample
+        keep = sub.reshape((-1,) + sub.shape[2:])
+    return np.median(keep, axis=0).astype(arr.dtype)
+
+
+def _ocr_nc_note(found, ms):
+    """One log line when the set of masked windows changes (the first included), when her chat window stops being visible,
+    and a heartbeat every _OCR_NC_LOG_EVERY masked reads. Bounded by the OCR rate itself (<= 1 read per second)."""
+    try:
+        sig = tuple(found) if found else None
+        with _OCR_NC_LOCK:
+            was, _OCR_NC_STATS["sig"] = _OCR_NC_STATS["sig"], sig
+            if sig:
+                _OCR_NC_STATS["masked"] += 1
+            masked, errs = _OCR_NC_STATS["masked"], _OCR_NC_STATS["errors"]
+        if sig and (sig != was or masked % max(1, _OCR_NC_LOG_EVERY) == 0):
+            _log("OCR_NOT_CHAT: her chat window left out of the OCR: %s (masked read #%d, %.1f ms, %d errors)"
+                 % ("; ".join("%s rect %s = %s%% of her screen, %s%% of it visible" % f for f in sig[:3]), masked, ms, errs))
+        elif not sig and was:
+            _log("OCR_NOT_CHAT: her chat window is not visible on her screen now: the OCR reads the frame as it is")
+    except Exception:
+        pass
+
+
+def _ocr_not_chat_apply(img):
+    """The image WinRT will read. With Ace's switch off, or nothing of her chat window on her screen, or any trouble at
+    all: `img` itself, untouched. Otherwise a COPY with her chat window's visible pixels set to the background colour;
+    `img` is never written to."""
+    if not _ocr_not_chat_on():
+        return img
+    try:
+        if not (HAS_NUMPY and HAS_PIL):
+            return img
+        t0 = time.time()
+        sw, sh, rows = _ocr_windows_provider()
+        arr = np.asarray(img)
+        if arr.ndim not in (2, 3):
+            return img
+        H, W = arr.shape[:2]
+        mask, found = _ocr_chat_mask(rows, int(sw), int(sh), W, H)
+        with _OCR_NC_LOCK:
+            _OCR_NC_STATS["reads"] += 1
+        if mask is None:
+            _ocr_nc_note(None, 0.0)
+            return img
+        out = np.array(arr, copy=True)
+        out[mask] = _ocr_fill_colour(arr, mask)
+        res = Image.fromarray(out)
+        _ocr_nc_note(found, (time.time() - t0) * 1000.0)
+        return res
+    except Exception as e:
+        try:
+            with _OCR_NC_LOCK:
+                _OCR_NC_STATS["errors"] += 1
+        except Exception:
+            pass
+        _ocr_nc_say("err:" + type(e).__name__, "left alone, the OCR reads the frame as today (%s: %s)" % (type(e).__name__, str(e)[:80]))
+        return img
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # VISUAL CORTEX INTERIOR - The main subprocess
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -785,6 +1157,7 @@ class VisualCortexInterior:
         }
 
         h, w = frame_bgr.shape[:2]
+        _eyes_fix_frame_wh(result, w, h)             # eyes_fix F11: the real frame's size, for her gaze (key 'gaze_size')
 
         # ── Downscale for hashing/change-detection (huge win on ultrawide) ──
         # Hash on 480x270 regardless of source — phash is resolution-independent
@@ -1084,6 +1457,8 @@ class VisualCortexInterior:
                 del _gray_probe
             except Exception:
                 pass
+
+            pil_for_ocr = _ocr_not_chat_apply(pil_for_ocr)   # E1b ocr: her own chat window is not ambient sight (state/ocr_not_chat.json; off = this very image)
 
             text = ""
 
@@ -1880,13 +2255,20 @@ class VisualCortexInterior:
                     # Awareness pulse — even on static screen, she knows what's there
                     _should_emit = True
 
+                _rx_line = None          # recall_eyes_1020 (interior_mmap_first): the serialised passive line, sent AFTER the shared-frame write
                 if _should_emit:
                     _last_emit_time = _now
-                    self._send_response({
-                        "status": "ok",
-                        "type": "passive_frame",
-                        "data": analysis,
-                    })
+                    if _rx_on_interior("interior_mmap_first"):
+                        try:
+                            _rx_line = json.dumps({"status": "ok", "type": "passive_frame", "data": analysis}, ensure_ascii=True) + "\n"
+                        except Exception as _rx_e:
+                            _err(f"Failed to send response: {_rx_e}")
+                    else:
+                        self._send_response({
+                            "status": "ok",
+                            "type": "passive_frame",
+                            "data": analysis,
+                        })
 
                 # FIX 2026-04-03 (Nous + Ace): Also write to shared mmap.
                 # "There has to be something better than stdout pipe" — Ace
@@ -1907,6 +2289,9 @@ class VisualCortexInterior:
                         # Non-duplicate peripheral — worth updating
                         self._shared_writer.write_frame(analysis)
                     # Duplicate peripheral without OCR — skip mmap write, keep richer data
+
+                if _rx_line is not None:     # recall_eyes_1020: never blocks; the shared frame above is already written
+                    self._rx_offer(_rx_line)
 
                 # FIX 2026-03-29 (Nous + Ace): EXPLICIT CLEANUP.
                 # PIL images, cv2 arrays, and winocr results accumulate
@@ -1935,6 +2320,28 @@ class VisualCortexInterior:
     # ═══════════════════════════════════════════════════════════════════════
     # IPC - stdin/stdout JSON protocol
     # ═══════════════════════════════════════════════════════════════════════
+
+    def _rx_sender(self):
+        """recall_eyes_1020: the bounded sender of the passive lines (created on first use; one per interior)."""
+        s = self.__dict__.get("_rx_line_sender")
+        if s is None:
+            s = self.__dict__.setdefault("_rx_line_sender", _rx_mod().LineSender(self._rx_write_line, maxlen=2, name="visual-passive-send", log=_err))
+        return s
+
+    def _rx_write_line(self, line):
+        """Same lock, same write and flush as _send_response; runs on the sender thread, so a full pipe blocks only that thread."""
+        with self._stdout_lock:
+            try:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+            except Exception as e:
+                _err(f"Failed to send response: {e}")
+
+    def _rx_offer(self, line):
+        try:
+            self._rx_sender().offer(line)
+        except Exception as e:
+            _err(f"passive line not sent: {e}")
 
     def _send_response(self, response: Dict):
         """Thread-safe write to stdout."""

@@ -1,15 +1,15 @@
-# sync_code.py report -- 2026-09-26 19:58:13  (LIVE)
+# sync_code.py report -- 2026-10-28 17:01:20  (LIVE)
 
-source `F:\Sandbox\failure_factory\akashic_v2` -> mirror `F:\Sandbox\akashic-v2-repo\code`  .  optional set: off  .  0.1s
+source `F:\Sandbox\failure_factory\akashic_v2` -> mirror `F:\Sandbox\akashic-v2-repo\code`  .  optional set: off  .  0.2s
 
 ## Result
 
-| mirrored files | 1,385 |
+| mirrored files | 1,418 |
 |---|---:|
-| total bytes | 31,377,090 (29.9 MB) |
-| new | 0 |
-| updated | 0 |
-| unchanged | 1,385 |
+| total bytes | 33,510,166 (32.0 MB) |
+| new | 33 |
+| updated | 48 |
+| unchanged | 1,337 |
 | deleted from mirror | 0 |
 | HELD_BACK (secret content) | 1 |
 | over 5 MB cap | 0 |
@@ -29,20 +29,20 @@ mirror guard: source `F:\Sandbox\failure_factory\akashic_v2` and mirror `F:\Sand
 ## Largest mirrored files
 
 -  664.5 KB  `fairies/P30_Cognition/cognition/working_memory_hub_fairy.py`
--  643.7 KB  `fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py`
--  539.1 KB  `fairies/P30_Cognition/AssociationCortexFairy/fairy.py`
--  502.7 KB  `server.py`
--  456.6 KB  `fairies/P20_Somatic/SomaticMindFairy/fairy.py`
+-  660.5 KB  `fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py`
+-  543.1 KB  `fairies/P30_Cognition/AssociationCortexFairy/fairy.py`
+-  521.8 KB  `server.py`
+-  465.7 KB  `fairies/P50_Persona/avatar/self_image_wallpapers.json`
+-  461.1 KB  `fairies/P20_Somatic/SomaticMindFairy/fairy.py`
 -  417.3 KB  `fairies/P30_Cognition/cognition/unconscious_mind_fairy.py`
 -  312.6 KB  `fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py`
 -  312.6 KB  `P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py`
 -  270.5 KB  `dashboard/src-tauri/icons/icon.icns`
--  238.0 KB  `fairies/P40_Sensory/mcp/akashic_mcp_server.py`
+-  239.5 KB  `fairies/P40_Sensory/mcp/akashic_mcp_server.py`
 -  231.8 KB  `infrastructure/portal_interior.py`
 -  223.4 KB  `dashboard/ui/index.html`
 -  220.2 KB  `fairies/P50_Persona/SpeechCenterFairy/fairy.py`
--  200.0 KB  `fairies/P40_Sensory/web/akashic_foundation.py`
--  198.6 KB  `fairies/P50_Persona/Waking Minds/Sourpatches/newborn_core.py`
+-  204.4 KB  `fairies/P50_Persona/Waking Minds/Sourpatches/newborn_core.py`
 
 ## Excluded: pruned directories (never descended for copying; census is a name listing only)
 
@@ -70,12 +70,12 @@ mirror guard: source `F:\Sandbox\failure_factory\akashic_v2` and mirror `F:\Sand
 
 | reason | files | bytes | examples |
 |---|---:|---:|---|
-| backup / copy suffix | 309 | 49.1 MB | `boot_sour_full.bat.bak_premomentbinder_20260719_103332`, `rwkv_gpu_engine.py.bak_20260911_deadline`, `rwkv_gpu_engine.py.bak_20260911_headfirst` |
+| backup / copy suffix | 316 | 50.7 MB | `boot_sour_full.bat.bak_premomentbinder_20260719_103332`, `rwkv_gpu_engine.py.bak_20260911_deadline`, `rwkv_gpu_engine.py.bak_20260911_headfirst` |
 | data/media/model/compiled extension (.pkl) | 101 | 1.6 MB | `fairies/P10_Memory/visual_memory/descriptors/00f20e7a927d.pkl`, `fairies/P10_Memory/visual_memory/descriptors/02209c8e5a90.pkl`, `fairies/P10_Memory/visual_memory/descriptors/02afe5e2e6df.pkl` |
-| data/media/model/compiled extension (.jsonl) | 55 | 502.8 KB | `fairies/P50_Persona/Waking Minds/Sourpatches/diary/2026-03-09_diary.jsonl`, `fairies/P50_Persona/Waking Minds/Sourpatches/diary/2026-03-11_diary.jsonl`, `fairies/P50_Persona/Waking Minds/Sourpatches/diary/2026-03-12_diary.jsonl` |
+| data/media/model/compiled extension (.jsonl) | 72 | 603.3 KB | `fairies/P50_Persona/Waking Minds/Sourpatches/diary/2026-03-09_diary.jsonl`, `fairies/P50_Persona/Waking Minds/Sourpatches/diary/2026-03-11_diary.jsonl`, `fairies/P50_Persona/Waking Minds/Sourpatches/diary/2026-03-12_diary.jsonl` |
 | root junk (path-join fossil / log / redirect accident) | 37 | 15.3 MB | `0`, `0.20`, `10` |
 | OPTIONAL (not selected): avatar jpg asset | 12 | 4.1 MB | `fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_base.jpg`, `fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_jedi.jpg`, `fairies/P50_Persona/avatar/assets/sourpatches/sourpatches_saiyan_fire.jpg` |
-| json name guard (runtime / learned state) | 9 | 591.0 KB | `fairies/P50_Persona/identity/sourpatches_birth_profile.json`, `fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/learned_patterns.json`, `fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/thought_chain_templates.json` |
+| json name guard (runtime / learned state) | 9 | 642.4 KB | `fairies/P50_Persona/identity/sourpatches_birth_profile.json`, `fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/learned_patterns.json`, `fairies/P50_Persona/Waking Minds/Sourpatches/newborn_state/thought_chain_templates.json` |
 | reserved Windows name | 8 | 517 B | `nul`, `tracer_pool/nul`, `postal_core/nul` |
 | .satellite runtime-state json (LAN topology / peers / deploy log; Hunt B) | 6 | 7.7 KB | `.satellite/cardinal_network_log.json`, `.satellite/deploy_log.json`, `.satellite/gpu_fleet.json` |
 | unsafe characters in name | 2 | 12.1 KB | `Ctempstatus.json`, `FSandboxfailure_factoryakashic_v2stateboot_live.log` |
@@ -94,7 +94,40 @@ mirror guard: source `F:\Sandbox\failure_factory\akashic_v2` and mirror `F:\Sand
 
 ## Cross-check against `_survey/mirror_manifest.tsv` (inventory's proposed set)
 
-- in mirror but not in manifest: 0
+- in mirror but not in manifest: 33
+  - `fairies/P00_Autonomic/EmbodimentFairy/felt_translate.py`
+  - `fairies/P00_Autonomic/nervous_system/hardware/_gc_diet.py`
+  - `fairies/P00_Autonomic/postal_bridge/bridge_auth.py`
+  - `fairies/P50_Persona/avatar/self_facts.py`
+  - `fairies/P50_Persona/avatar/self_image.py`
+  - `fairies/P50_Persona/avatar/self_image_wallpapers.json`
+  - `infrastructure/cutoff_fix.py`
+  - `infrastructure/doing_clock.py`
+  - `infrastructure/efference_copy.py`
+  - `infrastructure/explore_offload.py`
+  - `infrastructure/eyes_fix.py`
+  - `infrastructure/eyes_fix2.py`
+  - `infrastructure/gentle_load.py`
+  - `infrastructure/gpu_reader.py`
+  - `infrastructure/gpu_spread_fix.py`
+  - `infrastructure/hand_door.py`
+  - `infrastructure/hand_target.py`
+  - `infrastructure/one_cortex.py`
+  - `infrastructure/postal_lease_issuer.py`
+  - `infrastructure/recall_eyes_fix.py`
+  - `infrastructure/reflex_link.py`
+  - `infrastructure/sour_office.py`
+  - `infrastructure/tardis_backlog.py`
+  - `infrastructure/tardis_fix.py`
+  - `infrastructure/tardis_timing.py`
+  - `infrastructure/thought_tap.py`
+  - `infrastructure/thread_snapshot.py`
+  - `infrastructure/touch.py`
+  - `infrastructure/touch_lists.py`
+  - `infrastructure/touch_marker.py`
+  - `infrastructure/touch_os.py`
+  - `infrastructure/volition_read.py`
+  - `infrastructure/zip_v21_run.txt`
 - in manifest but not in mirror: 5
   - `.claude/settings.local.json`
   - `.satellite/network_config.json`

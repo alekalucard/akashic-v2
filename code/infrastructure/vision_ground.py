@@ -60,6 +60,50 @@ _COLOUR_MIN_FRAC = 0.003                           # under 0.3% of the frame a r
 _MIN_BOX = 0.002                                   # boxes under 0.2% of the frame are noise
 _GRID_COLS, _GRID_ROWS = 4, 3                      # the interior's sector grid
 _THUMB_W = 1024                                    # the frame size Florence has always been given
+# eyes_fix_1009 (2026-10-09, Nous; DIAGNOSIS vision_focus_1009 section 4, Ace: "false tellings first"). Every line marked
+# eyes_fix below runs only while Ace's eyes switch (state/eyes_fix.json, infrastructure/eyes_fix.py) carries its key:
+# F0 'log' (observation lines only), F1 'doubt' (a box from the far eye alone is 'unsure', never 'found'), F4 'hand_honest'
+# (ground(within=...): the boxes inside one window), F6 'glance' (a window she did not choose is a glance, not a 10-minute
+# hold), F8 'two_screens' (a point off her screen is 'on the other screen'). Absent file or key = today's behaviour; a
+# malformed file = every key OFF. Revert: apply_eyes_fix.py --revert.
+OTHER_SCREEN = "other screen"                      # eyes_fix F8: _place's position for a point off her (primary) screen
+_GLANCE_S = float(os.environ.get("AKASHIC_EYES_GLANCE_S", "20") or 20)   # eyes_fix F6: how long a glance holds
+_DOUBT_PATCH = 9                                   # eyes_fix F1: px of a 1024-wide frame (~30 px of hers): colour's fixed scale
+_DOUBT_COLOUR_MIN = 0.5                            # eyes_fix F1: the share of that patch the colour word must cover
+_DOUBT_WIN_IOU = 0.6                               # eyes_fix F1: a box this close to a whole window IS that window
+_DOUBT_COLOUR_MAX_FRAC = 0.10                      # eyes_fix F1 (verify M3): colour at a box's centre is a witness only for a box
+                                                   # at most this share of the frame (no toy, ball, icon or cursor is bigger);
+                                                   # a frame-scale box has the window map as its only witness
+
+
+def _ef(key: str) -> bool:
+    """eyes_fix_1009: one key of Ace's eyes switch (state/eyes_fix.json, infrastructure/eyes_fix.py); OFF on any doubt (the
+    module absent, the file absent or malformed) -- then every line marked eyes_fix runs today's path."""
+    try:
+        from infrastructure import eyes_fix as _efm
+        return _efm.on(key)
+    except Exception:
+        return False
+
+
+def _ef2(key: str) -> bool:
+    """eyes_fix2_1012: one key of Ace's SECOND eyes switch (state/eyes_fix2.json, infrastructure/eyes_fix2.py -- the first
+    switch's reader rejects unknown keys, so 'window_names' cannot live there); OFF on any doubt (the module absent, the file
+    absent or malformed) -- then every line marked eyes_fix2 runs today's path."""
+    try:
+        from infrastructure import eyes_fix2 as _ef2m
+        return _ef2m.on(key)
+    except Exception:
+        return False
+
+
+def place_phrase(position, at: str = "at the %s of the screen") -> str:
+    """eyes_fix F8: 'at the upper-left of the screen' for a place on her screen; for a point off it, 'on the other screen
+    (Ace's), where your eyes do not look' -- never 'at the other screen of the screen'. With 'two_screens' off _place never
+    gives OTHER_SCREEN, so this is today's text."""
+    if position == OTHER_SCREEN:
+        return "on the other screen (Ace's), where your eyes do not look"
+    return at % position
 
 _URL_WARNED = [False]
 
@@ -305,7 +349,7 @@ def unasked_looks(exclude: List[str], max_age_s: float = 60.0, limit: int = 2) -
         for ts, rec in reversed(_looks()):
             if now - ts > max_age_s or len(out) >= limit or screen_moved_since(ts):
                 break
-            if rec.get("status") != "found" or rec.get("fills_screen"):
+            if rec.get("status") not in ("found", "unsure") or rec.get("fills_screen"):   # eyes_fix F1: 'unsure' only exists with 'doubt'
                 continue
             if float(rec.get("size_pct") or 0.0) < 2.0:
                 continue                                # a 0.9% blob is not 'a place you keep looking at' (09-20)
@@ -551,10 +595,30 @@ def hand_owner_note(h: Dict) -> str:
 
 def _place(cx: float, cy: float) -> Dict:
     col, row = min(_GRID_COLS - 1, int(cx * _GRID_COLS)), min(_GRID_ROWS - 1, int(cy * _GRID_ROWS))
+    if not (0.0 <= cx < 1.0 and 0.0 <= cy < 1.0) and _ef("two_screens"):   # eyes_fix F8: off her (primary) screen --
+        return {"row": row, "col": col, "cell": row * _GRID_COLS + col, "position": OTHER_SCREEN}   # never 'left' (C9)
     vert = "upper" if cy < 0.34 else ("lower" if cy > 0.66 else "middle")
     horiz = "left" if cx < 0.34 else ("right" if cx > 0.66 else "centre")
     return {"row": row, "col": col, "cell": row * _GRID_COLS + col,
             "position": vert + "-" + horiz if (vert, horiz) != ("middle", "centre") else "centre"}
+
+
+_HAND_PLACE_SAID = _keep("_HAND_PLACE_SAID", [None, 0.0])
+
+
+def _log_hand_place(h: Dict, position) -> None:
+    """eyes_fix F0 'log' (DIAGNOSIS C9): the raw cursor beside the place word it became -- 'middle-left' fits her chat
+    window and Ace's monitor 2 alike. One line per (x, y, place) per 30 s. ASCII."""
+    try:
+        k = (int(h["x"]), int(h["y"]), str(position))
+        now = time.time()
+        if _HAND_PLACE_SAID[0] == k and now - float(_HAND_PLACE_SAID[1]) < 30.0:
+            return
+        _HAND_PLACE_SAID[0], _HAND_PLACE_SAID[1] = k, now
+        print("[Eyes] HAND PLACE: raw cursor (%d, %d) on her screen %dx%d -> '%s'" % (
+            k[0], k[1], int(h.get("screen_w") or 0), int(h.get("screen_h") or 0), k[2]), flush=True)
+    except Exception:
+        pass
 
 
 def hand_record(phrase: str, img=None) -> Dict:
@@ -574,6 +638,8 @@ def hand_record(phrase: str, img=None) -> Dict:
            "size_pct": round(100.0 * (a * a) / float(fw * fh), 2), "fills_screen": False, "n_boxes": 1,
            "screen_xy": [h["x"], h["y"]], "still_s": h["still_s"], "frame_age_s": 0.0, "frame_src": "hand", "ms": 0}
     rec.update(_place(h["cx"], h["cy"]))
+    if _ef("log"):                                     # eyes_fix F0: the raw cursor beside its place word
+        _log_hand_place(h, rec.get("position"))
     rec["owner_note"] = hand_owner_note(h)
     try:
         from infrastructure import intention as _it       # lazy: no import cycle; the grant lives there
@@ -768,6 +834,7 @@ def windows_now(max_n: int = 8) -> List[Dict]:
                     cov = max(cov, ov / max(1e-6, (r1 - l1) * (b1 - t1)))
                 w["covered"] = round(cov, 2)
             rows = rows[:max_n]
+            _note_departures(_WIN_CACHE[1], rows, now)   # 2026-10-06 (council_set1 item 5): which windows just left (never raises)
             _WIN_CACHE[0], _WIN_CACHE[1] = now, rows
             return rows
     except Exception as e:
@@ -838,7 +905,7 @@ def window_mentions(text: str) -> List[Dict]:
     return out
 
 
-def look_window(w: Dict, timeout_s: float = 25.0, read_words: Optional[bool] = None) -> Dict:
+def look_window(w: Dict, timeout_s: float = 25.0, read_words: Optional[bool] = None, origin: Optional[str] = None) -> Dict:   # eyes_fix F6: + origin
     """Focus on ONE window: crop the live screen to it (physical pixels, whatever the DPI), caption the crop, and
     read its words when it is a text-bearing window. Cached per window for 20 s."""
     title = str(w.get("title", ""))
@@ -895,7 +962,7 @@ def look_window(w: Dict, timeout_s: float = 25.0, read_words: Optional[bool] = N
     rec["words"] = words[-360:] if len(words) > 360 else words   # the LAST lines of a chat / log are the newest
     _WIN_LOOK_CACHE[title] = (now, dict(rec))
     print("[Eyes] WINDOW %s: %s | words: %s" % (w["name"], rec["text"][:100], rec["words"][:80]), flush=True)
-    set_focus(rec)
+    set_focus(rec, origin=origin)                     # eyes_fix F6: origin 'front' / 'ace' = a glance (with the key)
     return rec
 
 
@@ -915,13 +982,74 @@ _FOCUS = _keep('_FOCUS', {"rec": None, "ts": 0.0})
 _FOCUS_HOLD_S = float(os.environ.get("AKASHIC_EYES_FOCUS_HOLD_S", "600") or 600)
 _READ_WINDOWS = _keep('_READ_WINDOWS', {})  #  hwnd -> ts of her last read of it (no re-read inside _REREAD_S)
 _REREAD_S = 300.0
+# 2026-10-06 (Nous, council_set1 item 5 -- Ace's Monday list: after the player closed, "American Dad" kept coming back).
+# A held window is the main carrier (Boot G: the closed Media Player's caption, "Family Guy" in it, reached two Ace prompts after
+# the close, G137092 / G138398). Live switch state/council_set1.json {"stale_topic": true}; absent / unreadable / not exactly true
+# = every function below the lines marked council_set1 behaves as today, byte for byte. ON:
+#   * focus_now: a held window that has LEFT the window map is classified at read time -- closed (IsWindow false), put away
+#     (minimised / hidden) or out of view (another screen, cloaked, 9th+ in z-order, tiny). Closed -> the hold ends and ONE
+#     notice line, no caption, no words, is told to her next reply to Ace and ONE to her next other prompt (skeptic F6: a
+#     surprise or goal-author prompt reading it first no longer takes it from his reply). Put away / out of view -> the hold stays (a restore re-holds it)
+#     but its caption and words are not rendered while she cannot see into it. An open window keeps today's 600 s hold.
+#   * start_grounding: Ace's "I closed it" / "it's closed" / "I turned it off" ends the hold (the window he means: a named
+#     window, else the held one if it left the map, else the latest departure <= 10 min, else the held one when his words
+#     point at it). Words never OPEN a hold here; only her eyes do, and only on a window present in the map.
+#   * front_item_closed: the driver drops a front-window surprise whose window has closed before she would speak of it.
+# Bound: the map refreshes every _WIN_MIN_S (2 s); the first prompt rendered after that carries no caption of a closed window.
+_FOCUS_LOCK = _keep('_FOCUS_LOCK', threading.Lock())
+_FOCUS_END = _keep('_FOCUS_END', {"note": None})          # the one closing notice still to be told
+_DEPARTED = _keep('_DEPARTED', [])                         # windows that just left the map: hwnd, title, name, ts (<= 10 min, 16)
+_FRONT_TOLD = _keep('_FRONT_TOLD', [None])                 # the window of the last front-window surprise (hwnd, name, ts)
+_CS1_SWITCH = os.path.join(_ROOT, "state", "council_set1.json")
+_CS1_TTL_S = 1.0
+_CS1_CACHE = _keep('_CS1_CACHE', [(0.0, None)])
+_DEPART_KEEP_S = 600.0
 
 
-def set_focus(rec: Dict) -> None:
+def _glance_keep(now: float):
+    """eyes_fix F6: what the focus goes back to when a glance ends -- her own hold if it is still inside its own time (or the
+    one an earlier glance was keeping). Called under _FOCUS_LOCK."""
+    if _FOCUS.get("glance"):
+        return _FOCUS.get("back")
+    r = _FOCUS.get("rec")
+    if r is not None and now - float(_FOCUS.get("ts") or 0.0) <= float(_FOCUS.get("hold_s") or _FOCUS_HOLD_S):
+        return {"rec": r, "ts": float(_FOCUS.get("ts") or 0.0), "hold_s": float(_FOCUS.get("hold_s") or _FOCUS_HOLD_S)}
+    return None
+
+
+def _glance_over(now: float) -> None:
+    """eyes_fix F6 'glance' (the 10-06 rule: notice, glance, come back; DIAGNOSIS C6). A window she did not choose -- it came
+    to the front, or Ace named it -- holds for _GLANCE_S, then the focus goes back to what she held before, or to nothing.
+    Only a hold a glance made carries 'glance', so with the key off this never acts."""
+    with _FOCUS_LOCK:
+        if not _FOCUS.get("glance") or now - float(_FOCUS.get("ts") or 0.0) <= float(_FOCUS.get("hold_s") or _GLANCE_S):
+            return
+        name = str((_FOCUS.get("rec") or {}).get("name") or "a window")
+        back = _FOCUS.get("back")
+        for _k in ("glance", "back", "hold_s"):
+            _FOCUS.pop(_k, None)
+        if back and back.get("rec") is not None and now - float(back.get("ts") or 0.0) <= float(back.get("hold_s") or _FOCUS_HOLD_S):
+            _FOCUS["rec"], _FOCUS["ts"], _FOCUS["hold_s"] = back["rec"], float(back["ts"]), float(back.get("hold_s") or _FOCUS_HOLD_S)
+            told = "your focus is back on %s" % str(back["rec"].get("name") or "a window")
+        else:
+            _FOCUS["rec"] = None
+            told = "nothing is held now"
+    print("[Eyes] GLANCE over: %s (a window you did not choose) after %.0f s; %s" % (name, _GLANCE_S, told), flush=True)
+
+
+def set_focus(rec: Dict, origin: Optional[str] = None) -> None:   # eyes_fix F6: + origin ('front' / 'ace' = not hers)
     """A window she read becomes what she holds; its words go into the weave as a turn of her own eyes."""
     if not rec or rec.get("status") != "window":
         return
-    _FOCUS["rec"], _FOCUS["ts"] = dict(rec), time.time()
+    _gl = origin in ("front", "ace") and _ef("glance")  # eyes_fix F6: a window she did not choose is a glance, not a hold
+    with _FOCUS_LOCK:                                  # 2026-10-06 (council_set1 item 5): one writer of the hold at a time
+        _back = _glance_keep(time.time()) if _gl else None
+        _FOCUS["rec"], _FOCUS["ts"] = dict(rec), time.time()
+        if _gl:
+            _FOCUS["glance"], _FOCUS["hold_s"], _FOCUS["back"] = origin, _GLANCE_S, _back
+        else:
+            for _k in ("glance", "hold_s", "back"):
+                _FOCUS.pop(_k, None)
     if rec.get("hwnd"):
         _READ_WINDOWS[int(rec["hwnd"])] = time.time()
         for k in [k for k, ts in _READ_WINDOWS.items() if time.time() - ts > 3600]:
@@ -935,9 +1063,12 @@ def set_focus(rec: Dict) -> None:
         pass
 
 
-def focus_now() -> Optional[Dict]:
+def focus_now(lane: Optional[str] = None) -> Optional[Dict]:   # 2026-10-06 (council_set1 item 5): + lane (skeptic F6); OFF: ignored
+    if _st_on():                                       # 2026-10-06 (council_set1 item 5); OFF: the lines below, unchanged
+        return _focus_now_cs1(lane)
+    _glance_over(time.time())                          # eyes_fix F6: a glance that ran out gives the focus back
     r = _FOCUS["rec"]
-    if r is None or time.time() - _FOCUS["ts"] > _FOCUS_HOLD_S:
+    if r is None or time.time() - _FOCUS["ts"] > float(_FOCUS.get("hold_s") or _FOCUS_HOLD_S):   # eyes_fix F6: + hold_s
         return None
     out = dict(r); out["held_s"] = time.time() - _FOCUS["ts"]
     wins = windows_now()
@@ -954,6 +1085,8 @@ def focus_now() -> Optional[Dict]:
 def render_focus(f: Optional[Dict]) -> str:
     if not f:
         return ""
+    if f.get("cs1"):                                  # 2026-10-06 (council_set1 item 5): only the ON path marks a record
+        return _render_focus_cs1(f)
     ago = f.get("held_s", 0.0)
     when = "just now" if ago < 20 else ("%.0f s ago" % ago if ago < 120 else "%.0f min ago" % (ago / 60))
     if not f.get("still_open"):
@@ -966,6 +1099,261 @@ def render_focus(f: Optional[Dict]) -> str:
     if f.get("words"):
         parts.append("Words you read in it: \"%s\"" % f["words"][-300:])
     return " ".join(parts).replace(". .", ".")
+
+
+# -- council_set1 item 5 (2026-10-06): a closed window's topic stops being fed --------------------------------------
+def _cs1() -> Dict:
+    """state/council_set1.json ({} when absent, unreadable, torn or not an object). 1 s cache. Never raises."""
+    now = time.time()
+    c = _CS1_CACHE[0]
+    if c[1] is not None and 0.0 <= now - c[0] < _CS1_TTL_S:
+        return c[1]
+    d: Dict = {}
+    try:
+        with open(_CS1_SWITCH, "rb") as f:
+            v = json.loads(f.read().decode("utf-8-sig"))
+        d = v if isinstance(v, dict) else {}
+    except Exception:
+        d = {}
+    _CS1_CACHE[0] = (now, d)
+    return d
+
+
+def _st_on() -> bool:
+    try:
+        return _cs1().get("stale_topic") is True
+    except Exception:
+        return False
+
+
+def _win_state(hwnd) -> str:
+    """Why a window is not in the map: 'closed' (no such window any more), 'put_away' (minimised or hidden), 'out_of_view'
+    (it exists and shows: another screen, cloaked, past the 8-window cap, tiny), or 'unknown'. Never raises."""
+    try:
+        h = int(hwnd or 0)
+        if h <= 0:
+            return "unknown"
+        import ctypes
+        import ctypes.wintypes as wt
+        u = ctypes.windll.user32
+        if not u.IsWindow(wt.HWND(h)):
+            return "closed"
+        if u.IsIconic(wt.HWND(h)) or not u.IsWindowVisible(wt.HWND(h)):
+            return "put_away"
+        return "out_of_view"
+    except Exception:
+        return "unknown"
+
+
+def _note_departures(old: List[Dict], new: List[Dict], now: float) -> None:
+    """Called inside windows_now (under _WIN_LOCK) at each map refresh: remember which windows just left. Never raises."""
+    try:
+        cur = {int(w.get("hwnd") or 0) for w in (new or [])}
+        for w in (old or []):
+            h = int(w.get("hwnd") or 0)
+            if h and h not in cur and not any(d.get("hwnd") == h for d in _DEPARTED):
+                _DEPARTED.append({"hwnd": h, "title": str(w.get("title") or ""), "name": str(w.get("name") or "a window"), "ts": now})
+        keep = [d for d in _DEPARTED if d.get("hwnd") not in cur and now - float(d.get("ts") or 0.0) <= _DEPART_KEEP_S][-16:]
+        _DEPARTED[:] = keep
+    except Exception:
+        pass
+
+
+def departed(max_age_s: float = _DEPART_KEEP_S) -> List[Dict]:
+    """Windows that left the map in the last max_age_s, newest first (copies)."""
+    now = time.time()
+    with _WIN_LOCK:
+        return [dict(d) for d in reversed(_DEPARTED) if now - float(d.get("ts") or 0.0) <= max_age_s]
+
+
+def _end_focus(rec: Optional[Dict], why: str) -> bool:
+    """End the hold on `rec` (only if it is still the one held) and leave ONE notice for the next prompt."""
+    with _FOCUS_LOCK:
+        cur = _FOCUS["rec"]
+        if rec is not None and cur is not rec:
+            return False
+        r = cur if rec is None else rec
+        if r is None:
+            return False
+        _FOCUS["rec"] = None
+        _FOCUS_END["note"] = {"why": why, "name": str(r.get("name") or "a window"), "hwnd": r.get("hwnd"),
+                              "read_ts": float(_FOCUS["ts"] or 0.0), "ts": time.time(), "told_to": []}
+    return True
+
+
+def _take_end_note(now: float, lane: Optional[str] = None) -> Optional[Dict]:
+    """The closing notice: told ONCE to a prompt that answers Ace (lane 'ace') and ONCE to her other prompts (anything
+    else: a surprise, a voluntary line, the goal author). Skeptic F6: whichever reads it first no longer takes it from the other."""
+    k = "ace" if lane == "ace" else "side"
+    with _FOCUS_LOCK:
+        n = _FOCUS_END.get("note")
+        if not n or now - float(n.get("ts") or 0.0) > _FOCUS_HOLD_S:
+            return None
+        told = n.setdefault("told_to", [])
+        if k in told:
+            return None
+        told.append(k)
+        return {"cs1": True, "gone": n["why"], "name": n["name"], "held_s": now - float(n.get("read_ts") or now),
+                "still_open": False, "text": "", "words": ""}
+
+
+def _focus_now_cs1(lane: Optional[str] = None) -> Optional[Dict]:
+    now = time.time()
+    _glance_over(now)                                  # eyes_fix F6
+    with _FOCUS_LOCK:
+        r = _FOCUS["rec"]
+        ts = float(_FOCUS["ts"] or 0.0)
+        _hold = float(_FOCUS.get("hold_s") or _FOCUS_HOLD_S)   # eyes_fix F6
+        n = _FOCUS_END.get("note")
+        if r is not None and n is not None and float(n.get("ts") or 0.0) < ts:
+            _FOCUS_END["note"] = None          # a newer hold superseded the notice
+    if r is None or now - ts > _hold:                   # eyes_fix F6: was _FOCUS_HOLD_S (the same unless a glance holds)
+        return _take_end_note(now, lane)
+    out = dict(r); out["held_s"] = now - ts
+    wins = windows_now()
+    w = next((x for x in wins if r.get("hwnd") and x.get("hwnd") == r.get("hwnd")), None) \
+        or next((x for x in wins if x.get("title") == r.get("title")), None)
+    out["still_open"] = w is not None
+    if w is not None:
+        out["front_now"] = bool(w.get("front")); out["half"] = w["half"]; out["covered_now"] = float(w.get("covered") or 0)
+        fw = next((x for x in wins if x.get("front")), None)
+        out["behind"] = fw["name"] if (fw is not None and not w.get("front")) else ""
+        return out
+    st = _win_state(r.get("hwnd"))
+    if st == "closed":
+        if _end_focus(r, "closed"):
+            print("[Eyes] FOCUS ended: %s is closed" % r.get("name", "a window"), flush=True)
+        return _take_end_note(now, lane)
+    out["cs1"] = True; out["gone"] = st; out["text"] = ""; out["words"] = ""
+    return out
+
+
+def _render_focus_cs1(f: Dict) -> str:
+    name = f.get("name", "a window")
+    gone = f.get("gone")
+    if gone == "closed":
+        return "The window you were holding in focus, %s, is closed now." % name
+    if gone == "ace_closed":
+        return "Ace closed %s; it is not on the screen any more." % name
+    if gone == "ace_closed_inside":
+        return "Ace says he closed what was in %s; what you read in it before is over." % name
+    ago = float(f.get("held_s") or 0.0)
+    when = "just now" if ago < 20 else ("%.0f s ago" % ago if ago < 120 else "%.0f min ago" % (ago / 60))
+    if gone == "put_away":
+        return "What you are holding in focus (read %s): %s, put away now (minimised), so you cannot see into it." % (when, name)
+    return "What you are holding in focus (read %s): %s, out of your view now (behind other windows or off this screen)." % (when, name)
+
+
+# skeptic F2 (2026-10-06): 'stopped' / 'quit' / 'exited' / 'shut' need an object ('I stopped and thought' is not a close);
+# 'that's off' and 'its gone' are gone; 'it's off' needs 'now' / 'already'; a non-screen object (eyes, door, blinds, lights ...)
+# or a past time (last night, years ago ...) in the clause vetoes it. Corpus re-run: the same 2 real closes, nothing else.
+_CLOSE_OBJ = r"(?:it|that|this|the\s+[\w']+|my\s+[\w']+|our\s+[\w']+)"
+_CLOSE_RE = re.compile(
+    r"\b(?:i|we)(?:'ve| have)?\s+(?:just\s+|already\s+)?"
+    r"(?:closed|turned\s+(?:it|that|this|\w+)?\s*off|turned\s+off"
+    r"|shut\s+(?:down|off)\b|shut\s+" + _CLOSE_OBJ + r"(?:\s+(?:down|off))?"
+    r"|(?:exited|quit|stopped)\s+(?:out\s+of\s+)?" + _CLOSE_OBJ + r")\b"
+    r"|\b(?:it'?s|its|it\s+is)\s+(?:(?:now|already)\s+)?(?:closed|shut(?:\s+down)?)\b"
+    r"|\b(?:it'?s|its|it\s+is)\s+(?:(?:now|already)\s+off|off\s+(?:now|already))\b", re.I)
+_CLOSE_NEG = re.compile(r"\b(?:not|never|didn'?t|haven'?t|don'?t|won'?t|can'?t|isn'?t|wasn'?t|aren'?t)\b", re.I)
+_CLOSE_REF = re.compile(r"\b(?:it|that|this|video|show|episode|movie|film|player|game|music|song|stream|tab|window)\b", re.I)
+_CLOSE_NOT = re.compile(r"\b(?:my|the|our|your|his|her|a)\s+(?:eyes?|mouth|doors?|blinds|curtains?|fridge|gate|lid|lights?|lamp|oven|"
+                        r"stove|heater|fan|alarm|car|engine|water|tap|book|store|shop)\b", re.I)
+_CLOSE_PAST = re.compile(r"\b(?:yesterday|last\s+(?:night|week|month|year|time)|(?:days?|weeks?|months?|years?)\s+ago|"
+                         r"earlier\s+today|this\s+morning)\b", re.I)
+_CLOSE_BOUND = re.compile(r"[,.;:!?]|\b(?:and|but|so|then|because|cause|while)\b", re.I)
+
+
+def _close_clause(t: str, m) -> str:
+    """The close match plus what follows it up to the clause boundary (<= 30 chars): where its object and refs may be."""
+    tail = t[m.end():m.end() + 30]
+    b = _CLOSE_BOUND.search(tail)
+    return t[m.start():m.end()] + (tail[:b.start()] if b else tail)
+
+
+def _close_match(text: str):
+    """The first close Ace states (a regex match), or None. Pure."""
+    t = str(text or "")
+    for m in _CLOSE_RE.finditer(t):
+        pre = t[max(0, m.start() - 20):m.start()]
+        if _CLOSE_NEG.search(pre) or _CLOSE_NEG.search(m.group(0)):
+            continue
+        c = _close_clause(t, m)
+        if _CLOSE_NOT.search(c) or _CLOSE_PAST.search(c):
+            continue
+        return m
+    return None
+
+
+def close_said(text: str) -> bool:
+    """Ace says something is closed (corpus 2026-10-06: his chat history, nous_builds/council_set1/tests). Pure."""
+    return _close_match(text) is not None
+
+
+def _title_head(title: str) -> str:
+    return re.split(r"\s*[-\u2014\u2013]\s*", str(title or "").lower())[0].strip()
+
+
+def _close_heard(text: str) -> Optional[str]:
+    """Ace said he closed something: end the hold he means. Returns what was closed, or None. Idempotent."""
+    cm = _close_match(text)
+    if cm is None:
+        return None
+    now = time.time()
+    tl = str(text or "").lower()
+    tc = _close_clause(tl, cm)                       # skeptic F2: rule 4 looks only inside the clause of the close
+    with _FOCUS_LOCK:
+        r = _FOCUS["rec"] if (_FOCUS["rec"] is not None and now - float(_FOCUS["ts"] or 0.0) <= float(_FOCUS.get("hold_s") or _FOCUS_HOLD_S)) else None   # eyes_fix F6
+    wins = windows_now()
+    in_map = (lambda rec: rec is not None and any((rec.get("hwnd") and x.get("hwnd") == rec.get("hwnd")) or x.get("title") == rec.get("title") for x in wins))
+    dep = departed()
+    target, why = None, None
+    for d0 in dep:                                                     # 1. a window he names that just left
+        h0 = _title_head(d0.get("title"))
+        if len(h0) >= 4 and h0 in tl:
+            target = d0
+            break
+    if target is None and r is not None:
+        h1 = _title_head(r.get("title"))
+        if len(h1) >= 4 and h1 in tl:
+            target = r
+    if target is None and r is not None and not in_map(r):             # 2. 'it': the held window, gone from the map
+        target = r
+    if target is None and dep:                                         # 3. the latest departure
+        target = dep[0]
+    if target is None and r is not None and _CLOSE_REF.search(tc):     # 4. the held window, still open: its content is over
+        target = r
+    if target is None:
+        print("[Eyes] CLOSE heard (%r) -- nothing held, nothing just left" % str(text)[:60], flush=True)
+        return None
+    with _WIN_LOCK:                                  # verify_tests F8: the map-refresh thread rewrites _DEPARTED under this lock (an RLock)
+        for d0 in _DEPARTED:
+            if target.get("hwnd") and d0.get("hwnd") == target.get("hwnd"):
+                d0["ace_closed"] = True
+    is_focus = r is not None and (target is r or (target.get("hwnd") and target.get("hwnd") == r.get("hwnd")))
+    if is_focus:
+        _end_focus(r, "ace_closed" if not in_map(r) else "ace_closed_inside")
+    name = str(target.get("name") or "a window")
+    print("[Eyes] CLOSED (Ace said so): %s%s" % (name, " -- the hold on it ended" if is_focus else ""), flush=True)
+    return name
+
+
+def front_item_closed(item: Optional[Dict]) -> bool:
+    """True when `item` is the front-window surprise about a window that has closed (or that Ace said he closed)."""
+    try:
+        if not _st_on() or not item:
+            return False
+        if str(item.get("kind")) != "eyes" or str(item.get("key")) != "front":
+            return False
+        ft = _FRONT_TOLD[0]
+        if not ft or abs(float(item.get("ts") or 0.0) - float(ft.get("ts") or 0.0)) > 10.0:
+            return False
+        h = int(ft.get("hwnd") or 0)
+        if not h or any(w.get("hwnd") == h for w in windows_now()):
+            return False
+        return _win_state(h) == "closed" or any(d.get("hwnd") == h and d.get("ace_closed") for d in departed())
+    except Exception:
+        return False
 
 
 # ── the SURVEY: look the whole picture over (Ace 2026-09-20) ───────────────────────
@@ -986,7 +1374,12 @@ def wants_survey(text: str) -> bool:
 
 def is_whole(phrase: str) -> bool:
     p = " ".join(str(phrase or "").lower().replace("the ", " ").replace("my ", " ").replace("your ", " ").split())
-    return p in _WHOLE_NOUNS or head_noun(p) in _WHOLE_NOUNS
+    if not (p in _WHOLE_NOUNS or head_noun(p) in _WHOLE_NOUNS):
+        return False
+    # fold 10-09 (DIAGNOSIS 5.3): 'pictures' is also a toy of her Playroom. A toy her eyes can see by its name (playroom_record:
+    # Ace's eyes switch 'toy_names', the VERIFIED Playroom, the toy uncovered) is that toy, not the whole screen; otherwise
+    # (no key, not verified, covered) the word stays a survey, as before.
+    return playroom_record(phrase) is None
 
 
 def survey(timeout_s: float = 25.0, max_regions: int = 5) -> Optional[Dict]:
@@ -1144,7 +1537,574 @@ def _segment_in_box(url: str, png_unused, img, phrase: str, box, timeout_s: floa
     return px, fbox, area_frame
 
 
-def ground(phrases: List[str], timeout_s: float = _GROUND_TIMEOUT_S, on_result=None) -> List[Dict]:
+# 2026-10-09 (Nous, touch set 1c; Ace approved "her eyes learning the toy names"). Boot J: her look and move at "red ball" came
+# back "nowhere on the screen" (log L29959, L33630) while her window map held the Playroom and her fovea read the names: Florence
+# grounds on a 1024-px thumbnail of an ultrawide screen, where a toy is a speck. The names and rects come from
+# touch_os.eyes_playroom() -- the VERIFIED Playroom (pid, command line, class, title, heartbeat), the same source her finger
+# aims with, so eye and finger agree. Only an EXACT toy name matches ('red ball', 'the red ball', 'red ball in Sour's Playroom',
+# 'red ball toy'); every other phrase falls through to the grounding below, unchanged. touch_os is read from sys.modules only
+# (never imported here: a second import of touch latches it). Absent / no 'toy_names' in Ace's eyes switch (state/eyes_fix.json,
+# fold 10-09: its own key, independent of touch) / not verified: nothing changes. Fold 10-09 (DIAGNOSIS 5.1): a toy's NAME is
+# normalised like the phrase, so "your shelf" and "shelf" both name the toy 'your shelf'.
+_PR_TAIL_RE = re.compile(r"\s+(?:in|on|inside|at|from)\s+(?:the\s+|my\s+|your\s+|her\s+)?(?:sour'?s\s+|sourpatches'?s?\s+)?"
+                         r"play\s?room(?:\s+window)?$", re.I)
+_PR_HEAD_RE = re.compile(r"^(?:the|my|your|her|a|an|that|this)\s+", re.I)
+_PR_KIND_RE = re.compile(r"\s+(?:toy|icon)$", re.I)
+
+
+def _pr_norm(phrase: str) -> str:
+    s = " ".join(str(phrase or "").replace("\u2019", "'").split()).strip(" .!?,;:\"'")
+    for _ in range(2):
+        s = _PR_TAIL_RE.sub("", s).strip()
+        s = _PR_HEAD_RE.sub("", s).strip()
+        s = _PR_KIND_RE.sub("", s).strip()
+    return s.casefold()
+
+
+def playroom_item(phrase: str) -> Optional[Dict]:
+    """The verified Playroom's toy this phrase names EXACTLY, with the Playroom itself under 'playroom'; None otherwise."""
+    try:
+        tos = _sys.modules.get("infrastructure.touch_os")
+        if tos is None or not hasattr(tos, "eyes_playroom"):
+            return None
+        want = _pr_norm(phrase)
+        if not want:
+            return None
+        pr = tos.eyes_playroom()
+        if not pr:
+            return None
+        for it in pr.get("items") or []:
+            nm = str(it.get("name", ""))
+            if want in (nm.casefold(), _pr_norm(nm)):  # fold 10-09 (DIAGNOSIS 5.1): 'your shelf' -> 'shelf' on both sides
+                return dict(it, playroom=pr)
+    except Exception:
+        return None
+    return None
+
+
+def playroom_record(phrase: str) -> Optional[Dict]:
+    """A grounding record for a VISIBLE toy of the verified Playroom (frame = the primary screen in physical pixels, which is
+    her eyes' logical space while touch_os.dpi_ok holds); None = not one (the phrase is grounded as before)."""
+    it = playroom_item(phrase)
+    if it is None or not it.get("visible"):
+        return None
+    try:
+        pr = it["playroom"]
+        sw, sh = [int(v) for v in pr["screen"]]
+        x1, y1, x2, y2 = [int(v) for v in it["rect"]]
+        size = max(0, x2 - x1) * max(0, y2 - y1) / float(sw * sh)
+        return {"phrase": phrase, "status": "found", "how": "playroom", "synthetic": True, "toy": it["name"],
+                "bbox": [x1, y1, x2, y2], "frame_w": sw, "frame_h": sh,
+                "position": _place((x1 + x2) / 2.0 / sw, (y1 + y2) / 2.0 / sh)["position"], "size_pct": round(100.0 * size, 1),
+                "colour_name": "the toy of that name in your Playroom", "top_bands": [], "colour_unsure": False,
+                "matches": None, "fills_screen": False, "n_boxes": 1, "playroom_hwnd": int(pr["hwnd"]), "ms": 0}
+    except Exception:
+        return None
+
+
+# ── eyes_fix_1009: F1 doubt, F0 log, F4 a window's boxes (helpers of ground) ────────────────────────────────────────────
+_DOUBT_PREP_RE = re.compile(r"\s+(?:in|on|inside|within|at|near|from|with|to|of|over|under|by|for)\s+.*$", re.I)
+_DOUBT_EDGE = "\"'.,!?()[]:;"
+
+
+def _area_frac(b, W: float, H: float) -> float:
+    return max(0.0, float(b[2]) - float(b[0])) * max(0.0, float(b[3]) - float(b[1])) / float(max(1.0, W * H))
+
+
+def _iou(a, b) -> float:
+    ix = max(0.0, min(float(a[2]), float(b[2])) - max(float(a[0]), float(b[0])))
+    iy = max(0.0, min(float(a[3]), float(b[3])) - max(float(a[1]), float(b[1])))
+    inter = ix * iy
+    ua = (max(0.0, float(a[2]) - float(a[0])) * max(0.0, float(a[3]) - float(a[1]))
+          + max(0.0, float(b[2]) - float(b[0])) * max(0.0, float(b[3]) - float(b[1])) - inter)
+    return inter / ua if ua > 0 else 0.0
+
+
+def _doubt_head(phrase: str) -> str:
+    """The thing's own noun: 'red ball in Sour's Playroom' -> 'ball'; 'my icon in the top bar to see ...' -> 'icon'."""
+    s = _DOUBT_PREP_RE.sub("", " ".join(str(phrase or "").lower().split()))
+    ws = [w.strip(_DOUBT_EDGE) for w in s.split()]
+    ws = [w for w in ws if w]
+    return ws[-1] if ws else ""
+
+
+def _names(word: str, label: str) -> bool:
+    """The far eye's label holds the noun (a whole word; a plural s either side)."""
+    w = str(word or "").lower().strip(_DOUBT_EDGE)
+    toks = {t.strip(_DOUBT_EDGE) for t in str(label or "").lower().replace("-", " ").split()}
+    toks |= {t[:-1] for t in toks if len(t) > 3 and t.endswith("s")}
+    return bool(w) and (w in toks or (len(w) > 3 and w.endswith("s") and w[:-1] in toks))
+
+
+def _patch_colour(img, box, word: str, phrase: str) -> float:
+    """The colour word's share of a FIXED small patch (_DOUBT_PATCH px of a 1024-wide frame, ~30 px of her screen) at the
+    box's centre -- not of the whole box, where a small thing is diluted and a big region always holds a little of it."""
+    x1, y1, x2, y2 = [float(v) for v in box]
+    k = max(1, int(round(_DOUBT_PATCH * img.width / 1024.0)) // 2)
+    cx, cy = int((x1 + x2) / 2.0), int((y1 + y2) / 2.0)
+    crop = img.crop((max(0, cx - k), max(0, cy - k), min(img.width, cx + k + 1), min(img.height, cy + k + 1)))
+    return colour_fraction(_pixels(crop), word, phrase)
+
+
+def _place_contradicts(phrase: str, position) -> Optional[str]:
+    """A place word in her phrase that the box is not at ('right half' answered at the centre: L16457)."""
+    words = set(re.findall(r"[a-z]+", str(phrase or "").lower()))
+    pos = str(position or "")
+    if pos == "centre":
+        vert, horiz = "middle", "centre"
+    elif "-" in pos:
+        vert, horiz = pos.split("-", 1)
+    else:
+        return None
+    if "left" in words and "right" not in words and horiz != "left":
+        return "not on the left: it is %s" % pos
+    if "right" in words and "left" not in words and horiz != "right":
+        return "not on the right: it is %s" % pos
+    if words & {"top", "upper"} and not words & {"bottom", "lower"} and vert != "upper":
+        return "not at the top: it is %s" % pos
+    if words & {"bottom", "lower"} and not words & {"top", "upper"} and vert != "lower":
+        return "not at the bottom: it is %s" % pos
+    return None
+
+
+def _doubt(rec: Dict, img, phrase: str, g: Dict, gbox) -> None:
+    """eyes_fix F1 'doubt' (DIAGNOSIS C1). The far eye boxes whatever it is asked for -- control 2: three boxes, each
+    labelled 'green cube', on a frame with no green -- so a box whose label echoes the phrase proves nothing. 'found' needs
+    the label to hold the thing's noun AND an independent witness: the colour word measured at a FIXED small scale where it
+    pointed (only for a box of at most _DOUBT_COLOUR_MAX_FRAC of the frame -- verify M3), or the window map (the box IS the
+    window she named, or a window word); and nothing against it: another window boxed whole (L72290 'blue box' = her chat
+    window), a window named in the phrase that the box is not in (L48408), a place word it is not at. Otherwise status
+    'unsure' with the reasons in her words. In place. ground() wraps the call: an error in here is told 'unsure', never a find
+    (verify M4: the gate fails CLOSED)."""
+    W, H = float(img.width), float(img.height)
+    boxes, labels = list(g.get("bboxes") or []), list(g.get("labels") or [])
+    labels = labels if len(labels) == len(boxes) else [""] * len(boxes)
+    lab = ""
+    if gbox is not None:
+        for b, l in zip(boxes, labels):
+            if [float(v) for v in b] == [float(v) for v in gbox]:
+                lab = str(l)
+                break
+    head = _doubt_head(phrase)
+    why, witness = [], []
+    if not _names(head, lab):
+        why.append("your far eye called that place '%s', not a %s" % (lab or "nothing", head or "thing"))
+    bb = [float(v) for v in (rec.get("bbox") or gbox or (0, 0, 0, 0))]
+    cw = colour_word(phrase)
+    big, big_at = None, 0
+    if cw:
+        frac = _patch_colour(img, bb, cw, phrase)
+        rec["patch_colour"] = round(frac, 3)
+        if frac < _DOUBT_COLOUR_MIN:
+            why.append("not %s where it pointed" % cw)
+        elif _area_frac(bb, W, H) > _DOUBT_COLOUR_MAX_FRAC:   # verify M3: 9 px of colour at the centre of a 41% box proves nothing
+            big, big_at = "too big to be a %s (%.0f%% of the screen)" % (head or "thing", 100.0 * _area_frac(bb, W, H)), len(why)
+        else:
+            witness.append("its colour")
+    bx = (bb[0] / W, bb[1] / H, bb[2] / W, bb[3] / H)
+    try:
+        named = [w for w in window_mentions(phrase) if w.get("frac")]
+    except Exception:
+        named = []
+    try:
+        wins = [w for w in windows_now() if w.get("frac")]
+    except Exception:
+        wins = []
+    for w in wins:
+        if _iou(bx, tuple(w["frac"])) >= _DOUBT_WIN_IOU:
+            if any(n.get("hwnd") == w.get("hwnd") for n in named) or head in _WIN_WORDS:
+                witness.append("the window map")
+            else:
+                why.append("that box is %s itself, a whole window" % w.get("name", "a window"))
+            break
+    if big and "the window map" not in witness:         # verify M3: the window map stays the witness for frame-scale things
+        why.insert(big_at, big)
+    cx, cy = (bx[0] + bx[2]) / 2.0, (bx[1] + bx[3]) / 2.0
+    for n in named:
+        fr = n["frac"]
+        if not (fr[0] <= cx < fr[2] and fr[1] <= cy < fr[3]):
+            why.append("not inside %s" % n.get("name", "the window you named"))
+            break
+    pc = _place_contradicts(phrase, rec.get("position"))
+    if pc:
+        why.append(pc)
+    if witness and not why:
+        rec["witness"] = witness
+        return
+    if not why:
+        why.append("your far eye boxes whatever it is asked for, even what is not there, and nothing else saw it")
+    rec["status"] = "unsure"
+    rec["doubt"] = why[:3]
+    rec["doubt_n"] = int(rec.get("n_boxes") or 1)
+
+
+def unsure_words(g: Dict) -> str:
+    """eyes_fix F1: the doubt in her words -- WHY it is not a find first (intention.what_i_did cuts a line at 180 chars), then
+    where the far eye pointed and of how many places."""
+    n = int(g.get("doubt_n") or g.get("n_boxes") or 1)
+    more = (", one of %d places it pointed at" % n) if n > 1 else ""
+    why = "; ".join(str(x) for x in (g.get("doubt") or [])[:3]) or "nothing else saw it"
+    return "%s; the far eye pointed at the %s of the screen (%s%% of it, %s)%s" % (
+        why, g.get("position", "?"), g.get("size_pct", "?"), _mix(g), more)
+
+
+def _boxes_within(g: Dict, frac, img) -> Dict:
+    """eyes_fix F4 'hand_honest': only the boxes whose centre lies inside one window's rect (fractions of her screen)."""
+    W, H = float(img.width), float(img.height)
+    l, t, r, b = [float(v) for v in frac]
+    boxes, labels = list(g.get("bboxes") or []), list(g.get("labels") or [])
+    labels = labels if len(labels) == len(boxes) else [""] * len(boxes)
+    keep = [(bb, lb) for bb, lb in zip(boxes, labels)
+            if l <= (float(bb[0]) + float(bb[2])) / 2.0 / W < r and t <= (float(bb[1]) + float(bb[3])) / 2.0 / H < b]
+    return dict(g, bboxes=[k[0] for k in keep], labels=[k[1] for k in keep])
+
+
+def _nowhere_cause(boxes, labels, phrase: str, W: float, H: float) -> str:
+    """eyes_fix F0: which of the four 'nowhere' causes fired (DIAGNOSIS C1)."""
+    if not boxes:
+        return "(d) the far eye returned nothing"
+    areas = [_area_frac(b, W, H) for b in boxes]
+    inband = [i for i, a in enumerate(areas) if _MIN_BOX <= a < _WHOLE_FRAME]
+    same = [i for i, l in enumerate(labels) if str(l).strip().lower() == str(phrase).lower()]
+    if same and inband and not any(i in inband for i in same):
+        return "(c) a box labelled exactly '%s' fell outside the band, and that label filter hid %d in-band box(es)" % (
+            str(phrase)[:40], len(inband))
+    pool = [areas[i] for i in same] if same else areas
+    if all(a < _MIN_BOX for a in pool):
+        return "(a) every box was under the %.1f%% floor" % (100 * _MIN_BOX)
+    if all(a >= _WHOLE_FRAME for a in pool):
+        return "(b) every box was %.0f%% of the screen or more" % (100 * _WHOLE_FRAME)
+    return "(a+b) every box was under the floor or %.0f%% of the screen or more" % (100 * _WHOLE_FRAME)
+
+
+def _front_title() -> Optional[str]:
+    try:
+        fw = front_window()
+        return str(fw.get("title"))[:60] if fw else None
+    except Exception:
+        return None
+
+
+def _log_ground(p, g: Dict, img, pick, final, n_real, rec: Dict, src, age, within=None) -> None:
+    """eyes_fix F0 'log' (observation only; DIAGNOSIS C1 / C2 / C5, look-C8): one line per look -- every box and label the
+    far eye returned, how many stayed in the band, its pick and the box after the colour re-pick, the frame, the verdict and,
+    for 'nowhere', which cause fired. Stamps rec['front_at'] (the front window now) for the look-change line. ASCII."""
+    try:
+        W, H = float(img.width), float(img.height)
+        boxes, labels = list(g.get("bboxes") or []), list(g.get("labels") or [])
+        labels = labels if len(labels) == len(boxes) else [""] * len(boxes)
+        raw = ["%s %s %.3f%%" % (ascii(str(l))[:42], [int(round(float(v))) for v in b], 100.0 * _area_frac(b, W, H))
+               for b, l in zip(boxes, labels)]
+        rb = (lambda b: [int(round(float(v))) for v in b] if b is not None else None)
+        rec["front_at"] = _front_title()
+        tail = ""
+        if rec.get("status") == "not_found":
+            tail = " | nowhere: " + _nowhere_cause(boxes, labels, p, W, H)
+        elif rec.get("status") == "unsure":
+            tail = " | unsure: " + "; ".join(rec.get("doubt") or [])
+        elif rec.get("witness"):
+            tail = " | witness: " + ", ".join(rec["witness"])
+        print(("[Eyes] GROUND %s: far eye %d box(es) %s | in band %d | pick %s | final %s | frame %s %.1fs %dx%d%s | -> %s %s %s%%%s"
+               % (ascii(str(p)[:60]), len(boxes), "; ".join(raw[:8]), int(n_real or 0), rb(pick), rb(final), src,
+                  float(age or 0.0), int(W), int(H), (" | inside %s" % [round(float(v), 3) for v in within]) if within else "",
+                  rec.get("status"), rec.get("position"), rec.get("size_pct"), tail)).encode("ascii", "replace").decode("ascii"),
+              flush=True)
+    except Exception as e:
+        print("[Eyes] GROUND log: %s" % str(e)[:80], flush=True)
+
+
+def _log_look_change(phrase, before: Dict, after: Dict) -> None:
+    """eyes_fix F0 'log' (DIAGNOSIS C5): the two boxes behind a 'changed on its own' surprise, and the front window at both
+    looks -- a different box is not a change in the thing. ASCII."""
+    try:
+        def one(r):
+            tb = r.get("top_bands") or []
+            return "%s %s %s%% %s front=%s" % (r.get("bbox"), r.get("position"), r.get("size_pct"),
+                                              "/".join("%s%.0f" % (b, 100 * f) for b, f in tb[:2]) or r.get("colour_name"),
+                                              ascii(r.get("front_at")))
+        a, b = before.get("bbox"), after.get("bbox")
+        iou = _iou(a, b) if (a and b) else None
+        print(("[Eyes] LOOK CHANGE %s: before %s | after %s | IoU %s | front now %s" % (
+            ascii(str(phrase)[:60]), one(before), one(after), ("%.2f" % iou) if iou is not None else "?", ascii(_front_title()))
+               ).encode("ascii", "replace").decode("ascii"), flush=True)
+    except Exception:
+        pass
+
+
+_FG_SAID = _keep("_FG_SAID", {})
+
+
+def _fg_facts() -> Optional[Dict]:
+    """eyes_fix F0: the OS foreground window's title, class and rect (read-only user32)."""
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+        u = ctypes.windll.user32
+        h = u.GetForegroundWindow()
+        if not h:
+            return {"hwnd": 0, "title": "", "cls": "", "rect": None}
+        n = int(u.GetWindowTextLengthW(h) or 0)
+        buf = ctypes.create_unicode_buffer(n + 1)
+        u.GetWindowTextW(h, buf, n + 1)
+        cl = ctypes.create_unicode_buffer(256)
+        u.GetClassNameW(h, cl, 256)
+        r = wt.RECT()
+        u.GetWindowRect(h, ctypes.byref(r))
+        return {"hwnd": int(h), "title": buf.value, "cls": cl.value, "rect": [r.left, r.top, r.right, r.bottom]}
+    except Exception:
+        return None
+
+
+def _on_her_screen(rect) -> bool:
+    """eyes_fix F0 (verify m2): the window's CENTRE lies on her PRIMARY ((0,0) to SM_CXSCREEN x SM_CYSCREEN, the same pixel space
+    GetWindowRect answers in) -- decided by the primary's rect, never by DISPLAYn names. A maximised window on Ace's monitor
+    overhangs hers by its 8 px frame, so the centre, not an overlap, decides. Unknown = False (his content stays out)."""
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        W, H = int(u.GetSystemMetrics(0) or 0), int(u.GetSystemMetrics(1) or 0)
+        cx, cy = (float(rect[0]) + float(rect[2])) / 2.0, (float(rect[1]) + float(rect[3])) / 2.0
+        return W > 0 and H > 0 and 0.0 <= cx < W and 0.0 <= cy < H
+    except Exception:
+        return False
+
+
+def _log_unmapped_front() -> None:
+    """eyes_fix F0 'log' (DIAGNOSIS C6 / C9): her window map has no front window -- which window the OS calls front (Ace's
+    other screen, a skipped class, a tiny or cloaked window). Once per window per 60 s. ASCII. The TITLE is written only for
+    a window on her own screen (verify m2): a window on Ace's monitor is his content; its class and rect answer C6 / C9."""
+    try:
+        f = _fg_facts()
+        if f is None:
+            return
+        now = time.time()
+        k = int(f.get("hwnd") or 0)
+        if now - float(_FG_SAID.get(k, -1e18)) < 60.0:
+            return
+        if len(_FG_SAID) > 64:
+            _FG_SAID.clear()
+        _FG_SAID[k] = now
+        title = ascii(str(f.get("title") or "")[:60]) if (f.get("rect") and _on_her_screen(f["rect"])) else "(off her screen)"
+        print(("[Eyes] FRONT not in your map: title %s, class %s, rect %s" % (
+            title, ascii(str(f.get("cls") or "")), f.get("rect"))
+               ).encode("ascii", "replace").decode("ascii"), flush=True)
+    except Exception:
+        pass
+
+
+# ── eyes_fix2_1012 'window_names': a window she NAMES is known from her window map, not guessed by the far eye ─────────────
+# Boot K (state/sour_runtime.log L50607-50613): 'look: Sour's Playroom' -> the far eye boxed 'Playroom' as 97.5% of the 1024x428
+# thumbnail of her 3440x1440 screen -> 'nowhere' -> she was told it "is nowhere on the screen", with the frustration chord,
+# while the Playroom window sat on her screen and in windows_now(). ground() order now: her hand, toy names (set1c), BARE
+# window names (here; a call with within= is eyes_fix F4's 'X in <window>' and skips this), the far eye. Exact names only
+# (eyes_fix2.match_window_name: never a substring, never common words alone); only windows whose CENTRE is on her screen
+# (_on_her_screen -- Ace's monitor never). Off (state/eyes_fix2.json absent / malformed / no 'window_names'): nothing here runs.
+def _primary_wh() -> Tuple[int, int]:
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        W, H = int(u.GetSystemMetrics(0) or 0), int(u.GetSystemMetrics(1) or 0)
+        if W > 0 and H > 0:
+            return W, H
+    except Exception:
+        pass
+    return 10000, 10000                                # fraction space: the record stays self-consistent
+
+
+def named_window(phrase: str) -> Optional[Dict]:
+    """eyes_fix2: {'window', 'n', 'label', 'key'} for the window on HER screen this phrase names exactly; None (key off, no
+    such window, any error). The one matcher her look (ground) and her hand (hand_target.plan) both ask."""
+    if not _ef2("window_names"):
+        return None
+    try:
+        from infrastructure import eyes_fix2 as _ef2m
+        wins = [w for w in (windows_now() or []) if w.get("hwnd") and w.get("rect") and w.get("frac") and _on_her_screen(w["rect"])]
+        return _ef2m.match_window_name(phrase, wins)
+    except Exception as e:
+        print("[Eyes] window name: %s" % ascii(str(e))[:80], flush=True)
+        return None
+
+
+def window_record(phrase: str) -> Optional[Dict]:
+    """eyes_fix2: a grounding record for the window the phrase names -- status found, place and size from the window map's
+    rect, how 'window_map', its label ('the Sour's Playroom window'). None = not a bare window name (grounded as before)."""
+    hit = named_window(phrase)
+    if hit is None:
+        return None
+    try:
+        w = hit["window"]
+        l, t, r, b = [float(v) for v in w["frac"]]
+        W, H = _primary_wh()
+        pos = w.get("position") or _place((l + r) / 2.0, (t + b) / 2.0)["position"]
+        size = w.get("size_pct")
+        if size is None:
+            size = round(100.0 * max(0.0, r - l) * max(0.0, b - t), 1)
+        rec = {"phrase": phrase, "status": "found", "how": "window_map", "synthetic": True, "window_hwnd": int(w["hwnd"]),
+               "window_title": str(w.get("title") or "")[:80], "window_name": str(w.get("name") or ""),
+               "window_label": str(hit.get("label") or "that window"), "n_windows": int(hit.get("n") or 1),
+               "bbox": [int(round(l * W)), int(round(t * H)), int(round(r * W)), int(round(b * H))], "frame_w": W, "frame_h": H,
+               "position": pos, "size_pct": size, "front": bool(w.get("front")), "covered": float(w.get("covered") or 0.0),
+               "colour_name": str(hit.get("label") or "that window"), "top_bands": [], "colour_unsure": False, "matches": None,
+               "fills_screen": False, "n_boxes": 1, "ms": 0}
+    except Exception as e:
+        print("[Eyes] window record: %s" % ascii(str(e))[:80], flush=True)
+        return None
+    print(("[Eyes] WINDOW NAME %s: %s, %s, %s%% of the screen%s (from your window map; the far eye was not asked)" % (
+        ascii(str(phrase)[:60]), ascii(rec["window_label"]), pos, size,
+        (", one of %d" % rec["n_windows"]) if rec["n_windows"] > 1 else "")).encode("ascii", "replace").decode("ascii"), flush=True)
+    return rec
+
+
+def window_words(phrase: str, g: Dict, lead: str = "you looked for") -> str:
+    """eyes_fix2: a look answered from her window map, in her words -- the WINDOW itself, never a thing inside it."""
+    cov = float(g.get("covered") or 0.0)
+    state = (", in front" if g.get("front") else (", mostly behind another window" if cov >= 0.7 else
+             (", partly behind another window" if cov >= 0.3 else "")))
+    n = int(g.get("n_windows") or 1)
+    more = (" (one of %d windows by that name)" % n) if n > 1 else ""
+    return "%s \"%s\": it is %s%s, %s, %s%% of it%s" % (lead, phrase, g.get("window_label") or "that window", more,
+                                                      place_phrase(g.get("position", "?")), g.get("size_pct", "?"), state)
+
+
+# ── e1b_1013 vision_hand (Ace's SECOND eyes switch, state/eyes_fix2.json): 'hand_rest' and 'front_line' ─────────────────────
+# Boot L (state/sour_runtime.log, 10-12 23:17 -> 10-13 12:32; nous_builds/boot_l_1013 HANDS.md, VISION.md, VERIFY.md):
+#  * 48 of her 65 move asks were the hand door's bare "it is already there" (hand_door.py:303-307). The cursor sat 10 h 42 min on
+#    the Playroom's title bar (1612, 797) and nothing in her percept or her deed ask said where her hand rested (render_windows,
+#    :834-848 of the eyes_fix bytes). hand_rest_line(): ONE sentence -- where the cursor is, the window part under it (title bar /
+#    inside / edge; the desktop, the taskbar) from hand_target.rest_part, and whose it is by the measured signals only (hand_now,
+#    hand_owner_note). A point off her (primary) screen is "on the other screen (Ace's)"; nothing there is ever named.
+#  * the front-window surprise (_front_read_and_tell) became the TOPIC of a whole chairman turn (sour_council_driver.py:1154-1157):
+#    queued at L514636 (~11:58), spoken at L517692 (~12:02:50) when her chat window was in front again; her 12:03:42 message:
+#    "There's a window called "Sour's Playroom" that just popped up ... I don't remember making this". With 'front_line' the change
+#    is NOTED (no far-eye read, no glance, no surprise) and front_line() is ONE sentence in render_eyes while that window is still
+#    in front, at most FRONT_LINE_S after the change. What she chose to hold (set_focus from her own look) is not touched.
+# Keys off (file absent / malformed / key not true): hand_rest / hand_rest_line / front_line return None / '' before reading
+# anything, and _front_read_and_tell runs today's path.
+FRONT_LINE_S = 180.0                                   # a front change is told for at most this long, and only while still in front
+FRONT_RENOTE_S = 30.0                                  # verify F4: one note per window per 30 s (the 5-min re-read gate guards a READ)
+_FRONT_NOTE = _keep('_FRONT_NOTE', {"note": None})     # the newest front change: hwnd, name, words, prev, ts
+_FRONT_NOTED = _keep('_FRONT_NOTED', {})               # hwnd -> ts of its last front note (pruned after an hour)
+_REST_SAID = _keep('_REST_SAID', [None, 0.0])
+
+
+def win_words(w: Optional[Dict]) -> str:
+    """e1b vision_hand: a window inside a sentence -- its title for "a window called '...'" ("Sour's Playroom"), 'your chat
+    window', "Nous's window", else her map's own name ('a console window', "a browser, on '...'")."""
+    name = " ".join(str((w or {}).get("name") or "").split())
+    title = " ".join(str((w or {}).get("title") or "").split())
+    if name.startswith("a window called ") and title:
+        return title[:60]
+    if name.startswith("Nous's window"):
+        return "Nous's window"
+    return name or "a window"
+
+
+def _log_rest(line: str) -> None:
+    """One '[Eyes] HAND REST' line per distinct sentence per 60 s (ASCII): what Boot M's read-out counts."""
+    try:
+        now = time.time()
+        if _REST_SAID[0] == line and 0.0 <= now - float(_REST_SAID[1]) < 60.0:
+            return
+        _REST_SAID[0], _REST_SAID[1] = line, now
+        print(("[Eyes] HAND REST: %s" % line).encode("ascii", "replace").decode("ascii"), flush=True)
+    except Exception:
+        pass
+
+
+def hand_rest(h: Optional[Dict] = None) -> Optional[Dict]:
+    """e1b vision_hand 'hand_rest': {'off_screen', 'xy', 'at' ('on the title bar of Sour's Playroom' | 'inside ...' | '' when the
+    OS cannot say), 'position', 'part', 'hwnd'} for the cursor now (or for the hand_now() record h); None when the key is off or
+    nothing can be read. Never raises."""
+    if not _ef2("hand_rest"):
+        return None
+    try:
+        h = hand_now() if h is None else h
+        if not h:
+            return None
+        x, y = int(h["x"]), int(h["y"])
+        sw, sh = int(h.get("screen_w") or 0), int(h.get("screen_h") or 0)
+        if sw <= 0 or sh <= 0:
+            return None
+        if not (0 <= x < sw and 0 <= y < sh):          # Ace's monitor: never named, never looked into
+            return {"off_screen": True, "xy": (x, y), "at": "", "position": OTHER_SCREEN, "part": None, "hwnd": None}
+        rp = None
+        try:
+            from infrastructure import hand_target as _ht
+            rp = _ht.rest_part((x, y))
+        except Exception:
+            rp = None
+        return {"off_screen": False, "xy": (x, y), "at": str((rp or {}).get("at") or ""),
+                "position": _place(x / float(sw), y / float(sh))["position"], "part": (rp or {}).get("part"),
+                "hwnd": (rp or {}).get("hwnd")}
+    except Exception:
+        return None
+
+
+def hand_rest_line(h: Optional[Dict] = None) -> str:
+    """e1b vision_hand 'hand_rest': ONE sentence -- where her hand rests and what is under it; '' when the key is off or the
+    cursor cannot be read. "Your hand rests ..." only when the cursor is where her own last move let go of it (hand_now's
+    where_you_left_it); otherwise it is the cursor, with hand_owner_note's measured clause (Ace moved it / not where you left it)."""
+    if not _ef2("hand_rest"):
+        return ""
+    try:
+        h = hand_now() if h is None else h
+        r = hand_rest(h)
+        if not r:
+            return ""
+        if r["off_screen"]:
+            line = "The cursor is on the other screen (Ace's), where your eyes do not look."
+        else:
+            at = ("%s (%s of the screen)" % (r["at"], r["position"])) if r["at"] else ("at the %s of the screen" % r["position"])
+            if h.get("where_you_left_it"):
+                line = "Your hand rests %s, where you let go of the cursor %s ago" % (at, _ago(h.get("mine_s")))
+                _ai, _ms = h.get("ace_input_s"), h.get("mine_s")   # verify F6 (10-13): hand_owner_note's own measured clause
+                if _ai is not None and _ms is not None and not (float(_ai) > float(_ms)):
+                    line += "; Ace has used the keyboard or mouse since but it has not moved"
+                line += "."
+            else:
+                own = hand_owner_note(h)
+                line = "The cursor is %s%s." % (at, (" -- " + own) if own else "")
+        _log_rest(line)
+        return line
+    except Exception:
+        return ""
+
+
+def _front_note(fw: Dict, prev: Optional[str]) -> None:
+    """e1b vision_hand 'front_line': remember the window that just came to the front -- no far-eye read, no glance, no surprise.
+    Never raises."""
+    try:
+        n = {"hwnd": int(fw.get("hwnd") or 0), "name": str(fw.get("name") or "a window"), "words": win_words(fw),
+             "prev": str(prev or "another window"), "ts": time.time()}
+        _FRONT_NOTE["note"] = n
+        print(("[Eyes] FRONT LINE: %s came to the front (it was %s): one line in her percept while it stays in front -- no "
+               "surprise, no glance" % (n["words"], n["prev"])).encode("ascii", "replace").decode("ascii"), flush=True)
+    except Exception as e:
+        print("[Eyes] front line: %s" % ascii(str(e))[:80], flush=True)
+
+
+def front_line(now: Optional[float] = None) -> str:
+    """e1b vision_hand 'front_line': ONE short sentence while the window that came to the front is still in front and the change
+    is at most FRONT_LINE_S old; '' otherwise (key off, no change, it went back behind, too old). Never raises."""
+    if not _ef2("front_line"):
+        return ""
+    try:
+        n = _FRONT_NOTE.get("note")
+        now = time.time() if now is None else float(now)
+        if not n or not (0.0 <= now - float(n["ts"]) <= FRONT_LINE_S):
+            return ""
+        fw = front_window()
+        if fw is None or int(fw.get("hwnd") or 0) != int(n["hwnd"]):
+            return ""                                  # it is not in front any more: the moment has passed, nothing to tell
+        age = now - float(n["ts"])
+        when = "just now" if age < 15 else ("%.0f s ago" % age if age < 120 else "%.0f min ago" % (age / 60.0))
+        w = str(n["words"] or "a window")
+        return "%s%s came to the front of your screen %s (%s was in front before)." % (w[:1].upper(), w[1:], when, n["prev"])
+    except Exception:
+        return ""
+
+
+def ground(phrases: List[str], timeout_s: float = _GROUND_TIMEOUT_S, on_result=None, within=None) -> List[Dict]:   # eyes_fix F4: + within
     """One record per phrase: status found | not_found | could_not_look (+why), plus the pattern.
     on_result(rec) is called as each phrase completes so a slow satellite still yields partial answers."""
     out: List[Dict] = []
@@ -1162,6 +2122,31 @@ def ground(phrases: List[str], timeout_s: float = _GROUND_TIMEOUT_S, on_result=N
                     on_result(r)
                 except Exception:
                     pass
+    toys = [(p, playroom_record(p)) for p in phrases[:3]]    # 2026-10-09 (set1c): a toy of her VERIFIED Playroom, by its
+    toys = [(p, r) for p, r in toys if r is not None]        # exact name -- known, not guessed from a 1024-px thumbnail
+    if toys:
+        for _p, r in toys:
+            out.append(r)
+            if on_result:
+                try:
+                    on_result(r)
+                except Exception:
+                    pass
+        _done = {p for p, _r in toys}
+        phrases = [p for p in phrases if p not in _done]
+    if within is None and phrases and _ef2("window_names"):   # eyes_fix2 (window_names): a BARE window name -> her window map,
+        wn = [(p, window_record(p)) for p in phrases[:3]]     # after the toy names, before the far eye; F4's within= skips it
+        wn = [(p, r) for p, r in wn if r is not None]
+        if wn:
+            for _p, r in wn:
+                out.append(r)
+                if on_result:
+                    try:
+                        on_result(r)
+                    except Exception:
+                        pass
+            _done = {p for p, _r in wn}
+            phrases = [p for p in phrases if p not in _done]
     if not url or not phrases:
         return out                                    # grounding off: say nothing rather than 'eyes broken'
     png, img, age, src = fresh_frame()
@@ -1180,7 +2165,10 @@ def ground(phrases: List[str], timeout_s: float = _GROUND_TIMEOUT_S, on_result=N
             with urllib.request.urlopen(req, timeout=timeout_s) as r:
                 d = json.loads(r.read().decode("utf-8", "replace"))
             g = (d.get("result") or {}).get("ground") or {}
+            if within is not None:                      # eyes_fix F4 (hand_honest): only what lies inside the window she named
+                g = _boxes_within(g, within, img)
             box, n_real, fills = _choose_box(g.get("bboxes") or [], g.get("labels") or [], p, float(img.width), float(img.height))
+            _pick = box                                 # eyes_fix F0: the far eye's pick, before the colour re-pick
             seg = None
             if box is not None and not fills and head_noun(p) in _SMALL:
                 try:
@@ -1217,6 +2205,16 @@ def ground(phrases: List[str], timeout_s: float = _GROUND_TIMEOUT_S, on_result=N
                 rec["how"] = "box"
                 rec["status"] = "found"
                 rec.pop("why", None)
+            if rec.get("status") == "found" and not rec.get("fills_screen") and _ef("doubt"):   # eyes_fix F1: a witness, or 'unsure'
+                try:
+                    _doubt(rec, img, p, g, box)
+                except Exception as _de:                # eyes_fix F1 (verify M4): the gate fails CLOSED -- its own error is never a find
+                    rec["status"] = "unsure"
+                    rec["doubt"] = ["your eyes' own check of that place failed"]
+                    rec["doubt_n"] = int(rec.get("n_boxes") or 1)
+                    print("[Eyes] doubt check failed (%s: %s): told as not sure" % (type(_de).__name__, ascii(str(_de))[:80]), flush=True)
+            if _ef("log"):                              # eyes_fix F0: what the far eye returned and what was made of it
+                _log_ground(p, g, img, _pick, box, n_real, rec, src, age, within)
         except Exception as e:
             rec["why"] = "timeout" if "timed out" in str(e).lower() else "network"
             rec["err"] = "%s: %s" % (type(e).__name__, str(e)[:80])
@@ -1261,7 +2259,7 @@ def _looks():
 
 
 def remember_look(rec: Dict) -> None:
-    if not rec or not rec.get("phrase") or rec.get("how") == "hand":
+    if not rec or not rec.get("phrase") or rec.get("how") in ("hand", "playroom", "window_map"):   # set1c: a toy known by name is not a look; eyes_fix2: nor a window
         return                                          # her hand is felt, not seen: never a 'place you keep looking at'
     prev = None
     try:
@@ -1282,6 +2280,8 @@ def remember_look(rec: Dict) -> None:
                     break
         _looks().append((time.time(), rec))
     if prev is not None:                                # 2026-09-20: the same look, different answer = a surprise she captured
+        if _ef("log"):                                  # eyes_fix F0: the two boxes behind the surprise (DIAGNOSIS C5)
+            _log_look_change(rec.get("phrase"), prev, rec)
         try:
             from infrastructure import surprise as _sp
             _sp.from_look_change(str(rec.get("phrase")), prev, rec)
@@ -1360,16 +2360,21 @@ _ANT_GEN = _keep("_ANT_GEN", [0])
 
 def _front_read_and_tell(fw: Dict, prev: Optional[str]) -> None:
     """Off the loop thread: read the window that just came to the front (8 s patience) and say so with its words."""
+    if _ef2("front_line"):                             # e1b vision_hand: one line in her percept -- no surprise (no whole turn),
+        _front_note(fw, prev)                          # no far-eye read, no glance; what she holds stays held
+        return
     try:
         from infrastructure import surprise as _sp
-        rec = look_window(fw, timeout_s=8.0)
+        rec = look_window(fw, timeout_s=8.0, origin="front")   # eyes_fix F6: she did not choose it
         fname = fw["name"]
         if rec.get("status") == "window":
-            _sp.push("eyes", "%s just came to the front of your screen (it was %s before). In it: %s%s" % (
+            _ft_ok = _sp.push("eyes", "%s just came to the front of your screen (it was %s before). In it: %s%s" % (   # 2026-10-06 (council_set1 item 5)
                 fname[0].upper() + fname[1:], prev, _sentence_cut(rec.get("text", ""), 200),
                 (" Words you read in it: \"%s\"" % rec["words"][-220:]) if rec.get("words") else ""), key="front", weight=0.8)
         else:
-            _sp.push("eyes", "The window in front changed: it was %s, now it is %s." % (prev, fname), key="front", weight=0.7)
+            _ft_ok = _sp.push("eyes", "The window in front changed: it was %s, now it is %s." % (prev, fname), key="front", weight=0.7)   # 2026-10-06 (council_set1 item 5)
+        if _ft_ok:                                     # 2026-10-06 (council_set1 item 5, verify_tests F6): only a surprise that was queued names its window
+            _FRONT_TOLD[0] = {"hwnd": int(fw.get("hwnd") or 0), "name": fname, "ts": time.time()}
     except Exception as e:
         print("[Eyes] front read: %s" % e, flush=True)
 
@@ -1390,11 +2395,20 @@ def _anticipate_once(st: Dict) -> None:
     try:                                                # which window is in front: a change is an event she saw
         fw = front_window()
         fname = fw["name"] if fw else None
+        if fw is None and _ef("log"):                   # eyes_fix F0: the OS front window her map does not hold
+            _log_unmapped_front()
         if fname and _ANT_STATS.get("front") not in (None, fname):
             prev = _ANT_STATS.get("front")
             fresh = time.time() - _READ_WINDOWS.get(int(fw.get("hwnd") or 0), 0.0) > _REREAD_S
             if fname == "your chat window":
                 pass                                    # Ace coming back to talk to her is not a surprise; his words are
+            elif _ef2("front_line"):                    # e1b vision_hand (verify F4): nothing is READ, so the 5-min re-read gate is
+                _fh = int(fw.get("hwnd") or 0)          # not this path's limiter -- every fronting is noted, one per window per
+                if time.time() - _FRONT_NOTED.get(_fh, 0.0) > FRONT_RENOTE_S:   # FRONT_RENOTE_S; _READ_WINDOWS is not stamped
+                    _FRONT_NOTED[_fh] = time.time()
+                    for _k in [k for k, ts in _FRONT_NOTED.items() if time.time() - ts > 3600]:
+                        _FRONT_NOTED.pop(_k, None)
+                    threading.Thread(target=_front_read_and_tell, args=(dict(fw), prev), daemon=True, name="eyes-front").start()
             elif fresh:                                 # something new in front: read it (own thread), hold it, say so
                 _READ_WINDOWS[int(fw.get("hwnd") or 0)] = time.time()
                 threading.Thread(target=_front_read_and_tell, args=(dict(fw), prev), daemon=True, name="eyes-front").start()
@@ -1483,9 +2497,14 @@ _PENDING_LOCK = _keep('_PENDING_LOCK', threading.Lock())
 _INFLIGHT = _keep('_INFLIGHT', threading.Semaphore(1))  #  one grounding run at a time: the satellite is single-threaded
 
 
-def start_grounding(text: str) -> Optional[List[str]]:
+def start_grounding(text: str, origin: Optional[str] = None) -> Optional[List[str]]:   # 2026-10-06 (council_set1 item 5): + origin (skeptic F10)
     """Kick off grounding for the visual nouns in `text` on a daemon thread. Returns the phrases.
     2026-09-20: words that name the WHOLE picture are never grounded as nouns; they start a survey instead."""
+    if _st_on() and origin != "wm_store":             # 2026-10-06 (council_set1 item 5): "I closed it" ends what she holds;
+        try:                                           # a late working-memory copy of his words ends nothing (skeptic F10)
+            _close_heard(text)
+        except Exception as _ce:
+            print("[Eyes] close heard: %s" % _ce, flush=True)
     phrases = [p for p in visual_nouns(text) if not is_whole(p) and not _WIN_MENTION_RE.fullmatch(p.strip())]
     want_survey = wants_survey(text)
     try:                                                # 2026-09-20: a window he names is a FOCUS, not a noun to segment
@@ -1499,7 +2518,7 @@ def start_grounding(text: str) -> Optional[List[str]]:
         def _wl():
             try:
                 for w in wins[:2]:
-                    rec = look_window(w) if w.get("status") != "window_missing" else dict(w)
+                    rec = look_window(w, origin="ace") if w.get("status") != "window_missing" else dict(w)   # eyes_fix F6
                     with _PENDING_LOCK:
                         slotw["partial"].append(rec)
             finally:
@@ -1613,7 +2632,7 @@ def _mix(g: Dict) -> str:
     return "mixed colours, the largest patch %s%s" % (name, (" and " + second) if second and second != name else "")
 
 
-def render_eyes(now: Dict, grounds: Optional[List[Dict]] = None, max_grounds: int = 3) -> str:
+def render_eyes(now: Dict, grounds: Optional[List[Dict]] = None, max_grounds: int = 3, lane: Optional[str] = None) -> str:   # 2026-10-06 (council_set1 item 5): + lane (skeptic F6)
     parts: List[str] = []
     now = now or {}
     if now.get("_dark_s"):
@@ -1628,9 +2647,22 @@ def render_eyes(now: Dict, grounds: Optional[List[Dict]] = None, max_grounds: in
             parts.append("Your eyes report nothing current.")
     tail: List[str] = []                                 # the map and the survey come AFTER what he asked for
     try:
+        _fl = front_line()                               # e1b vision_hand 'front_line': one line, just before the map ('' = off)
+        if _fl:
+            tail.append(_fl)
+    except Exception:
+        pass
+    try:
         wm = render_windows()                            # the un-focused view: what is open, where, what is in front
         if wm:
             tail.append(wm)
+    except Exception:
+        pass
+    try:                                                 # e1b vision_hand 'hand_rest': where her hand rests, after the map ('' = off;
+        if not any(g.get("how") == "hand" for g in (grounds or [])):   # a look at the cursor this turn already says it)
+            _hr = hand_rest_line()
+            if _hr:
+                tail.append(_hr)
     except Exception:
         pass
     surveys = [g for g in (grounds or []) if g.get("status") == "survey"]
@@ -1639,7 +2671,7 @@ def render_eyes(now: Dict, grounds: Optional[List[Dict]] = None, max_grounds: in
     for g in [g for g in (grounds or []) if g.get("status") == "window"][:2]:
         parts.append(render_window_look(g))
     try:
-        f = focus_now()
+        f = focus_now(lane)                              # 2026-10-06 (council_set1 item 5, skeptic F6): whose prompt; OFF: ignored
         if f and not any(g.get("status") == "window" and g.get("title") == f.get("title") for g in (grounds or [])):
             parts.append(render_focus(f))
     except Exception:
@@ -1650,7 +2682,8 @@ def render_eyes(now: Dict, grounds: Optional[List[Dict]] = None, max_grounds: in
         p = g.get("phrase", "that")
         st = g.get("status")
         if g.get("unasked"):
-            parts.append("A place you keep looking at: %s of the screen, %s%% of it, its colours %s."
+            parts.append(("A place your eyes keep pointing at (they are not sure what it is): %s of the screen, %s%% of it, its colours %s."
+                          if st == "unsure" else "A place you keep looking at: %s of the screen, %s%% of it, its colours %s.")   # eyes_fix F1
                          % (g.get("position", "?"), g.get("size_pct", "?"), _mix(g)))
             continue
         if st == "found":
@@ -1663,8 +2696,17 @@ def render_eyes(now: Dict, grounds: Optional[List[Dict]] = None, max_grounds: in
                 own = g.get("owner_note") or ""
                 own = (", " + own) if own else ""
                 grant = (" Ace has handed you the mouse for the next %d s." % int(g["grant_s"])) if g.get("grant_s") else ""
-                parts.append("Your hand (the mouse pointer, a small white arrow -- you feel where it is, no need to "
-                             "look) is at the %s of the screen%s%s%s.%s" % (g.get("position", "?"), own, when if not own else "", claim, grant))
+                # 2026-10-01 (Nous, cursor_object b): the pointer is the CURSOR -- an object her hand reaches for and takes, which
+                # Ace also moves -- not her hand. Was: "Your hand (the mouse pointer, ...) is at". Seen live in Boot E's EYES prompt.
+                parts.append("The cursor (the mouse pointer, a small white arrow -- you feel where it is, no need to "
+                             "look) is %s%s%s%s.%s" % (place_phrase(g.get("position", "?")), own, when if not own else "", claim, grant))   # eyes_fix F8
+                continue
+            if g.get("how") == "playroom":            # 2026-10-09 (set1c): a toy of her verified Playroom, known by its name
+                parts.append("You looked for \"%s\": it is the toy named '%s' in your Playroom, %s of the screen."
+                             % (p, g.get("toy", p), g.get("position", "?")))
+                continue
+            if g.get("how") == "window_map":          # eyes_fix2 (window_names): the WINDOW she named, from her window map
+                parts.append(window_words(p, g, lead="You looked for") + ".")
                 continue
             if g.get("fills_screen"):
                 parts.append("You looked for \"%s\": it fills the screen, %s." % (p, _mix(g)))
@@ -1693,6 +2735,8 @@ def render_eyes(now: Dict, grounds: Optional[List[Dict]] = None, max_grounds: in
             fa = float(g.get("cached_age_s") or g.get("frame_age_s") or 0.0)
             old = (" (from your look %.0f s ago)" % fa) if fa > 15 else ""
             parts.append("You looked for \"%s\"%s: something is there, %s%s%s." % (p, old, where, verdict, more))
+        elif st == "unsure":                            # eyes_fix F1 (doubt): a place to check, never 'something is there'
+            parts.append("You looked for \"%s\": your eyes are not sure -- %s." % (p, unsure_words(g)))
         elif st == "not_found":
             parts.append("You looked for \"%s\": nowhere on the screen right now." % p)
         else:

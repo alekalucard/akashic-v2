@@ -1365,6 +1365,15 @@ class AutonomyFairy(Fairy):
             intensity = 0.0
             drive_type = "unknown"
 
+        # 2026-10-01 (Nous, doing_clock 5): a drive a deed just served settles for a while instead of being put straight
+        # back by the next message (both keys are re-assigned below on every message). Empty unless loop_close is on.
+        if getattr(self, "_dc_settle", None):
+            try:
+                from infrastructure import doing_clock as _dcm
+                intensity = _dcm.settled(self, drive_name, intensity)
+            except Exception:
+                pass
+
         # Store by drive name with type prefix
         full_name = f"{drive_type}.{drive_name}"
 
@@ -1774,6 +1783,8 @@ class AutonomyFairy(Fairy):
             print(f"[{self.ACTOR_NAME}] [SPEECH] candidates={_speech_candidates} all_drives={_all_drives}", flush=True)
 
         for want in active_wants:
+            if want.get("deed"):                       # 2026-10-05 (Nous, pull_ask skeptic F1): a deed wanting (doing clock) is
+                continue                               # for her hands, never a speech signal
             if want["drive"] in _SPEECH_DRIVES and want["intensity"] >= 0.35:
                 if best_speech is None or want["intensity"] > best_speech["intensity"]:
                     best_speech = want
@@ -1794,6 +1805,20 @@ class AutonomyFairy(Fairy):
                 print(f"[{self.ACTOR_NAME}] [SPEECH-SIGNAL] All-wants check: {best_speech['drive']} ({best_speech['intensity']:.2f}) -> {best_speech['wanting'][:60]}", flush=True)
             except Exception as _e:
                 print(f"[{self.ACTOR_NAME}] [SPEECH-SIGNAL] Write error: {_e}")
+
+        # 2026-10-01 (Nous, doing_clock 1/3/5): the doing clock -- how long since her last real deed (state/intentions.jsonl);
+        # past the line the wanting she is sent names a deed on her screen; after an ok deed, autonomy.wanting.acted_upon.
+        # Ace, 10-01: "her autonomy fairy should be the one that nudges her into action. it should be aware if she is in
+        # active." A no-op unless state/doing_clock.json switches a piece on. Revert: delete these lines.
+        try:
+            from infrastructure import doing_clock as _dcm
+            _dcm.fairy_tick(self)
+        except ImportError:
+            pass
+        except Exception as _dce:
+            if getattr(self, "_dc_errs", 0) < 3:
+                self._dc_errs = getattr(self, "_dc_errs", 0) + 1
+                print(f"[{self.ACTOR_NAME}] [DoingClock] tick error: {_dce}", flush=True)
 
     def _deliver_to_inner_voice_rate_limited(self) -> None:
         """
@@ -1888,6 +1913,8 @@ class AutonomyFairy(Fairy):
         # it uses the drive + felt_quality as inspiration, not templates.
         _SPEECH_DRIVES = {"isolation", "abandonment", "frustration", "sadness",
                           "connection", "joy", "oxytocin"}
+        if strongest.get("deed"):                      # 2026-10-05 (Nous, pull_ask skeptic F1): a deed wanting is for her hands --
+            return                                     # never a speech signal (the nudge stays unspoken unless she chooses)
         if drive_source in _SPEECH_DRIVES and intensity >= 0.35:
             try:
                 import json as _json
@@ -2211,6 +2238,11 @@ class AutonomyFairy(Fairy):
                 if drive in self._drive_states:
                     self._drive_states[drive] *= 0.5
                     print(f"[{self.ACTOR_NAME}] Drive {drive} reduced after successful action")
+                try:                                   # 2026-10-01 (Nous, doing_clock 5): and it SETTLES (no-op unless loop_close)
+                    from infrastructure import doing_clock as _dcm
+                    _dcm.settle_after_closure(self, drive)
+                except Exception:
+                    pass
         else:
             print(f"[{self.ACTOR_NAME}] Wanting ack for untracked drive: {drive}")
 
@@ -2347,6 +2379,13 @@ class AutonomyFairy(Fairy):
                     "loop_closures": getattr(self, '_loop_closures', 0),
                 },
             }
+            try:                                       # 2026-10-01 (Nous, doing_clock 1): the clock, only while its switch is on
+                from infrastructure import doing_clock as _dcm
+                _dk = _dcm.export_block(self)
+                if _dk is not None:
+                    state["doing"] = _dk
+            except Exception:
+                pass
             state_file.write_text(json.dumps(state, default=str))
         except Exception:
             pass  # Never crash on state export

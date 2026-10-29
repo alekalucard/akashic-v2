@@ -12,6 +12,31 @@ from collections import deque
 from typing import Any, Dict, List, Optional, Callable, Tuple, Union
 import importlib.util, importlib.machinery, threading
 
+# recall_eyes_1020 (Nous, 2026-10-20): Ace's switch state/recall_eyes_fix.json arms retire_stale_memory_msg (infrastructure/recall_eyes_fix.py).
+# Imported here, at load. Absent / malformed / the module missing = OFF = _local_reflection is exactly the code it was.
+try:
+    from infrastructure import recall_eyes_fix as _rx_mod
+except Exception:
+    _rx_mod = None
+_RX_RETRY = [-1e9]
+
+
+def _rx_on(key):
+    """One key of Ace's recall_eyes_fix switch; OFF on any doubt (the module missing, unreadable, any error)."""
+    global _rx_mod
+    try:
+        m = _rx_mod
+        if m is None:
+            now = time.monotonic()
+            if now - _RX_RETRY[0] < 60.0:
+                return False
+            _RX_RETRY[0] = now
+            from infrastructure import recall_eyes_fix as m
+            _rx_mod = m
+        return bool(m.on(key))
+    except Exception:
+        return False
+
 # ── Inner Monologue Vocabulary System ────────────────────────────────────────
 # Expanded vocabulary pools with recency tracking for varied inner monologue
 HAS_MONOLOGUE_VOCABULARY = False
@@ -3042,6 +3067,9 @@ Don't explain or meta-comment - just think."""
         # ══════════════════════════════════════════════════════════════
         ai_response = self._local_reflection(goal_name, source_drive, priority)
         prompt_type = "local_reflection"
+        if ai_response is None:       # recall_eyes_1020: only possible with retire_stale_memory_msg ON (every other path returns a str)
+            self._rx_reflection_silent(goal_name, source_drive, prompt, feeling_before)
+            return
         
         print(f"[{self.ACTOR_NAME}]  {'Local' if prompt_type == 'local_fallback' else 'Personal.AI'} response: {ai_response[:100]}...")
         
@@ -3188,6 +3216,30 @@ Voice check: {identity['emotional_flavor']} - {identity['reflex_tone']}
         else:
             print(f"[{self.ACTOR_NAME}]  Failed to record: {result.get('error')}")
     
+    def _rx_reflection_silent(self, goal_name, source_drive, prompt, feeling_before):
+        """recall_eyes_1020 (retire_stale_memory_msg): the 15 s guild wait returned nothing and the key is ON, so no fallback template was
+        chosen. Records the EMPTY exchange in the in-memory dialogue context (so should_stay_silent's '5 exchanges in 5 minutes' back-off keeps
+        counting this cycle), counts it, prints one line. Writes nothing else: no feeling update, diary, WMH tracer, memory packet, SRM card,
+        stream emit or action. Never raises."""
+        try:
+            if self._whisper_context:
+                self._whisper_context.record_exchange(
+                    goal_name=goal_name,
+                    drive=source_drive,
+                    prompt=prompt,
+                    response="",
+                    feeling_before=feeling_before,
+                    feeling_after=self.current_feeling
+                )
+        except Exception:
+            pass
+        try:
+            self._rx_silent_n = getattr(self, "_rx_silent_n", 0) + 1
+            print("[%s] reflection: the guild was silent for 15 s; no template spoken (retire_stale_memory_msg, %d this boot) drive=%s goal=%s"
+                  % (self.ACTOR_NAME, self._rx_silent_n, ascii(str(source_drive))[:40], ascii(str(goal_name))[:60]), flush=True)
+        except Exception:
+            pass
+
     def _local_reflection(self, goal_name: str, source_drive: str, priority: float) -> str:
         """
         Generate a local reflection.
@@ -3242,6 +3294,8 @@ Voice check: {identity['emotional_flavor']} - {identity['reflex_tone']}
             except Exception as _e:
                 print(f"[{self.ACTOR_NAME}] Guild reflection error: {_e}")
         # ═══ End Inference Guild — fall through to templates ═══
+        if _rx_on("retire_stale_memory_msg"):      # recall_eyes_1020: the guild was silent -> no stale template; the caller handles None
+            return None
         import random
         
         # Get relevant ethic
@@ -3886,10 +3940,14 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
                 # (SomaticMind, AutonomyFairy, InnerNarrator etc. still consume it).
                 # Sourpatches answers ONLY messages addressed to her via `sourpatches.chat`,
                 # plus broadcasts (Psychic Broadcast button) and direct DMs.
-                self.post.subscribe("ace.broadcast", self._on_ace_chat)         # Psychic Broadcast button
-                self.post.subscribe("fairy.dm.sourpatchesfairy", self._on_ace_chat)  # DMs to her
-                self.post.subscribe("sourpatches.chat", self._on_ace_chat)      # canonical persona-scoped topic
-                print(f"[{self.ACTOR_NAME}] [CHAT] Subscribed to sourpatches.chat + ace.broadcast + fairy.dm (persona-scoped, chat with Ace!)")
+                _k3 = _k3_ace_pass(self)       # 2026-10-06 (council_set1 item 6): None = OFF (both boot passes subscribe, as before)
+                if _k3 is None or _k3.take("chat"):
+                    _k3r1 = self.post.subscribe("ace.broadcast", self._on_ace_chat)         # Psychic Broadcast button
+                    _k3r2 = self.post.subscribe("fairy.dm.sourpatchesfairy", self._on_ace_chat)  # DMs to her
+                    _k3r3 = self.post.subscribe("sourpatches.chat", self._on_ace_chat)      # canonical persona-scoped topic
+                    print(f"[{self.ACTOR_NAME}] [CHAT] Subscribed to sourpatches.chat + ace.broadcast + fairy.dm (persona-scoped, chat with Ace!)")
+                    if _k3 is not None:
+                        _k3.settle("chat", (_k3r1, _k3r2, _k3r3))   # skeptic F1: done only if no subscribe answered False
 
                 # ═══ GATEKEEPER RESPONSE TRACKING ═══
                 # Listen for sourpatches.speak from OTHER fairies (AutopilotFairy).
@@ -3908,24 +3966,32 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
                 # Plan: Claude_Office/plans/WMH_DIRECTED_THINKING.md
                 # Three-layer model: Sourpatches = waking mind (CoT). Directives
                 # are the "direction" input that makes the CoT layer real.
-                try:
-                    from fairies.P30_Cognition.cognition.thinking_directive import (
-                        THINKING_DIRECTIVE_TOPIC,
-                    )
-                    self.post.subscribe(THINKING_DIRECTIVE_TOPIC, self._on_thinking_directive)
-                    print(f"[{self.ACTOR_NAME}] [THINKING] Subscribed to "
-                          f"{THINKING_DIRECTIVE_TOPIC} (Slice 4: waking-mind CoT subscriber)",
-                          flush=True)
-                except Exception as _td_err:
-                    print(f"[{self.ACTOR_NAME}] [THINKING] subscribe failed: "
-                          f"{type(_td_err).__name__}: {_td_err}", flush=True)
+                if _k3 is None or _k3.take("directive"):   # 2026-10-06 (council_set1 item 6)
+                    try:
+                        from fairies.P30_Cognition.cognition.thinking_directive import (
+                            THINKING_DIRECTIVE_TOPIC,
+                        )
+                        _k3r = self.post.subscribe(THINKING_DIRECTIVE_TOPIC, self._on_thinking_directive)
+                        if _k3 is not None:
+                            _k3.settle("directive", (_k3r,))   # skeptic F1: done only if it did not answer False
+                        print(f"[{self.ACTOR_NAME}] [THINKING] Subscribed to "
+                              f"{THINKING_DIRECTIVE_TOPIC} (Slice 4: waking-mind CoT subscriber)",
+                              flush=True)
+                    except Exception as _td_err:
+                        print(f"[{self.ACTOR_NAME}] [THINKING] subscribe failed: "
+                              f"{type(_td_err).__name__}: {_td_err}", flush=True)
+                        if _k3 is not None:
+                            _k3.release("directive")   # skeptic F1: it raised -- the other pass subscribes it at once
 
                 # ═══ WOW CHAT - Listen for messages from WoW server ═══
                 # wow.chat.heard - when someone speaks in WoW chat
                 # sourpatches.stimulus - when WoW events trigger responses
-                self.post.subscribe("wow.chat.heard", self._on_ace_chat)
-                self.post.subscribe("sourpatches.stimulus", self._on_ace_chat)
-                print(f"[{self.ACTOR_NAME}]  Subscribed to wow.chat.heard + sourpatches.stimulus (WoW integration!)")
+                if _k3 is None or _k3.take("wow"):       # 2026-10-06 (council_set1 item 6)
+                    _k3r4 = self.post.subscribe("wow.chat.heard", self._on_ace_chat)
+                    _k3r5 = self.post.subscribe("sourpatches.stimulus", self._on_ace_chat)
+                    print(f"[{self.ACTOR_NAME}]  Subscribed to wow.chat.heard + sourpatches.stimulus (WoW integration!)")
+                    if _k3 is not None:
+                        _k3.settle("wow", (_k3r4, _k3r5))   # skeptic F1: done only if no subscribe answered False
 
                 # ═══ OWN TOOL OBSERVATIONS (Phase 2: Vision → Consciousness) ═══
                 # When NewbornCore observes something (screen, memory, tool result),
@@ -3985,6 +4051,9 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
                 ]
                 for topic in tool_topics:
                     self.post.subscribe(topic, self._on_tool_request)
+                # 2026-09-29 (Nous, thought_hand D1a): 'act' had NO subscriber (every autopilot 'act' went nowhere). It is heard now
+                # and COUNTED -- never executed: a goal name is not a place. Revert: delete this line and _on_tool_act_count.
+                self.post.subscribe("sourpatches.tool.act", self._on_tool_act_count)
                 print(f"[{self.ACTOR_NAME}] [TOOLS] Subscribed to {len(tool_topics)} tool topics (AutopilotFairy action routing!)")
 
                 # ═══ 7B FARM GUILD (2026-02-23 — "her thoughts are getting cut off") ═══
@@ -4427,6 +4496,46 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
     # AUTOPILOT TOOL REQUEST HANDLER - Execute tools routed by AutopilotFairy
     # ══════════════════════════════════════════════════════════════════════════
 
+    # 2026-09-29 (Nous, thought_hand D1a / M0): the motor SINKS of the autopilot tool route. Measured: they acted on a goal NAME at a
+    # saliency/random point (_pick_motor_target) or typed the goal name into whatever window had focus, with no door, no Ace-idle
+    # check and no claim on her one hand. Every branch below that moves, clicks, types, presses, scrolls, practises typing or opens
+    # Notepad is REFUSED here and counted; her hand moves from her own words (infrastructure/thought_tap.py) and the ask lane, both
+    # through infrastructure/hand_door.py. (open_notepad / notepad are fenced too -- beyond the design's listed lines -- because
+    # tool_bridge.open_notepad clicks the icon or launches the app.) Revert: delete this block and the D1a line in _on_tool_request.
+    _TH_MOTOR_SINKS = frozenset({"click_screen", "click", "type_text", "type", "press_key", "press", "move_mouse", "move",
+                                 "scroll_screen", "scroll", "practice_typing", "practice", "open_notepad", "notepad"})
+    _th_motor_counts = {}
+    _th_motor_last_log = {}
+
+    def _th_refuse_motor(self, tool_name, requester, goal):
+        key = "%s<-%s" % (tool_name, requester)
+        n = self._th_motor_counts.get(key, 0) + 1
+        self._th_motor_counts[key] = n
+        now = time.time()
+        if now - self._th_motor_last_log.get(key, 0.0) >= 60.0:
+            self._th_motor_last_log[key] = now
+            print(f"[{self.ACTOR_NAME}] [TOOL] M0 FENCE: refused motor sink '{tool_name}' from {requester} "
+                  f"(#{n}, goal {str(goal)[:60]!r}) -- her hand moves only through the door", flush=True)
+
+    _th_act_counts = {"n": 0, "last_log": 0.0}
+
+    def _on_tool_act_count(self, packet):
+        """2026-09-29 (thought_hand D1a): count-only. An autopilot 'act' (and every motor action it now routes here) is heard and
+        counted; it never makes a deed."""
+        try:
+            data = packet.payload if hasattr(packet, "payload") else (packet if isinstance(packet, dict) else {})
+            c = self._th_act_counts
+            c["n"] = c.get("n", 0) + 1
+            a = str(data.get("action", "act"))
+            c[a] = c.get(a, 0) + 1
+            now = time.time()
+            if now - c.get("last_log", 0.0) >= 60.0:
+                c["last_log"] = now
+                print(f"[{self.ACTOR_NAME}] [TOOL] act heard, count-only (#{c['n']}): action={a!r} "
+                      f"goal={str(data.get('goal_name') or data.get('goal') or '')[:60]!r} from {data.get('from', '?')}", flush=True)
+        except Exception as e:
+            print(f"[{self.ACTOR_NAME}] [TOOL] act count: {e}", flush=True)
+
     def _on_tool_request(self, packet):
         """
         Handle tool invocation requests from AutopilotFairy.
@@ -4458,6 +4567,9 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
 
             print(f"[{self.ACTOR_NAME}] [TOOL] Received tool request: {tool_name} from {requester}")
             print(f"[{self.ACTOR_NAME}] [TOOL]   Goal: {goal}")
+            if tool_name in self._TH_MOTOR_SINKS:      # 2026-09-29 (thought_hand D1a / M0): refused + counted
+                self._th_refuse_motor(tool_name, requester, goal)
+                return
 
             # Rate limit - don't invoke same tool more than once per 30 seconds
             now = time.time()
@@ -4838,14 +4950,17 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
                         from sour_council_driver import enqueue_ace as _enq
                     except ImportError:
                         from .sour_council_driver import enqueue_ace as _enq
-                    _enq(str(directive.goal or ""), getattr(directive, "convergence_id", None))
+                    _enq(str(directive.goal or ""), getattr(directive, "convergence_id", None), **_cs1_origin_kw(_enq, directive))   # 2026-10-06 (council_set1 item 4): where his words came from
                 except Exception as _cq:
                     print(f"[{self.ACTOR_NAME}] [THINKING] council queue err: {_cq}", flush=True)
 
             engine = getattr(self, '_thought_chain_engine', None)
             if engine is None or not hasattr(engine, 'start_chain'):
-                print(f"[{self.ACTOR_NAME}] [THINKING] no thought engine, skipping "
-                      f"directive source={directive.source}", flush=True)
+                if _k3_honest_refusal():               # 2026-10-06 (council_set1 item 6): the true cause; OFF: the old line
+                    print(_k3_refusal_line(self.ACTOR_NAME, engine, directive), flush=True)
+                else:
+                    print(f"[{self.ACTOR_NAME}] [THINKING] no thought engine, skipping "
+                          f"directive source={directive.source}", flush=True)
                 return
 
             chain = engine.start_chain(
@@ -7886,6 +8001,9 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
 
             if not tool_name or not self._newborn_core:
                 return
+            if tool_name in self._TH_R2_MOTOR:             # 2026-09-29 (thought_hand_r2 D1g F3): a motor exercise does not move her hand
+                self._th_r2_refuse("motor_exercise", tool_name, exercise_name)
+                return
 
             print(f"[{self.ACTOR_NAME}] [MOTOR] Attempting exercise: {exercise_name}")
 
@@ -8282,6 +8400,25 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
     # her autonomous reflections as input. Thought becomes action.
     # ═══════════════════════════════════════════════════════════════════════
 
+    # 2026-09-29 (Nous, thought_hand_r2 D1g / F1-F3): three older motor paths the verifier found outside the door (all dormant in Boots
+    # B / C3 / C: 0 '[ACTION] Thought -> Tool' and 0 'CORTEX -> Tool' lines; interest.generated type_detail=motor_practice has no
+    # publisher in code): _on_action_impulse's cortex tool (F1) and keyword fallback (F2), _attempt_motor_exercise (F3). A motor
+    # tool there is refused, counted and logged once a minute; nothing is routed. Revert: delete this block and the F1-F3 fences.
+    _TH_R2_MOTOR = frozenset({"click_screen", "type_text", "press_key", "move_mouse", "scroll_screen", "hotkey",
+                              "practice_typing", "open_notepad", "click", "type", "press", "move", "scroll", "drag"})
+    _th_r2_counts = {}
+    _th_r2_last_log = {}
+
+    def _th_r2_refuse(self, path, tool_name, why=""):
+        key = "%s<-%s" % (tool_name, path)
+        n = self._th_r2_counts.get(key, 0) + 1
+        self._th_r2_counts[key] = n
+        now = time.time()
+        if now - self._th_r2_last_log.get(key, 0.0) >= 60.0:
+            self._th_r2_last_log[key] = now
+            print(f"[{self.ACTOR_NAME}] [ACTION] R2 FENCE: refused motor tool {ascii(tool_name)} from {path} (#{n}) "
+                  f"{ascii(str(why)[:50])} -- her hand moves only through the door", flush=True)
+
     def _on_action_impulse(self, event):
         """Autonomous thought wants to become action — try matching a tool.
 
@@ -8322,6 +8459,9 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
             cortex_tool = payload.get("cortex_tool", "")
             activated_tools = payload.get("activated_tools", [])
 
+            if cortex_tool and cortex_tool in self._TH_R2_MOTOR:     # 2026-09-29 (thought_hand_r2 D1g F1): refused, counted
+                self._th_r2_refuse("action_impulse:cortex", cortex_tool, thought)
+                return
             if cortex_tool and cortex_tool in self._newborn_core.available_tools:
                 # Cortex chose this tool via spreading activation!
                 _last = self._newborn_core._last_tool_use.get(cortex_tool, 0)
@@ -8458,6 +8598,9 @@ What feels right? Sweet with bite, compassion first - what would you do?"""
             if tool_match:
                 tool_name = tool_match.get("name", "")
                 tool_args = tool_match.get("args", {})
+                if tool_name in self._TH_R2_MOTOR:          # 2026-09-29 (thought_hand_r2 D1g F2): the keyword fallback's practice_typing /
+                    self._th_r2_refuse("action_impulse:keyword", tool_name, thought)   # open_notepad, any motor pick: refused
+                    return
 
                 print(f"[{self.ACTOR_NAME}] [ACTION] Thought → Tool: "
                       f"'{thought[:50]}' → {tool_name}({tool_args})")
@@ -12067,3 +12210,161 @@ def get_sourpatches_fairy():
         if PERSONAL_AI_API_KEY:
             _sourpatches_fairy = SourpatchesFairy()
     return _sourpatches_fairy
+
+
+# -- council_set1 (2026-10-06, Nous; Ace's Monday list item 6, + item 4's origin) ------------------------------------------
+# K3, measured (nous_builds/council_set1/maps/k3_copy.md): there is ONE SourpatchesFairy object. It is activated twice -- the
+# heartbeat self-boot (_wire_all_subscriptions) and on_boot -- and both passes run _subscribe_consciousness_streams, so every
+# topic that carries Ace's words reached the same handler twice (4 '[THINKING] no thought engine' lines per message: 2 WMH
+# directives x 2 deliveries). That line is NOT a second copy: her engine is the P20 SomaticMind ThoughtChainEngine, which has
+# no start_chain (thought_chains.py:303); only the P30 engine has it. Ace's words still reach the chairman: the council queue
+# call runs BEFORE that test, and it is their only door.
+# "k3_ace": true in state/council_set1.json (read when the subscriptions are made, i.e. at BOOT; a flip takes effect at the
+# next boot): the first pass to reach each of Ace's three topic groups (chat: ace.broadcast / fairy.dm / sourpatches.chat;
+# directive: thinking.directive; wow: wow.chat.heard / sourpatches.stimulus) claims it under _self_boot_lock; a later pass
+# skips a group only once the claimer has FINISHED it. A group still being subscribed is waited for up to 3 s (the lock is
+# not held while waiting), then subscribed again, as today; a group whose subscribe raised, or answered False (her postal
+# bridge never raises: Organ_Template_0_3_0.py _FabricPostalBridge.subscribe returns False; skeptic F1), is released and
+# subscribed again by the next pass -- never zero doors. Absent / unreadable / not exactly true = both passes subscribe.
+# "k3_honest_refusal": true (read live): the refusal line states the true cause instead of 'no thought engine'.
+# Item 4: _on_thinking_directive tells enqueue_ace where the words came from ('chat' = WMH's chat path, 'wm_store' = WMH's
+# late working-memory copy), only when enqueue_ace takes an origin; the driver decides (its "lane_order" knob).
+_CS1_SWITCH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "state", "council_set1.json")
+_CS1_TTL_S = 1.0
+_CS1_CACHE = [(0.0, None)]
+_K3_FALLBACK_LOCK = threading.Lock()
+
+
+def _cs1() -> dict:
+    now = time.time()
+    c = _CS1_CACHE[0]
+    if c[1] is not None and 0.0 <= now - c[0] < _CS1_TTL_S:
+        return c[1]
+    d = {}
+    try:
+        import json as _json
+        with open(_CS1_SWITCH, "rb") as _f:
+            _d = _json.loads(_f.read().decode("utf-8-sig"))
+        d = _d if isinstance(_d, dict) else {}
+    except Exception:
+        d = {}
+    _CS1_CACHE[0] = (now, d)
+    return d
+
+
+class _K3Pass:
+    """One boot pass's claims on Ace's three topic groups. take() never raises: on any error it answers 'subscribe'."""
+    NOTES = {"chat": "[CHAT] Ace's chat topics (sourpatches.chat + ace.broadcast + fairy.dm)",
+             "directive": "[THINKING] thinking.directive",
+             "wow": "wow.chat.heard + sourpatches.stimulus"}
+
+    def __init__(self, fairy):
+        self.f = fairy
+        lk = getattr(fairy, "_self_boot_lock", None)
+        self.lock = lk if lk is not None else _K3_FALLBACK_LOCK
+
+    def _claims(self):
+        st = getattr(self.f, "_k3_ace_claims", None)
+        if st is None:
+            st = {}
+            setattr(self.f, "_k3_ace_claims", st)
+        return st
+
+    WAIT_S = 3.0              # a pass that finds the other one mid-group waits this long (lock released) for it to finish
+
+    def take(self, group) -> bool:
+        try:
+            t0 = time.time()
+            while True:
+                with self.lock:
+                    st = self._claims()
+                    cur = st.get(group)
+                    if cur is None:
+                        st[group] = "claiming"
+                if cur != "claiming" or time.time() - t0 >= self.WAIT_S:
+                    break
+                time.sleep(0.05)
+            name = getattr(self.f, "ACTOR_NAME", "SourpatchesFairy")
+            if cur == "done":
+                print(f"[{name}] {self.NOTES.get(group, group)}: already subscribed by the other boot pass -- not doubling", flush=True)
+                return False
+            if cur == "claiming":
+                print(f"[{name}] {self.NOTES.get(group, group)}: the other boot pass is still subscribing after %.0f s -- subscribing here too, as before" % self.WAIT_S, flush=True)
+            return True
+        except Exception:
+            return True
+
+    def done(self, group) -> None:
+        try:
+            with self.lock:
+                self._claims()[group] = "done"
+        except Exception:
+            pass
+
+    def settle(self, group, results) -> None:
+        """Skeptic F1: her postal bridge (_FabricPostalBridge.subscribe) answers a failed subscribe with False; it never
+        raises. The group is DONE only when no subscribe in it answered False (None = a post that answers nothing, as
+        before); otherwise the claim is released and the other boot pass subscribes the group -- never zero doors."""
+        try:
+            if any(r is False for r in (results or ())):
+                self.release(group)
+            else:
+                self.done(group)
+        except Exception:
+            pass
+
+    def release(self, group) -> None:
+        try:
+            with self.lock:
+                self._claims()[group] = None
+            name = getattr(self.f, "ACTOR_NAME", "SourpatchesFairy")
+            print(f"[{name}] {self.NOTES.get(group, group)}: a subscribe failed in this boot pass -- the claim is released, "
+                  f"the other pass subscribes it", flush=True)
+        except Exception:
+            pass
+
+
+def _k3_ace_pass(fairy):
+    """None = item 6 OFF (both boot passes subscribe Ace's topics, as before); else this pass's claim helper."""
+    try:
+        if _cs1().get("k3_ace") is not True:
+            return None
+        return _K3Pass(fairy)
+    except Exception:
+        return None
+
+
+def _k3_honest_refusal() -> bool:
+    try:
+        return _cs1().get("k3_honest_refusal") is True
+    except Exception:
+        return False
+
+
+def _k3_refusal_line(actor, engine, directive) -> str:
+    try:
+        src = str(getattr(directive, "source", "") or "")
+        what = "no chain engine yet" if engine is None else "her chain engine (%s.%s) has no start_chain" % (
+            type(engine).__module__.rsplit(".", 1)[-1], type(engine).__name__)
+        return "[%s] [THINKING] directive not chained (source=%s): %s%s" % (
+            actor, src, what, "; his words went to the chairman's queue" if src == "ace_input" else "")
+    except Exception:
+        return "[%s] [THINKING] directive not chained" % actor
+
+
+def _cs1_origin_kw(enq, directive) -> dict:
+    """Item 4: {'origin': 'chat' | 'wm_store'} when enqueue_ace takes one (and the directive says where it came from); else {}."""
+    try:
+        import inspect as _insp
+        if "origin" not in _insp.signature(enq).parameters:
+            return {}
+        ctx = getattr(directive, "context", None) or {}
+        if not isinstance(ctx, dict):
+            return {}
+        if ctx.get("source_topic") == "wmh.chat.input":
+            return {"origin": "chat"}                      # WMH _on_chat_input: his chat, now
+        if "ace_tracer_id" in ctx or "pair_id" in ctx:
+            return {"origin": "wm_store"}                  # WMH _on_wm_store: the late working-memory copy
+        return {}
+    except Exception:
+        return {}

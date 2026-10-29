@@ -15,11 +15,30 @@ Differences from the RWKV farm, stated so nobody is surprised:
     via Ollama's streaming API: it stops reading at the deadline and returns the partial text with
     deadline_hit=True, same shape as the farm
 
+2026-09-30 (Nous; Ace's go) -- THE DEAD-CLIENT FIX. Measured 09-30: this adapter served one client at a time
+(listen(1), accept -> serve_one -> accept) with no keepalive and no timeout, and held an ESTABLISHED session to
+a PC1 boot that had died hours earlier, so every later boot of hers connected into the backlog, waited 120 s
+for a pong that never came and stayed mute for the whole boot (card the-farm-adapter-hangs-on-a-dead-client).
+Now:
+  * TCP KEEPALIVE on every accepted socket (default: first probe after 30 s idle, then every 5 s, 4 probes),
+    so a peer that vanished without closing is found in about a minute instead of never.
+  * THE ACCEPTOR NEVER WAITS BEHIND A SESSION, and A NEW CLIENT REPLACES A STALE ONE. Each session runs on its
+    own thread. Stale = no request in flight and none for --stale-after seconds (default 60). A dead client
+    sends nothing, so it is stale a minute after its last answer. A LIVE session is never kicked: the
+    newcomer gets ONE line, {"status": "error", "message": "farm adapter busy: ..."}, and is closed, so its
+    ping fails in milliseconds instead of after 120 s, and her side retries later.
+  * --idle-timeout S (default 0 = OFF) closes a session that sent no request for S seconds. OFF on purpose:
+    her side before the matching PC1 fix (sourpatches_farm.py _FARM_RETRY) never reconnects, so an idle cut
+    would make her mute. Turn it on only after that fix is installed -- and it is not needed for the dead-client
+    case, which keepalive + stale replacement already cover.
+  The wire, the commands and every reply are unchanged; the Adapter class below is byte-identical.
+
 Ports: data on --port (default 8794), stderr-style log on --port+1, same as farm_remote_server.py.
 ASCII-only output: the console on .74 is cp1252.
 
 Run on the satellite:
   python -u infrastructure\\farm_ollama_adapter.py --model sour-chairman --port 8794
+  (2026-09-30, all optional: --stale-after 60  --idle-timeout 0  --keepalive 30,5,4 | --keepalive off)
 """
 import argparse
 import io
@@ -31,8 +50,8 @@ import threading
 import time
 import urllib.request
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="ascii", errors="replace")
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="ascii", errors="replace")
+# 2026-09-30: the ASCII stdout/stderr wrappers moved into main(), so importing this module (tests) leaves the
+# importer's streams alone. Running it as a script behaves exactly as before.
 
 OLLAMA = os.environ.get("OLLAMA_HOST_URL", "http://127.0.0.1:11434")
 
@@ -61,6 +80,29 @@ def system_text():
 
 def log(msg):
     print("[FarmOllama %s] %s" % (time.strftime("%H:%M:%S"), msg), flush=True)
+
+
+def set_keepalive(sock, idle_s=30, interval_s=5, count=4):
+    """TCP keepalive with short timers (2026-09-30). Returns what was set, for the log."""
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    done = ["SO_KEEPALIVE"]
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, int(idle_s))
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, int(interval_s))
+        done.append("idle=%ds interval=%ds" % (int(idle_s), int(interval_s)))
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, int(count))
+            done.append("count=%d" % int(count))
+        except (AttributeError, OSError):
+            pass
+    except (AttributeError, OSError):
+        if hasattr(socket, "SIO_KEEPALIVE_VALS") and hasattr(sock, "ioctl"):
+            try:
+                sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, int(idle_s * 1000), int(interval_s * 1000)))
+                done.append("SIO_KEEPALIVE_VALS idle=%ds interval=%ds" % (int(idle_s), int(interval_s)))
+            except OSError:
+                pass
+    return " ".join(done)
 
 
 class Adapter:
@@ -198,89 +240,264 @@ class Adapter:
         return {"status": "error", "message": "Unknown command: %s" % cmd}
 
 
-def serve_one(data_conn, log_conn, model, portal_id):
-    peer = data_conn.getpeername()
-    d_r = data_conn.makefile("r", encoding="utf-8", errors="replace", newline="\n")
-    d_w = data_conn.makefile("w", encoding="utf-8", errors="replace", newline="\n")
-    l_w = log_conn.makefile("w", encoding="utf-8", errors="replace", newline="\n")
+class Session:
+    """One client (data + log socket) served on its own thread. 2026-09-30: was serve_one() on the accept thread.
 
-    def log_write(s):
-        l_w.write(s); l_w.flush()
+    It never blocks in a read that another thread cannot end: the data socket is read with recv() and a POLL_S
+    timeout, and the loop checks end_reason / idle time between reads. MEASURED 09-30 on Windows: shutdown()
+    from the accept thread did NOT wake a session blocked in makefile().readline() for 10 s, so 'replace the
+    stale session' stalled (tests/test_farm_dead_client.py, first run). A timeout on a makefile reader leaves its
+    buffer undefined (Python docs), hence the plain recv() + own line buffer."""
 
-    ad = Adapter(model, portal_id, log_write)
-    ad.plog("Booting... (ollama adapter, model=%s)" % model)
-    # make sure the model is loaded: a 1-token generate warms Ollama's weights into RAM/VRAM
-    try:
-        _, _, el, _, _ = ad.ollama_generate("User: hi\n\nAssistant:", 1, 0.1, 0.9, 40, 1.0, None, 0)
-        ad.plog("model loaded in %.1fs" % el)
-    except Exception as e:
-        ad.plog("model load FAILED: %s" % str(e)[:120])
-    ad.plog("Farm built: 1 workers (ollama)")
-    ad.plog("Entering stdio loop (adapter for %s:%d)" % peer)
-    log("client %s:%d connected" % peer)
-    try:
-        for line in d_r:
-            line = line.strip()
-            if not line:
-                continue
+    POLL_S = 0.5
+
+    def __init__(self, data_conn, log_conn, model, portal_id, idle_timeout=0.0, peer=None):
+        self.data_conn, self.log_conn = data_conn, log_conn
+        self.peer = tuple(peer[:2]) if peer else ("?", 0)     # from accept(): getpeername() raises on a gone peer
+        self.model, self.portal_id = model, portal_id
+        self.idle_timeout = float(idle_timeout or 0)
+        self.done = threading.Event()
+        self.busy = True                  # the model warm-up below counts as a request in flight
+        self.last_activity = time.monotonic()
+        self.end_reason = None
+        self.thread = threading.Thread(target=self._run, name="farm-session-%s:%d" % self.peer, daemon=True)
+
+    def idle_for(self):
+        return time.monotonic() - self.last_activity
+
+    def stale(self, stale_after):
+        """True when this session may be replaced: it ended, or it is idle (no request in flight) long enough."""
+        if self.done.is_set():
+            return True
+        return (not self.busy) and self.idle_for() >= float(stale_after)
+
+    def kill(self, reason):
+        """Ask the session to end (from the accept thread). The session sees it within POLL_S and cleans up."""
+        if self.end_reason is None:
+            self.end_reason = reason
+
+    def _run(self):
+        peer = self.peer
+        l_w = self.log_conn.makefile("w", encoding="utf-8", errors="replace", newline="\n")
+
+        def log_write(s):
+            l_w.write(s); l_w.flush()
+
+        ad = Adapter(self.model, self.portal_id, log_write)
+        reason = None
+        buf = b""
+        try:
+            ad.plog("Booting... (ollama adapter, model=%s)" % self.model)
+            # make sure the model is loaded: a 1-token generate warms Ollama's weights into RAM/VRAM
             try:
-                req = json.loads(line)
-                resp = ad.handle(req)
+                _, _, el, _, _ = ad.ollama_generate("User: hi\n\nAssistant:", 1, 0.1, 0.9, 40, 1.0, None, 0)
+                ad.plog("model loaded in %.1fs" % el)
             except Exception as e:
-                resp = {"status": "error", "message": str(e)[:160]}
-            d_w.write(json.dumps(resp) + "\n"); d_w.flush()
-            if not ad.running:
-                break
-    except Exception as e:
-        log("session read ended: %s" % e)
-    ad.plog("Shutting down...")
-    ad.plog("VRAM released. Processed %d requests, generated %d tokens." % (ad.requests, ad.tokens))
+                ad.plog("model load FAILED: %s" % str(e)[:120])
+            ad.plog("Farm built: 1 workers (ollama)")
+            ad.plog("Entering stdio loop (adapter for %s:%d)" % peer)
+            log("client %s:%d connected" % peer)
+            self.data_conn.settimeout(self.POLL_S)
+            self.busy = False
+            self.last_activity = time.monotonic()
+            while True:
+                if self.end_reason is not None:
+                    reason = self.end_reason
+                    break
+                nl = buf.find(b"\n")
+                if nl < 0:
+                    if self.idle_timeout > 0 and self.idle_for() >= self.idle_timeout:
+                        reason = "idle timeout: no request for %.0fs" % self.idle_timeout
+                        break
+                    try:
+                        chunk = self.data_conn.recv(65536)
+                    except (socket.timeout, TimeoutError):
+                        continue
+                    if not chunk:
+                        reason = self.end_reason or "client closed the connection"
+                        break
+                    buf += chunk
+                    continue
+                raw, buf = buf[:nl], buf[nl + 1:]
+                line = raw.decode("utf-8", "replace").strip()
+                if not line:
+                    continue
+                self.busy = True
+                try:
+                    req = json.loads(line)
+                    resp = ad.handle(req)
+                except Exception as e:
+                    resp = {"status": "error", "message": str(e)[:160]}
+                self.data_conn.settimeout(30.0)          # a reply gets real time to go out
+                self.data_conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+                self.data_conn.settimeout(self.POLL_S)
+                self.last_activity = time.monotonic()
+                self.busy = False
+                if not ad.running:
+                    reason = "client sent shutdown"
+                    break
+        except Exception as e:
+            reason = self.end_reason or ("session read ended: %s" % e)
+        finally:
+            self.busy = False
+            try:
+                ad.plog("Shutting down... (%s)" % (reason or "?"))
+                ad.plog("VRAM released. Processed %d requests, generated %d tokens." % (ad.requests, ad.tokens))
+            except Exception:
+                pass
+            for c in (self.data_conn, self.log_conn):
+                try:
+                    c.shutdown(socket.SHUT_RDWR)
+                except Exception:
+                    pass
+            try:
+                l_w.close()
+            except Exception:
+                pass
+            for c in (self.data_conn, self.log_conn):
+                try:
+                    c.close()
+                except Exception:
+                    pass
+            log("session with %s:%d ended (%s)" % (peer[0], peer[1], reason or "?"))
+            self.done.set()
+
+
+def _accept_log(log_srv, ip, wait_s):
+    """The log connection that belongs to this data client: same IP, within wait_s. None if it never comes."""
+    deadline = time.monotonic() + wait_s
+    try:
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return None
+            log_srv.settimeout(left)
+            try:
+                c, a = log_srv.accept()
+            except (socket.timeout, OSError):
+                return None
+            if a[0] == ip:
+                return c
+            log("log connection from %s while pairing %s -- dropped" % (a[0], ip))
+            try:
+                c.close()
+            except Exception:
+                pass
+    finally:
+        log_srv.settimeout(None)
+
+
+def _refuse(data_conn, log_conn, portal_id, cur):
+    """A live session owns the model: tell the newcomer in one line and close, so its ping fails at once."""
+    msg = ("farm adapter busy: serving %s:%d (%s, last request %.0fs ago); try again later"
+           % (cur.peer[0], cur.peer[1], "request in flight" if cur.busy else "idle", cur.idle_for()))
+    for c, line in ((data_conn, json.dumps({"status": "error", "message": msg}) + "\n"),
+                    (log_conn, "[GPUPortal:%s] refused: %s\n" % (portal_id, msg))):
+        try:
+            c.settimeout(2.0)
+            c.sendall(line.encode("utf-8"))
+        except Exception:
+            pass
     for c in (data_conn, log_conn):
         try:
             c.shutdown(socket.SHUT_RDWR)
         except Exception:
             pass
-    for f in (d_r, d_w, l_w):
-        try:
-            f.close()
-        except Exception:
-            pass
-    for c in (data_conn, log_conn):
         try:
             c.close()
         except Exception:
             pass
-    log("session with %s:%d ended" % peer)
+    return msg
+
+
+def serve(data_srv, log_srv, model, portal_id, stale_after=60.0, idle_timeout=0.0, keepalive=(30, 5, 4),
+          stop=None, on_session=None):
+    """The accept loop. Runs until `stop` (a threading.Event, tests only) is set; production passes none."""
+    current = None
+    while stop is None or not stop.is_set():
+        try:
+            data_conn, addr = data_srv.accept()
+        except socket.timeout:
+            continue
+        except OSError as e:
+            if stop is not None and stop.is_set():
+                break
+            log("accept failed: %s" % e)
+            time.sleep(0.5)
+            continue
+        try:
+            data_conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            ka = set_keepalive(data_conn, *keepalive) if keepalive else "off"
+        except OSError as e:
+            ka = "keepalive failed: %s" % e
+        log_conn = _accept_log(log_srv, addr[0], 15.0)
+        if log_conn is None:
+            log("data client %s:%d connected but no log connection within 15s -- dropping" % addr[:2])
+            try:
+                data_conn.close()
+            except Exception:
+                pass
+            continue
+        try:
+            if keepalive:
+                set_keepalive(log_conn, *keepalive)
+        except OSError:
+            pass
+        if current is not None and not current.done.is_set():
+            if current.stale(stale_after):
+                log("REPLACING stale session %s:%d (idle %.0fs, nothing in flight) with new client %s:%d"
+                    % (current.peer[0], current.peer[1], current.idle_for(), addr[0], addr[1]))
+                current.kill("replaced by new client %s:%d" % addr[:2])
+                if not current.done.wait(5.0):
+                    log("old session %s:%d did not end within 5s; serving the new client anyway" % current.peer)
+            else:
+                msg = _refuse(data_conn, log_conn, portal_id, current)
+                log("REFUSED %s:%d -- %s" % (addr[0], addr[1], msg))
+                continue
+        log("accepted %s:%d (keepalive: %s)" % (addr[0], addr[1], ka))
+        current = Session(data_conn, log_conn, model, portal_id, idle_timeout=idle_timeout, peer=addr)
+        current.thread.start()
+        if on_session is not None:
+            on_session(current)
+    if current is not None:
+        current.kill("adapter stopping")
+
+
+def _keepalive_arg(s):
+    if str(s).strip().lower() in ("off", "0", "none"):
+        return None
+    parts = [int(x) for x in str(s).split(",")]
+    if len(parts) != 3 or min(parts) <= 0:
+        raise argparse.ArgumentTypeError("--keepalive wants IDLE,INTERVAL,COUNT seconds/probes, or off")
+    return tuple(parts)
 
 
 def main():
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="ascii", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="ascii", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
     ap.add_argument("--port", type=int, default=8794)
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--portal-id", default="sour-gpu")
+    ap.add_argument("--stale-after", type=float, default=60.0,
+                    help="seconds without a request after which a NEW client may replace the current one (0 = at once; a session mid-request is never replaced)")
+    ap.add_argument("--idle-timeout", type=float, default=0.0,
+                    help="close a session with no request for this many seconds (0 = off, the default)")
+    ap.add_argument("--keepalive", type=_keepalive_arg, default=(30, 5, 4),
+                    help="TCP keepalive IDLE,INTERVAL,COUNT (default 30,5,4) or off")
     a = ap.parse_args()
     data_srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     log_srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     for s, p in ((data_srv, a.port), (log_srv, a.port + 1)):
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((a.bind, p)); s.listen(1)
-    log("listening data=%d log=%d model=%s ollama=%s" % (a.port, a.port + 1, a.model, OLLAMA))
-    while True:
-        data_conn, _ = data_srv.accept()
-        data_conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        log_srv.settimeout(15.0)
-        try:
-            log_conn, _ = log_srv.accept()
-        except socket.timeout:
-            log("data client connected but no log connection within 15s -- dropping")
-            data_conn.close(); continue
-        finally:
-            log_srv.settimeout(None)
-        try:
-            serve_one(data_conn, log_conn, a.model, a.portal_id)
-        except Exception as e:
-            log("session error: %s" % e)
+        s.bind((a.bind, p)); s.listen(4)
+    log("listening data=%d log=%d model=%s ollama=%s stale-after=%.0fs idle-timeout=%s keepalive=%s"
+        % (a.port, a.port + 1, a.model, OLLAMA, a.stale_after,
+           ("%.0fs" % a.idle_timeout) if a.idle_timeout > 0 else "off",
+           ",".join(str(x) for x in a.keepalive) if a.keepalive else "off"))
+    serve(data_srv, log_srv, a.model, a.portal_id, stale_after=a.stale_after, idle_timeout=a.idle_timeout,
+          keepalive=a.keepalive)
 
 
 if __name__ == "__main__":

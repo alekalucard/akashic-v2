@@ -897,11 +897,105 @@ class _PostalProbe:
                 pass
 
 
+# ---- _POSTAL_PROBE GATE 2026-09-29 (Nous + Ace; engine roadmap step 12, 'postal probe off vs on') ----
+# The probe above used to start at import with no switch, in EVERY process that imports this module (her server
+# and the MCP servers alike). This gate decides whether it starts. EXACT semantics:
+#   env AKASHIC_POSTAL_PROBE == "0"  -> OFF
+#   env AKASHIC_POSTAL_PROBE == "1"  -> ON  (wins over the flag file)
+#   unset (or any other value)      -> OFF if <akashic_v2>/state/postal_probe.off exists, else ON
+# DEFAULT IS ON = the behaviour before this gate. With the env unset and no flag file, nothing changes and
+# nothing is printed. The flag file lets boots alternate off/on without a launcher edit (env lines added to the
+# .bat are inert while an old launcher is alive: the launcher-outlives-the-reboot card).
+# OFF means: the 'postal-probe' thread is never created (no sys._current_frames() at 5 Hz, no postal_probe.log,
+# no _STALL_AUTOPSY), AND the two per-message hooks that only feed it (sample_payload, note_collision_publish)
+# become no-ops on this one instance. The class body is untouched, so ON runs exactly the old code.
+# The OFF line goes to STDERR as ONE write: some importers speak JSON-RPC on stdout; her launcher merges 2>&1.
+def _postal_probe_gate():
+    _v = os.environ.get("AKASHIC_POSTAL_PROBE")
+    if _v == "0":
+        return False, "env AKASHIC_POSTAL_PROBE=0"
+    if _v == "1":
+        return True, "env AKASHIC_POSTAL_PROBE=1"
+    _note = "" if _v is None else "env AKASHIC_POSTAL_PROBE=%s ignored (only 0 or 1); " % ascii(_v)
+    _flag = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         "..", "..", "..", "state", "postal_probe.off"))
+    if os.path.exists(_flag):
+        return False, _note + "flag file " + _flag
+    return True, _note + "default"
+
+
 _POSTAL_PROBE = _PostalProbe()
 try:
-    _POSTAL_PROBE.start()
-except Exception:
-    pass
+    _POSTAL_PROBE_ON, _POSTAL_PROBE_WHY = _postal_probe_gate()
+except Exception as _pg_err:              # a broken gate must never change today's behaviour
+    _POSTAL_PROBE_ON, _POSTAL_PROBE_WHY = True, "gate error %s" % type(_pg_err).__name__
+if _POSTAL_PROBE_ON:
+    try:
+        _POSTAL_PROBE.start()
+    except Exception:
+        pass
+else:
+    _POSTAL_PROBE.sample_payload = lambda topic, payload: None
+    _POSTAL_PROBE.note_collision_publish = lambda intent, payload: None
+if _POSTAL_PROBE_WHY not in ("default", "env AKASHIC_POSTAL_PROBE=1"):   # off, an ignored env value, a gate error
+    try:
+        import sys as _pg_sys
+        _pg_sys.stderr.write(("[PostalProbe] %s (%s)\n" % ("on" if _POSTAL_PROBE_ON else "off", _POSTAL_PROBE_WHY)
+                              ).encode("ascii", "replace").decode("ascii"))
+        _pg_sys.stderr.flush()
+    except Exception:
+        pass
+
+
+# ---- POSTAL LEASE SWITCH 2026-10-19 (Nous + Ace; wf postal-lease-build-1019; DESIGN_B2.md section 7) ----
+# Ace 10-19: "the organ template being what assigns identity it would make sense the lease and what nots come from
+# her main pc". When state/postal_lease.json asks for a lease, her issuer (infrastructure/postal_lease_issuer.py)
+# mints every postal id with the Organ Template's Tracer and the Rust core only ASKS. Absent file = PostalCore()
+# exactly as before this edit: the issuer is not imported, nothing is printed. Lines go to STDERR (some importers
+# speak JSON-RPC on stdout). Revert: apply_postal_lease.py --revert --python (restores the .bak_20261019_prelease).
+_POSTAL_LEASE_FILE = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                  "..", "..", "..", "state", "postal_lease.json"))
+
+
+def _postal_lease_note(msg):
+    try:
+        import sys as _pl_sys
+        _pl_sys.stderr.write(("[postal_lease] %s\n" % msg).encode("ascii", "replace").decode("ascii"))
+        _pl_sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _make_postal_core():
+    if not USING_RUST or not os.path.exists(_POSTAL_LEASE_FILE):
+        return PostalCore()
+    try:
+        import json as _pl_json
+        with open(_POSTAL_LEASE_FILE, "r", encoding="utf-8") as _f:
+            _cfg = _pl_json.loads(_f.read())
+        if not isinstance(_cfg, dict) or not isinstance(_cfg.get("mode"), str):
+            raise ValueError("not a JSON object with a string 'mode'")
+    except Exception as _e:
+        _postal_lease_note("switch ignored (%s: %s): off" % (type(_e).__name__, _e))
+        return PostalCore()
+    _mode = _cfg["mode"].strip().lower()
+    if _mode in ("", "0", "off"):
+        return PostalCore()
+    try:
+        from infrastructure import postal_lease_issuer as _issuer
+        _issuer.configure(_cfg)
+        _kind, _name, _fid = _issuer.creator()
+        if _name not in _issuer.allowed_creators():
+            return PostalCore()
+        _issuer.register()
+    except Exception as _e:
+        _postal_lease_note("issuer unavailable (%s: %s): off" % (type(_e).__name__, _e))
+        return PostalCore()
+    try:
+        return PostalCore(worker_mode=_mode)
+    except TypeError as _e:
+        _postal_lease_note("this postal_core has no worker_mode (%s): off" % _e)
+        return PostalCore()
 
 
 class TensorFabric:
@@ -928,7 +1022,7 @@ class TensorFabric:
         # spawns 836+ worker threads consuming ~1.7GB of stack memory. Wrapping with
         # _BaseTopicPostal collapses all intents to their base topic (e.g., "fairy"),
         # reducing pools from 836 to ~20 while preserving full-intent matching.
-        self._postal = _BaseTopicPostal(PostalCore())
+        self._postal = _BaseTopicPostal(_make_postal_core())
         # _STALL_AUTOPSY: the probe needs a live handle to read per-topic delivered
         try:
             if _POSTAL_PROBE._fabric_ref is None:

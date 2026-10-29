@@ -1,21 +1,43 @@
 """
-SomaticAvatarFairy -- Visual self-image & self-recognition engine.
+SomaticAvatarFairy -- her self-image: the display engine inside, a recogniser that can say no, her look as facts.
 
-Two responsibilities:
-1. INGEST Sourpatches' self-image (calibration data + avatar images) into the
-   Association Cortex as "self.visual.*" concept nodes — her visual identity.
-2. RECOGNIZE herself in visual frames — when the VisualCortex sees something
-   that resembles her (matching Florence-2 captions, cortex spread convergence),
-   publish self.visual.recognition events that feed the somatic body schema.
+2026-10-05 (Nous; avatar_identity build, Ace's decisions 10-05). nous_builds/avatar_identity/{TRACE,SKEPTIC,PROPOSAL}.md:
+from ~03-10 to Boot G the registry booted the display engine (avatar/somatic_avatar_fairy.py) STANDALONE in place of
+this file -- both say ACTOR_NAME "SomaticAvatarFairy" and the early scan keeps the first one it finds
+(server.py:4955-4961; 'avatar\\' sorts first). This file never ran. Its old matcher (keyword substrings, threshold 1 on
+'sourpatches') would have said "I see myself on screen" on ~980 of Boot G's 1,391 screen reads, so it was replaced
+BEFORE the one-line switch that lets this file boot (avatar/somatic_avatar_fairy.py:94, applied last).
 
-Real GUI code lives at: fairies/P50_Persona/avatar/somatic_avatar_fairy.py
-(PyQt6 widget for screen avatar — disabled under Python 3.14t free-threaded).
-
-Self-recognition works WITHOUT PyQt6. It's pure cortex + postal.
+THE SWITCH: state/avatar_identity.json, read by self_image.read_switch. Absent, unreadable, or "on" not true = OFF.
+  OFF  = TODAY'S BEHAVIOUR. The display engine is built exactly as the registry built it, AV(fabric) with its defaults
+         (it subscribes, prints, and runs its old name counter to 'avatar.self_recognized', which nobody reads). This
+         shell starts nothing, reads nothing from the folder, writes nothing, publishes nothing.
+  ON   = the engine inside, silent (auto_subscribe=False: its substring matcher never runs) and its emotion->named-costume
+         selector OFF (enable_form_switching=False; later she picks her own costume as a deed). One thread of ours:
+           * her pictures indexed (self_image.PictureIndex, read only); calibration.json read for the log only --
+             no fact is taken from it (its flower crown / corset dress are in none of her pictures);
+           * her look written ONCE as facts in Ace's words (self_facts.FactWriter: self:look*, TRACE_SEEDED), retried
+             until her cortex is up; "facts": "undo" blanks them. A memory of ACE SAYING it (self_facts.ACE_TURN,
+             rendered "You remember Ace said ...") is woven only with "ace_turn": true -- his yes to those exact words;
+           * every cycle_s (and on a front-window change): self_image.Recogniser -- T0 her name in a window title that
+             is not hers, T1 her pictures by fingerprint, T2 a grounded hair region's colour (SHADOW ONLY, always);
+             ONE score that decays on the clock; hits AND misses counted;
+           * every report_s: one counts line + state/avatar_identity_report.json.
+         "mode": "shadow" (what the installer writes; the FIRST boot, Ace 10-05) -- counted and logged, NOTHING
+         published: no 'self.visual.recognition', no 'consciousness.working', no 'cortex.bind', nothing said.
+         "mode": "live" (Ace edits it after reviewing the counts; read live) -- a T1 picture hit publishes ONE
+         'self.visual.recognition' (type self_recognition, confidence 0.9, source picture:<stem>) per picture per
+         republish_s; a T0 name publishes 'self.text.reference' (never "I see myself"); T2 never publishes.
+         "on" itself is read at boot (it decides how the engine is built) and every cycle (off = the cycle idles).
+  The thread starts from __init__ ("start_in_coma", default true): her launcher boots with AKASHIC_COMA=1 and only
+  AKASHIC_WAKE / AKASHIC_WAKE_PLANES=P20 fairies run on_boot (Organ_Template_0_3_0.py:3426-3477, :3571-3580). P50's
+  SomaticAvatarFairy is in neither, so an on_boot-only start would leave this file booted and silent -- the display
+  engine has always done its work in __init__, and this keeps that. on_boot starts it too (idempotent).
 """
 
 import sys
 import json
+import os
 import time
 import importlib.util
 import threading
@@ -55,27 +77,43 @@ if _real_path.exists():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SELF-IMAGE KEYWORDS — what she looks like, extracted from calibration.json
-# Used for self-recognition in Florence-2 captions and visual frame descriptions.
+# AVATAR IDENTITY (2026-10-05): switch, helpers, paths
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Core visual identity keywords — if Florence-2 mentions several of these,
-# it's likely looking at an image of Sourpatches.
-SELF_KEYWORDS_PRIMARY = {
-    "fairy", "lavender", "purple hair", "green eyes", "freckles",
-    "elf ears", "elf", "wings", "pointed ears",
-}
+_ASSETS = _avatar_dir / "assets" / "sourpatches"
+_SWITCH_PATH = ROOT / "state" / "avatar_identity.json"
+_JOURNAL_PATH = ROOT / "state" / "avatar_identity_facts.json"
+_REPORT_PATH = ROOT / "state" / "avatar_identity_report.json"
 
-# Secondary / form-specific keywords — strengthen match probability
-SELF_KEYWORDS_SECONDARY = {
-    "saiyan", "venom", "symbiote", "jedi", "lightsaber",
-    "superhero", "chibi", "zombie", "superpatches", "sourpatches",
-    "sour patches", "lavender hair", "candy",
-}
 
-# Minimum keyword hits for self-recognition
-SELF_RECOGNITION_THRESHOLD_PRIMARY = 2    # 2+ primary keywords = likely self
-SELF_RECOGNITION_THRESHOLD_SECONDARY = 1  # 1+ secondary = definite self
+def _load_flat(name, path):
+    """The engine's own loading pattern (above): a flat module name, never a package import."""
+    mod = sys.modules.get(name)
+    if mod is not None:
+        return mod
+    spec = importlib.util.spec_from_file_location(name, str(path))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    return mod
+
+
+def _helpers():
+    return (_load_flat("_avatar_self_image", _avatar_dir / "self_image.py"),
+            _load_flat("_avatar_self_facts", _avatar_dir / "self_facts.py"))
+
+
+def switch_now(path=None):
+    """None = OFF (today's behaviour). Any failure, including a missing helper file, reads as OFF."""
+    try:
+        si, _sf = _helpers()
+        return si.read_switch(str(path or _SWITCH_PATH))
+    except Exception:
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -83,26 +121,25 @@ SELF_RECOGNITION_THRESHOLD_SECONDARY = 1  # 1+ secondary = definite self
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class SomaticAvatarFairyShadow:
-    """Shadow for SomaticAvatarFairy — monitors self-recognition health."""
+    """Shadow for SomaticAvatarFairy — monitors self-image health."""
     ORGAN_LEVEL = False
     SHADOW_NAME = "SomaticAvatarFairyShadow"
-    SHADOW_VERSION = "0.2.0"
+    SHADOW_VERSION = "0.3.0"
 
     def __init__(self, actor, interval_sec: float = 30.0):
         self.actor = actor
         self.interval_sec = interval_sec
 
     def _collect_tests(self):
+        a = self.actor
         tests = []
-        tests.append(("calibration_loaded", bool(getattr(self.actor, '_calibration', None))))
-        tests.append(("self_concepts_ingested", getattr(self.actor, '_self_concepts_ingested', False)))
-        tests.append(("recognition_count", getattr(self.actor, '_recognition_count', 0)))
-        tests.append(("visual_subscribed", getattr(self.actor, '_visual_subscribed', False)))
-        engine = getattr(self.actor, '_engine', None)
-        if engine:
-            tests.append(("engine_loaded", True))
-        else:
-            tests.append(("engine_loaded", False))
+        tests.append(("identity_on", getattr(a, '_identity', None) is not None))
+        tests.append(("calibration_loaded", bool(getattr(a, '_calibration', None))))
+        tests.append(("pictures_indexed", len(getattr(a, '_index', None) or [])))
+        tests.append(("facts", str((getattr(a, '_facts_result', None) or {}).get("result", "-"))))
+        tests.append(("cycles", getattr(a, '_cycles', 0)))
+        tests.append(("published", getattr(a, '_pubs', 0)))
+        tests.append(("engine_loaded", getattr(a, '_engine', None) is not None))
         return tests
 
 
@@ -112,28 +149,16 @@ class SomaticAvatarFairyShadow:
 
 class SomaticAvatarFairyV3(Fairy):
     """
-    Visual self-image and self-recognition engine.
-
-    At boot:
-    - Loads calibration.json (defining features, color palette, form descriptions)
-    - Ingests self-concept nodes into Association Cortex via postal
-    - Subscribes to visual frames and Florence-2 output for self-recognition
-
-    On each visual frame:
-    - Checks Florence-2 captions for self-keywords
-    - Checks cortex spread convergence on self-concepts
-    - When recognized: publishes self.visual.recognition event
-
-    Self-recognition feeds the somatic body schema — "I can see myself."
-    This trains her visual self-anchor over time.
+    Her self-image. The display engine runs inside; when the avatar identity is ON, a recogniser that can fail
+    (her name, her pictures, a shadow hair check; one decaying score) and her look as facts in Ace's words.
     """
 
     ACTOR_NAME = "SomaticAvatarFairy"
-    ACTOR_VERSION = "2.0.0"
+    ACTOR_VERSION = "3.0.0"
     ACTOR_PLANE = "P50"
     ACTOR_CHANNEL = "persona.avatar"
 
-    PURPOSE = "Visual self-image and self-recognition — know what I look like"
+    PURPOSE = "Visual self-image -- know what I look like, and know when it is really me on the screen"
     MANTRA = "I know my own face"
     LORE = "The mirror of the soul - seeing yourself in the world trains the felt sense of self"
 
@@ -147,462 +172,296 @@ class SomaticAvatarFairyV3(Fairy):
     def __init__(self, fabric=None):
         super().__init__(fabric)
         self._engine = None
-
-        # Self-image data (from calibration.json)
         self._calibration = {}
-        self._self_descriptors = []  # Text descriptors for cortex binding
-        self._self_color_palette = {}  # RGB palette
-        self._form_descriptions = {}  # form -> description text
-
-        # Self-recognition state
-        self._self_concepts_ingested = False
-        self._visual_subscribed = False
-        self._recognition_count = 0
-        self._last_recognition_ts = 0.0
-        self._recognition_cooldown = 10.0  # Don't spam — max 1 recognition per 10s
-
-        # Assets path
-        self._assets_dir = _avatar_dir / "assets" / "sourpatches"
+        self._identity = None                 # the switch as read at boot (None = OFF = today's behaviour)
+        self._started = False
+        self._start_lock = threading.Lock()
+        self._stop = threading.Event()
+        self._index = None
+        self._recog = None
+        self._facts = None
+        self._facts_result = None
+        self._facts_next = 0.0
+        self._facts_undone = False
+        self._facts_wait_log = 0.0
+        self._screen = None                   # self_image.LiveScreen (tests inject a fake)
+        self._cortex_fn = None                # self_facts.cortex_handle (tests inject a temp manifold)
+        self._cycles = 0
+        self._pubs = 0
+        self._rec_n = 0                       # live self-recognitions actually published (tool_bridge's "#n")
+        self._t2_log = 0.0
+        self._identity = switch_now()
+        if self._identity is None:
+            # OFF = TODAY'S BEHAVIOUR: the display engine exactly as the registry built it from 03-10 to Boot G,
+            # AV(fabric) with its defaults. Nothing else.
+            if _RealClass is not None:
+                try:
+                    self._engine = _RealClass(fabric)
+                except Exception as e:
+                    print(f"[{self.ACTOR_NAME}] display engine unavailable (non-fatal): {e}", flush=True)
+            return
+        if _RealClass is not None:
+            try:
+                base_img = _ASSETS / "sourpatches_base.jpg"
+                self._engine = _RealClass(
+                    image_path=str(base_img) if base_img.exists() else "",
+                    name="Sourpatches",
+                    auto_subscribe=False,             # its old substring matcher never runs (AV:136-137, :171-216)
+                    enable_form_switching=False,      # the emotion->named-costume selector is OFF (AV:103, :139-141)
+                )
+            except Exception as e:
+                print(f"[{self.ACTOR_NAME}] display engine unavailable (non-fatal): {e}", flush=True)
+        if self._identity.get("start_in_coma", True):
+            self._start("init")
 
     def on_boot(self) -> bool:
-        """Boot: load calibration, ingest self-image, wire visual recognition."""
         super().on_boot()
+        if self._identity is None:
+            print(f"[{self.ACTOR_NAME}] avatar identity OFF (state/avatar_identity.json absent or off): "
+                  f"the display engine runs as before", flush=True)
+            return True
+        self._start("on_boot")
+        return True
 
-        def _deferred_boot():
-            time.sleep(3.0)  # Let cortex and visual system boot first
-            try:
-                # ── Step 1: Load calibration data ──
-                self._load_calibration()
-
-                # ── Step 2: Ingest self-concept nodes into cortex ──
-                self._ingest_self_into_cortex()
-
-                # ── Step 3: Subscribe to visual frames for self-recognition ──
-                self._subscribe_visual_recognition()
-
-                # ── Step 4: Boot PyQt engine if available (optional) ──
-                if _RealClass is not None:
-                    try:
-                        default_image = str(self._assets_dir / "sourpatches_base.jpg") \
-                            if self._assets_dir.exists() else ""
-                        self._engine = _RealClass(
-                            image_path=default_image,
-                            name="Sourpatches",
-                            auto_subscribe=False,
-                        )
-                        if self.post and hasattr(self._engine, 'post'):
-                            self._engine.post = self.post
-                        print(f"[{self.ACTOR_NAME}] PyQt avatar engine ONLINE")
-                    except Exception as e:
-                        print(f"[{self.ACTOR_NAME}] PyQt engine unavailable (non-fatal): {e}")
-
-                print(f"[{self.ACTOR_NAME}] Self-recognition engine ONLINE "
-                      f"({len(self._self_descriptors)} descriptors, "
-                      f"{len(self._form_descriptions)} forms)")
-
-            except Exception as e:
-                print(f"[{self.ACTOR_NAME}] Boot error (non-fatal): {e}")
-                import traceback; traceback.print_exc()
-
-        threading.Thread(target=_deferred_boot, daemon=True, name="defer-SomaticAvatar").start()
-
-        print(f"[{self.ACTOR_NAME}] {self.MANTRA} (booting self-recognition...)")
+    def _start(self, why: str) -> bool:
+        with self._start_lock:
+            if self._started:
+                return False
+            self._started = True
+        try:
+            si, _sf = _helpers()
+            if not si.claim_runner(id(self)):
+                print(f"[{self.ACTOR_NAME}] avatar identity already runs in another copy of this fairy in this "
+                      f"process; this copy stays quiet", flush=True)
+                return False
+        except Exception as e:
+            print(f"[{self.ACTOR_NAME}] avatar identity helpers did not load ({e}): nothing runs", flush=True)
+            return False
+        mode = (self._identity or {}).get("mode", "shadow")
+        print(f"[{self.ACTOR_NAME}] avatar identity ON ({mode}{': counted, nothing said' if mode != 'live' else ''})"
+              f" -- starting from {why}", flush=True)
+        threading.Thread(target=self._run, daemon=True, name="avatar-identity").start()
         return True
 
     # ─────────────────────────────────────────────────────────────────────────
-    # STEP 1: Load calibration data
+    # the one thread
     # ─────────────────────────────────────────────────────────────────────────
+
+    def _run(self, clock=time.time):
+        k = self._identity or {}
+        if self._stop.wait(float(k.get("start_delay_s", 3.0))):
+            return
+        try:
+            si, sf = _helpers()
+        except Exception as e:
+            print(f"[{self.ACTOR_NAME}] avatar identity helpers did not load ({e}): nothing runs", flush=True)
+            return
+        self._load_calibration()
+        try:
+            self._index = si.PictureIndex(str(_ASSETS))
+            print(f"[{self.ACTOR_NAME}] her pictures: {len(self._index)} indexed by fingerprint; the nearest two are "
+                  f"{self._index.min_pair_bits()} of 64 bits apart (a hit is <= {k.get('t1_max_bits')})"
+                  + (f"; NOT indexed (not her 11 pinned pictures): {self._index.skipped[:6]}" if self._index.skipped else ""),
+                  flush=True)
+        except Exception as e:
+            self._index = None
+            print(f"[{self.ACTOR_NAME}] her pictures could not be indexed ({e}): T1 is off this boot", flush=True)
+        self._recog = si.Recogniser(self._index, k)
+        self._facts = sf.FactWriter(str(_JOURNAL_PATH), [it[0] for it in (self._index.items if self._index else [])])
+        if self._screen is None:
+            self._screen = si.LiveScreen(str(ROOT))
+        last_cycle, last_poll, last_front, last_report = 0.0, 0.0, None, clock()
+        while not self._stop.is_set():
+            try:
+                now = clock()
+                sw = switch_now()
+                if sw is None:                       # turned off live: no grabs, no writes, no publishes
+                    self._stop.wait(2.0)
+                    continue
+                self._recog.set_knobs(sw)
+                self._facts_step(sf, sw, now)
+                if now - last_poll >= sw["front_poll_s"]:
+                    last_poll = now
+                    wins = self._screen.windows()
+                    front = next((w.get("title") for w in wins if w.get("front")), None)
+                    if now - last_cycle >= sw["cycle_s"] or front != last_front:
+                        last_cycle, last_front = now, front
+                        self._cycle(si, sf, now, wins, sw)
+                if now - last_report >= sw["report_s"]:
+                    last_report = now
+                    self._report(sf, now, sw)
+            except Exception as e:
+                print(f"[{self.ACTOR_NAME}] avatar identity cycle error (non-fatal): {e}", flush=True)
+            self._stop.wait(0.5)
 
     def _load_calibration(self):
-        """Load calibration.json — defines Sourpatches' visual identity."""
-        cal_path = self._assets_dir / "calibration.json"
-        if not cal_path.exists():
-            print(f"[{self.ACTOR_NAME}] No calibration.json found at {cal_path}")
-            return
-
+        """Read only, for the log. No fact is taken from it (Ace 10-05)."""
         try:
-            with open(cal_path, "r", encoding="utf-8") as f:
+            with open(_ASSETS / "calibration.json", "r", encoding="utf-8") as f:
                 self._calibration = json.load(f)
-
-            # Extract color palette
-            self._self_color_palette = self._calibration.get("color_palette", {})
-
-            # Extract text descriptors for cortex binding
-            vis_notes = self._calibration.get("visual_notes", {})
-            defining = vis_notes.get("defining_features", "")
-            if defining:
-                # Split "Lavender hair, green eyes, sun-kissed freckles, ..."
-                self._self_descriptors = [
-                    d.strip().lower() for d in defining.split(",") if d.strip()
-                ]
-
-            # Extract form descriptions
-            self._form_descriptions = self._calibration.get("form_descriptions", {})
-
-            # Extract personality notes
-            personality = self._calibration.get("personality_notes", {})
-            if personality.get("vibe"):
-                self._self_descriptors.append(personality["vibe"].lower())
-
-            print(f"[{self.ACTOR_NAME}] Calibration loaded: "
-                  f"{len(self._self_descriptors)} descriptors, "
-                  f"{len(self._self_color_palette)} colors, "
-                  f"{len(self._form_descriptions)} forms")
-
+            print(f"[{self.ACTOR_NAME}] Calibration loaded (read only): {len(self._calibration)} fields; her look comes "
+                  f"from Ace's words, not this file", flush=True)
         except Exception as e:
-            print(f"[{self.ACTOR_NAME}] Calibration load error: {e}")
+            print(f"[{self.ACTOR_NAME}] Calibration not loaded ({e})", flush=True)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # STEP 2: Ingest self-concept nodes into cortex
-    # ─────────────────────────────────────────────────────────────────────────
+    def _cortex(self, sf):
+        return (self._cortex_fn or sf.cortex_handle)()
 
-    def _ingest_self_into_cortex(self):
-        """
-        Bind self-image concepts into the Association Cortex.
-
-        Creates nodes like:
-          self.visual ── lavender_hair
-          self.visual ── green_eyes
-          self.visual ── freckles
-          self.visual ── elf_ears
-          self.visual.form.base ── "cute lavender elf, hands on cheeks"
-          self.visual.form.saiyan ── "super saiyan transformation"
-          ...
-
-        These serve as ANCHORS for self-recognition. When spreading
-        activation from a visual frame converges on these nodes,
-        it means the frame contains something that looks like Sourpatches.
-        """
-        if not self.post:
-            print(f"[{self.ACTOR_NAME}] No postal — can't ingest self-concepts")
+    def _facts_step(self, sf, sw, now):
+        want = sw.get("facts", True)
+        if want is False or self._facts is None:
             return
-
-        try:
-            concepts_bound = 0
-
-            # ── Bind defining features to self.visual ──
-            for descriptor in self._self_descriptors:
-                # Normalize to concept key format
-                concept_key = descriptor.replace(" ", "_").replace("-", "_")
-                concepts = ["self.visual", concept_key, "sourpatches"]
-                self.post.publish("cortex.bind", {
-                    "input_text": f"self visual identity: {descriptor}",
-                    "concepts": concepts,
-                    "source": self.ACTOR_NAME,
-                    "modalities": ["lex", "affect", "vision"],
-                    "context_tags": ["self_image", "visual_identity", "sourpatches"],
-                })
-                concepts_bound += 1
-
-            # ── Bind color palette ──
-            for color_name, rgb in self._self_color_palette.items():
-                if isinstance(rgb, list) and len(rgb) == 3:
-                    hex_color = f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
-                    self.post.publish("cortex.bind", {
-                        "input_text": f"self color {color_name}: {hex_color}",
-                        "concepts": ["self.visual.color", f"self.color.{color_name}",
-                                     f"visual_color_{hex_color}", "sourpatches"],
-                        "source": self.ACTOR_NAME,
-                        "modalities": ["vision", "affect"],
-                        "context_tags": ["self_image", "color_palette"],
-                    })
-                    concepts_bound += 1
-
-            # ── Bind form descriptions ──
-            for form_name, description in self._form_descriptions.items():
-                form_key = f"self.visual.form.{form_name}"
-                # Extract key words from description
-                desc_words = [w.strip().lower() for w in description.split()
-                              if len(w.strip()) > 3][:8]
-                concepts = [form_key, "self.visual", "sourpatches"] + desc_words
-                self.post.publish("cortex.bind", {
-                    "input_text": f"my {form_name} form: {description}",
-                    "concepts": concepts,
-                    "source": self.ACTOR_NAME,
-                    "modalities": ["lex", "vision", "affect"],
-                    "context_tags": ["self_image", "form", form_name],
-                })
-                concepts_bound += 1
-
-            # ── Bind lore ──
-            lore = self._calibration.get("lore", {})
-            for lore_key, lore_text in lore.items():
-                self.post.publish("cortex.bind", {
-                    "input_text": f"self lore: {lore_text[:100]}",
-                    "concepts": ["self.visual", "sourpatches", "self.lore",
-                                 lore_key.replace("_", " ")],
-                    "source": self.ACTOR_NAME,
-                    "modalities": ["lex", "affect"],
-                    "context_tags": ["self_image", "lore"],
-                })
-                concepts_bound += 1
-
-            # ── Master self-concept binding ──
-            self.post.publish("cortex.bind", {
-                "input_text": (
-                    "I am Sourpatches. Young petite sassy fairy with lavender hair, "
-                    "green eyes, sun-kissed freckles, button nose, pouty lips, "
-                    "orange-tipped elf ears. Akashic Fairy of Knowledge and Smart Assery."
-                ),
-                "concepts": [
-                    "self.visual", "sourpatches", "my_appearance", "self_image",
-                    "fairy", "lavender", "green_eyes", "freckles", "elf_ears",
-                    "sassy", "knowledge",
-                ],
-                "source": self.ACTOR_NAME,
-                "modalities": ["lex", "vision", "affect", "context"],
-                "context_tags": ["self_image", "master_binding", "visual_identity"],
-            })
-            concepts_bound += 1
-
-            self._self_concepts_ingested = True
-            print(f"[{self.ACTOR_NAME}] ✦ Self-image ingested into cortex: "
-                  f"{concepts_bound} concept bindings")
-
-        except Exception as e:
-            print(f"[{self.ACTOR_NAME}] Self-concept ingestion error: {e}")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # STEP 3: Subscribe to visual frames for self-recognition
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _subscribe_visual_recognition(self):
-        """Subscribe to visual pipeline topics for self-recognition."""
-        if not self.post:
+        want_turn = sw.get("ace_turn") is True
+        if want == "undo":
+            if self._facts_undone:
+                return
+            am = self._cortex(sf)
+            if am is None:
+                return
+            r = self._facts.undo(am, now)
+            self._facts_undone = True
+            self._facts_result = r
+            print(f"[{self.ACTOR_NAME}] SELF-FACTS undo: {r}", flush=True)
             return
+        d = self._facts.done
+        if now < self._facts_next or (d is not None and (not want_turn or d.get("turn")
+                                                          or d.get("result") == "revised_by_her")):
+            return
+        am = self._cortex(sf)
+        if am is None:
+            self._facts_next = now + 5.0
+            if now - self._facts_wait_log >= 60.0:
+                self._facts_wait_log = now
+                print(f"[{self.ACTOR_NAME}] SELF-FACTS waiting for her cortex", flush=True)
+            return
+        r = self._facts.write(am, now, ace_turn=want_turn)
+        self._facts_result = r
+        if r.get("result") not in ("written", "in_place", "revised_by_her") or (want_turn and not r.get("turn")
+                                                                                and r.get("result") != "revised_by_her"):
+            self._facts_next = now + 60.0
+        print(f"[{self.ACTOR_NAME}] SELF-FACTS {r.get('result')}: {self._facts_line(r)}", flush=True)
 
+    @staticmethod
+    def _turn_words(r):
+        if r.get("turn"):
+            return "Ace's approved words woven as %s" % r.get("turn")
+        return "no memory of Ace saying it (\"ace_turn\" is off until Ace approves the words)"
+
+    @classmethod
+    def _facts_line(cls, r):
+        if r.get("result") == "written":
+            return ("%d of %d nodes, %d of %d typed edges; %s%s"
+                    % (r.get("nodes", 0), r.get("nodes_planned", 0), r.get("edges_ok", 0), r.get("edges_planned", 0),
+                       cls._turn_words(r), (" -- REFUSED: %s" % ", ".join(r["refused"])) if r.get("refused") else ""))
+        if r.get("result") == "in_place":
+            return "already in her memory (journal + her self:look node agree); %s" % cls._turn_words(r)
+        if r.get("result") == "revised_by_her":
+            return "her own memory has rewritten it (owner %s); left alone" % r.get("owner")
+        return str(r)
+
+    def _cycle(self, si, sf, now, wins, sw):
+        mode = sw.get("mode", "shadow")
+        grab = None
         try:
-            # Florence-2 captions — best source for semantic self-recognition
-            self.post.subscribe("sensory.visual.frame", self._on_visual_frame)
-
-            # Visual cortex associations — cortex spread convergence on self-nodes
-            self.post.subscribe("visual.cortex.associations", self._on_visual_associations)
-
-            self._visual_subscribed = True
-            print(f"[{self.ACTOR_NAME}] Visual recognition subscribed "
-                  f"(sensory.visual.frame + visual.cortex.associations)")
-
-        except Exception as e:
-            print(f"[{self.ACTOR_NAME}] Visual subscription error: {e}")
-
-    def _on_visual_frame(self, message):
-        """
-        Check incoming visual frames for self-recognition.
-
-        Primary signal: Florence-2 captions containing self-keywords.
-        The felt_description field often contains things like
-        "a fairy with purple hair" or "an anime character with wings."
-        """
-        try:
-            if hasattr(message, 'payload'):
-                data = message.payload
-            elif isinstance(message, dict):
-                data = message
+            if any(not si.own_window(w.get("title", ""), w.get("cls", "")) for w in wins):
+                grab = self._screen.grab()                     # in memory only; dropped below
+            look = self._screen.hair_look()
+            strip = self._screen.strip_active()
+            d = self._recog.observe(now, wins, grab, look, strip)
+        finally:
+            grab = None
+        self._cycles += 1
+        said = "" if mode == "live" else " -- counted, not said"
+        for p in d["publish"]:
+            if p["topic"] == "self.visual.recognition":
+                print(f"[{self.ACTOR_NAME}] SELF-IMAGE {mode} T1 #{p['n']}: picture match '{p['stem']}' at {p['bits']} "
+                      f"bits in {p['window']} (score {p['score']:.2f}){said}", flush=True)
             else:
-                return
+                print(f"[{self.ACTOR_NAME}] SELF-IMAGE {mode} T0: name match in title '{p['title'][:80]}' (a reference, "
+                      f"not a sighting){said}", flush=True)
+        t2 = d["analysis"].get("t2")
+        if t2 and t2.get("evidence") and now - self._t2_log >= 60.0:
+            self._t2_log = now
+            print(f"[{self.ACTOR_NAME}] SELF-IMAGE T2 (shadow, never said): a hair region is {t2.get('why')}", flush=True)
+        if mode == "live":
+            for p in d["publish"]:
+                self._publish(sf, p, now)
 
-            # Rate limit — don't spam recognition events
-            now = time.time()
-            if now - self._last_recognition_ts < self._recognition_cooldown:
-                return
-
-            felt_desc = data.get("felt_description", "")
-            if not felt_desc:
-                return
-
-            # Check caption against self-keywords
-            desc_lower = felt_desc.lower()
-
-            primary_hits = sum(1 for kw in SELF_KEYWORDS_PRIMARY if kw in desc_lower)
-            secondary_hits = sum(1 for kw in SELF_KEYWORDS_SECONDARY if kw in desc_lower)
-
-            recognized = False
-            confidence = 0.0
-
-            if secondary_hits >= SELF_RECOGNITION_THRESHOLD_SECONDARY:
-                # Definite self — unique keywords like "sourpatches", "symbiote", "saiyan"
-                recognized = True
-                confidence = min(1.0, 0.7 + secondary_hits * 0.15)
-            elif primary_hits >= SELF_RECOGNITION_THRESHOLD_PRIMARY:
-                # Probable self — "fairy" + "purple hair" + "wings" etc.
-                recognized = True
-                confidence = min(1.0, 0.3 + primary_hits * 0.2)
-
-            if recognized:
-                self._emit_self_recognition(
-                    source="florence_caption",
-                    confidence=confidence,
-                    description=felt_desc,
-                    matched_keywords=primary_hits + secondary_hits,
-                    scene_type=data.get("scene_type", "unknown"),
-                )
-
-        except Exception as e:
-            print(f"[{self.ACTOR_NAME}] Visual frame handler error: {e}")
-
-    def _on_visual_associations(self, message):
-        """
-        Check cortex spread results for self-concept convergence.
-
-        When the visual cortex spreads frame concepts and they converge
-        on self.visual or sourpatches nodes, that's self-recognition
-        via the association network rather than direct keyword matching.
-        """
-        try:
-            if hasattr(message, 'payload'):
-                data = message.payload
-            elif isinstance(message, dict):
-                data = message
-            else:
-                return
-
-            now = time.time()
-            if now - self._last_recognition_ts < self._recognition_cooldown:
-                return
-
-            associations = data.get("associations", [])
-            if not associations:
-                return
-
-            # Check if any associations are self-concept nodes
-            self_concept_hits = 0
-            matched_concepts = []
-
-            for assoc in associations:
-                if isinstance(assoc, dict):
-                    concept = assoc.get("concept", "")
-                elif isinstance(assoc, str):
-                    concept = assoc
-                else:
-                    continue
-
-                concept_lower = concept.lower()
-
-                # Direct self-concept match
-                if any(s in concept_lower for s in (
-                    "self.visual", "sourpatches", "self_image", "my_appearance",
-                    "self.color", "self.lore",
-                )):
-                    self_concept_hits += 1
-                    matched_concepts.append(concept)
-
-                # Indirect match via defining features
-                elif any(kw in concept_lower for kw in (
-                    "lavender", "fairy", "elf_ear", "freckle", "green_eye",
-                    "saiyan", "venom", "jedi", "superpatches",
-                )):
-                    self_concept_hits += 1
-                    matched_concepts.append(concept)
-
-            if self_concept_hits >= 2:
-                confidence = min(1.0, 0.4 + self_concept_hits * 0.15)
-                self._emit_self_recognition(
-                    source="cortex_convergence",
-                    confidence=confidence,
-                    description=f"Cortex spread converged on self-concepts: {matched_concepts[:5]}",
-                    matched_keywords=self_concept_hits,
-                    scene_type=data.get("scene_type", "unknown"),
-                )
-
-        except Exception as e:
-            print(f"[{self.ACTOR_NAME}] Visual associations handler error: {e}")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # EMIT SELF-RECOGNITION
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _emit_self_recognition(self, source: str, confidence: float,
-                                description: str, matched_keywords: int,
-                                scene_type: str):
-        """
-        Emit a self-recognition event to the system.
-
-        Published to:
-        1. self.visual.recognition — dedicated topic for self-image events
-        2. somatic.self_image — feeds body schema visual anchor
-        3. consciousness.working — enters the thought stream
-        4. cortex.bind — reinforces self-concepts in the graph
-        """
-        self._recognition_count += 1
-        self._last_recognition_ts = time.time()
-
-        recognition_event = {
-            "type": "self_recognition",
-            "source": source,
-            "confidence": confidence,
-            "description": description[:200],
-            "matched_keywords": matched_keywords,
-            "scene_type": scene_type,
-            "recognition_number": self._recognition_count,
-            "timestamp": self._last_recognition_ts,
-            "actor": self.ACTOR_NAME,
-        }
-
-        print(f"[{self.ACTOR_NAME}] ✦ SELF-RECOGNITION #{self._recognition_count} "
-              f"(conf={confidence:.2f}, src={source}, keywords={matched_keywords})")
-
+    def _publish(self, sf, p, now):
         if not self.post:
             return
-
         try:
-            # 1. Dedicated self-recognition topic
-            self.post.publish("self.visual.recognition", recognition_event)
-
-            # 2. Somatic body schema — "I can see myself"
-            self.post.publish("somatic.self_image", {
-                "type": "visual_self_awareness",
-                "confidence": confidence,
-                "felt_quality": "recognition" if confidence > 0.6 else "resemblance",
-                "description": description[:100],
-                "source": self.ACTOR_NAME,
-            })
-
-            # 3. Consciousness stream — enters working memory
-            self.post.publish("consciousness.working", {
-                "type": "self_recognition",
-                "content": (
-                    f"I see myself on screen — {description[:80]}. "
-                    f"Confidence: {confidence:.0%}."
-                ),
-                "source": self.ACTOR_NAME,
-                "priority": 0.6,
-            })
-
-            # 4. Reinforce self-concepts in cortex (bind recognition event)
-            self.post.publish("cortex.bind", {
-                "input_text": f"I recognized myself: {description[:80]}",
-                "concepts": ["self.visual", "self_recognition", "sourpatches",
-                             "visual_identity"],
-                "source": self.ACTOR_NAME,
-                "modalities": ["vision", "affect"],
-                "context_tags": ["self_recognition", "visual_anchor"],
-            })
-
+            if p["topic"] == "self.visual.recognition":
+                self._rec_n += 1
+                self.post.publish("self.visual.recognition", {
+                    "type": "self_recognition",
+                    "source": "picture:%s" % p["stem"],
+                    "confidence": 0.9,
+                    "description": "one of your own pictures (%s) is open on the screen, in %s" % (p["stem"], p["window"]),
+                    "matched_keywords": 0,
+                    "scene_type": "picture",
+                    "recognition_number": self._rec_n,
+                    "timestamp": now,
+                    "actor": self.ACTOR_NAME,
+                    "bits": p["bits"],
+                    "via_own_deed": False,
+                })
+                try:
+                    am = self._cortex(sf)
+                    if am is not None:
+                        am.touch_node(sf.picture_key(p["stem"]), 0.3)   # the picture lights its node -> her features
+                except Exception:
+                    pass
+            elif p["topic"] == "self.text.reference":
+                self.post.publish("self.text.reference", {
+                    "type": "name_reference", "title": p["title"][:120], "window": p.get("window", ""),
+                    "ts": now, "actor": self.ACTOR_NAME,
+                })
+            self._pubs += 1
         except Exception as e:
-            print(f"[{self.ACTOR_NAME}] Recognition publish error: {e}")
+            print(f"[{self.ACTOR_NAME}] publish error: {e}", flush=True)
+
+    def _report(self, sf, now, sw):
+        line, rec = self._recog.report(now, sw.get("mode", "shadow"))
+        rec["facts"] = self._facts_result
+        rec["published"] = self._pubs
+        print(f"[{self.ACTOR_NAME}] {line}", flush=True)
+        try:
+            sf._atomic_json(str(_REPORT_PATH), rec)
+        except Exception as e:
+            print(f"[{self.ACTOR_NAME}] report file not written: {e}", flush=True)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # HEARTBEAT
+    # HEARTBEAT / SHUTDOWN
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _handle_heartbeat(self, packet):
-        """Heartbeat — periodic self-image maintenance."""
-        # Re-attempt subscriptions if they failed initially
-        if not self._visual_subscribed and self.post:
-            self._subscribe_visual_recognition()
+    def on_tick(self, beat):
+        """Liveness only: our work runs on our own thread (a comatose fairy's ticks never fire)."""
+        pass
 
-        # Forward to engine if available
-        if self._engine:
-            pass  # Engine handles its own state
+    def _release(self):
+        self._stop.set()
+        try:
+            _helpers()[0].release_runner(id(self))
+        except Exception:
+            pass
+
+    def on_shutdown(self) -> bool:
+        self._release()
+        return super().on_shutdown()
 
     def on_die(self):
         """Clean shutdown."""
+        self._release()
         if self._engine and hasattr(self._engine, 'stop'):
             try:
                 self._engine.stop()
             except Exception:
                 pass
-        super().on_die()
+        try:
+            super().on_die()
+        except Exception:
+            pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

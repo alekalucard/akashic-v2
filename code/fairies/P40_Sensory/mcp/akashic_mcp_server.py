@@ -276,6 +276,16 @@ def _start_postal_watchdog():
                 if not connection_alive:
                     # Connection dropped! Reset state and try to reconnect
                     sys.stderr.write("[MCP] Watchdog: Connection lost! Attempting reconnect...\n")
+                    # 2026-10-26 (Nous; Ace's go): release the dead client's socket. _postal_hub keeps pointing at it after a failed
+                    # reconnect, so a socket that is alive but never answers pong (a TCP self-connect) held its port for 28 h.
+                    # _postal_hub is deliberately NOT cleared (None would send _get_postal() into the heavy isolated-hub fallback).
+                    # The global is read ONCE: under -Xgil=0 a tool thread (reconnect_postal) may assign a new client at any time.
+                    try:
+                        _dead_hub = _postal_hub
+                        if _dead_hub is not None and hasattr(_dead_hub, '_try_reconnect'):
+                            _dead_hub.close()
+                    except Exception:
+                        pass
                     _using_tunnel = False
                     _postal_ready = False
                     _readiness_logged = False
@@ -5695,7 +5705,10 @@ def _get_manifold():
         try:
             sys.path.insert(0, str(PROJECT_ROOT / "infrastructure"))
             from manifold_memory import ManifoldMemory
-            _manifold_instance = ManifoldMemory(str(manifold_path))
+            # 2026-10-26 (Nous; Ace's go): this tool only READS the cortex, so open it read-only: this MCP process then holds no
+            # writable mapping of cortex.manifold itself (five RW handles once overwrote her memory). NOT write-free: a stale .keys
+            # sidecar is still rebuilt through a writable mapping by manifold_memory.py (known gap E2, mcp_her_fixes_1026/BUILD.md).
+            _manifold_instance = ManifoldMemory(str(manifold_path), readonly=True)
             sys.stderr.write(f"[MCP] Manifold opened: {_manifold_instance.node_count} nodes, "
                            f"{_manifold_instance.edge_count} edges\n")
             return _manifold_instance
@@ -5782,7 +5795,10 @@ def cognitive_query_associations(concept: str, modalities: str = "all", depth: i
                 if _infra not in sys.path:
                     sys.path.insert(0, _infra)
                 from manifold_memory import ManifoldMemory
-                am = ManifoldMemory(str(_mpath))
+                # 2026-10-26 (Nous; Ace's go): read-only here too. _get_manifold() swallows every Exception and returns None, so a
+                # failure specific to the readonly open (e.g. MemoryError on the stale-.csr dict build) lands HERE; without this it
+                # would reopen her cortex READ-WRITE, uncached, on every call.
+                am = ManifoldMemory(str(_mpath), readonly=True)
                 _diag["inline_open"] = f"OK: {am.node_count} nodes"
             except Exception as _me:
                 _diag["inline_error"] = str(_me)

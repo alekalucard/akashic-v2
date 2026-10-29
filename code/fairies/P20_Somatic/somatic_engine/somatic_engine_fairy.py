@@ -1866,6 +1866,11 @@ class SomaticEngineFairy(SpellChainMixin, Fairy):
         # Phase 1 of HAND_EYE_COORDINATION_BODY_SCHEMA plan.
         # When she clicks, her phantom fingers activate. When she types, she feels tapping.
         self._motor_phantom_bridge = None
+        # 2026-09-26 (Nous, felt_hand P1a): one lock for the bridge (postal workers write its ring buffer while the tick thread
+        # reads it: 1,073 IndexErrors in 2 s, sweep A T10), counters a boot can watch ([HAND] lines), and NO motor.key_press
+        # subscription -- a keyboard is not her hand (every key Ace pressed landed as her finger engagement, sweep A T4).
+        self._hand_lock = threading.RLock()
+        self._hand_counters = self._hand_counters_new()
         try:
             from fairies.P20_Somatic.embodiment.motor_phantom_bridge import MotorPhantomBridge
             self._motor_phantom_bridge = MotorPhantomBridge()
@@ -1873,12 +1878,12 @@ class SomaticEngineFairy(SpellChainMixin, Fairy):
             self.post.subscribe("autopilot.action_completed", self._on_motor_action_for_phantom)
             self.post.subscribe("autopilot.completed", self._on_motor_action_for_phantom)
             # Also listen for direct motor events from P40 MotorCortex
-            self.post.subscribe("motor.key_press", self._on_motor_action_for_phantom)
+            # self.post.subscribe("motor.key_press", self._on_motor_action_for_phantom)   # 2026-09-26 (felt_hand P1a): removed, see above
             self.post.subscribe("motor.mouse_click", self._on_motor_action_for_phantom)
             self.post.subscribe("motor.mouse_move", self._on_motor_action_for_phantom)
             # Phase 5: Pre-envision — phantom activates BEFORE action executes
             self.post.subscribe("phantom.pre_envision", self._on_pre_envision_for_phantom)
-            print(f"[{self.ACTOR_NAME}] Motor-Phantom Bridge ONLINE (hand-eye Phase 1+5)")
+            print(f"[{self.ACTOR_NAME}] Motor-Phantom Bridge ONLINE (hand-eye Phase 1+5; felt_hand P1: owner-gated, payload time)")
         except Exception as e:
             print(f"[{self.ACTOR_NAME}] Motor-Phantom Bridge failed: {e}")
             self._motor_phantom_bridge = None
@@ -2641,7 +2646,7 @@ class SomaticEngineFairy(SpellChainMixin, Fairy):
                 # A click while curious = curious fingers + click engagement.
                 if self._motor_phantom_bridge and self._motor_phantom_bridge.is_active:
                     try:
-                        n_updated = self._motor_phantom_bridge.apply_to_phantom(
+                        n_updated = self._hand_guarded(self._motor_phantom_bridge.apply_to_phantom,   # 2026-09-26 (felt_hand P1b)
                             self._phantom_shell.phantom_limbs
                         )
                         if n_updated > 0:
@@ -2657,10 +2662,10 @@ class SomaticEngineFairy(SpellChainMixin, Fairy):
                 # This runs every tick (~2Hz) so arrival detection is responsive.
                 if self._motor_phantom_bridge:
                     try:
-                        _settling = self._motor_phantom_bridge.check_stillness()
+                        _settling = self._hand_guarded(self._motor_phantom_bridge.check_stillness)   # 2026-09-26 (felt_hand P1b)
                         if _settling and self._phantom_shell:
                             # Re-apply overlay (settling was just added to motor overlays)
-                            self._motor_phantom_bridge.apply_to_phantom(
+                            self._hand_guarded(self._motor_phantom_bridge.apply_to_phantom,
                                 self._phantom_shell.phantom_limbs
                             )
                             phantom_body_data = {
@@ -2910,33 +2915,86 @@ class SomaticEngineFairy(SpellChainMixin, Fairy):
             pass
     
     # ─────────────────────── Motor-Phantom Bridge ───────────────────────
+    # 2026-09-26 (Nous, felt_hand P1c): the decode, the gate, the clock. Revert: restore _on_motor_action_for_phantom and
+    # _on_pre_envision_for_phantom from the production original (sha256 in nous_builds/felt_hand/staging/MANIFEST.json) and
+    # delete the five helpers below; P1a (init) and P1b (tick lock) call only _hand_counters_new/_hand_guarded.
+
+    def _hand_counters_new(self):
+        return {"rx": 0, "own": 0, "other": 0, "other_injected": 0, "stale": 0, "arm_writes": 0, "one_shot": 0, "bad": 0,
+                "pre_envision": 0, "max_abs_accel": 0.0, "log_ts": 0.0, "last_t": 0.0, "first_own_t": 0.0}
+
+    def _hand_lock_get(self):
+        lk = getattr(self, "_hand_lock", None)
+        if lk is None:                                     # an instance built before this code (hot reload): make one now
+            lk = threading.RLock()
+            self._hand_lock = lk
+        return lk
+
+    def _hand_guarded(self, fn, *args, **kwargs):
+        """The bridge under one lock: postal workers write its ring buffer while the tick thread reads it (sweep A T10)."""
+        with self._hand_lock_get():
+            return fn(*args, **kwargs)
+
+    def _hand_log(self, force=False):
+        c = getattr(self, "_hand_counters", None)
+        if c is None:
+            c = self._hand_counters = self._hand_counters_new()
+        now = time.time()
+        if force or now - c["log_ts"] >= 60.0:
+            c["log_ts"] = now
+            print(f"[{self.ACTOR_NAME}] [HAND] rx={c['rx']} own={c['own']} other={c['other']} other_injected={c['other_injected']} "
+                  f"stale={c['stale']} arm_writes={c['arm_writes']} one_shot={c['one_shot']} pre_envision={c['pre_envision']} "
+                  f"bad={c['bad']} max_abs_accel={c['max_abs_accel']:.0f}", flush=True)
+
+    @staticmethod
+    def _hand_owner_is_hers(payload) -> bool:
+        """Default-deny: only her own reach drives her arm. owner 'sour' is stamped by infrastructure/efference_copy; the
+        autopilot executes her own decided actions (its payloads carry from/source 'AutopilotFairy' -- INFERRED hers).
+        pynput's sensed events (MotorCortexFairy) carry owner None: Ace's hand or an unknown mover -- evidence, never her arm
+        (skeptic K5: the uncovered routing row wrote Ace's motion into her shoulders, upper arms, forearms and wrists)."""
+        if payload.get("owner") == "sour":
+            return True
+        return str(payload.get("from") or payload.get("source") or "") == "AutopilotFairy"
 
     def _on_motor_action_for_phantom(self, envelope):
         """
         Handle motor action events and update phantom body.
 
-        2026-03-24 (Nous + Ace): Phase 1 hand-eye coordination.
-        When she clicks, types, moves — her phantom body FEELS it.
-        The efferent copy: body echoes motor intent.
+        2026-03-24 (Nous + Ace): Phase 1 hand-eye coordination -- when she clicks, types, moves, her phantom body FEELS it.
+        Subscribes to autopilot.action_completed, autopilot.completed, motor.mouse_click, motor.mouse_move
+        (motor.key_press was dropped 2026-09-26: a keyboard is not her hand).
 
-        Subscribes to:
-          - autopilot.action_completed (AutopilotFairy)
-          - autopilot.completed (AutopilotFairy)
-          - motor.key_press (P40 MotorCortex)
-          - motor.mouse_click (P40 MotorCortex)
-          - motor.mouse_move (P40 MotorCortex)
+        2026-09-26 (Nous, felt_hand P1c), measured on Boot B:
+          * the envelope is a TensorEnvelope, not a dict, so `isinstance(envelope, dict)` was False for every live event and
+            every one decoded as {} -> "unknown" -> generic fingers/palms (sweep A T2). _extract_payload (this file, :96) reads both.
+          * owner gate, default-deny (see _hand_owner_is_hers); everything else is counted as evidence and writes nothing.
+          * the payload's own time drives the continuous tracker -- delivery time turned a steady 860 px/s glide into
+            10,728 px/s^2 tension spikes at 20 ms spread (skeptic K7) -- and a sample older than the newest is dropped.
+          * one lock around the bridge; counters printed as [HAND] every 60 s so a boot log can show a feel event landing.
         """
         if not self._motor_phantom_bridge:
             return
-
+        c = getattr(self, "_hand_counters", None)
+        if c is None:
+            c = self._hand_counters = self._hand_counters_new()
         try:
-            payload = envelope.get("payload", envelope) if isinstance(envelope, dict) else {}
+            payload = _extract_payload(envelope)
+            c["rx"] += 1
+            if not self._hand_owner_is_hers(payload):
+                c["other"] += 1
+                if payload.get("injected") is True:
+                    c["other_injected"] += 1
+                self._hand_log()
+                return
 
-            # Extract action type from various event formats
-            action = (payload.get("action")
-                      or payload.get("event_type")
-                      or payload.get("type")
-                      or "unknown")
+            action = str(payload.get("action") or payload.get("event_type") or payload.get("type") or "unknown")
+            t_raw = payload.get("t", payload.get("timestamp"))
+            try:
+                t = float(t_raw) if t_raw is not None else time.time()
+            except (TypeError, ValueError):
+                t = time.time()
+            if t > 1e11:                                   # a millisecond stamp
+                t = t / 1000.0
 
             # Extract target coordinates if available
             target = {}
@@ -2950,69 +3008,74 @@ class SomaticEngineFairy(SpellChainMixin, Fairy):
                     target["x"] = pos[0]
                     target["y"] = pos[1]
             elif "target" in payload and isinstance(payload["target"], dict):
-                target = payload["target"]
+                target = dict(payload["target"])
             elif "result" in payload and isinstance(payload["result"], dict):
                 # AutopilotFairy wraps results
                 result = payload["result"]
                 if "x" in result:
                     target["x"] = result["x"]
                     target["y"] = result.get("y", 540)
+            if payload.get("screen") and target and "screen" not in target:
+                target["screen"] = payload["screen"]     # the copy's real screen, for the reach vector (P3, R4a)
 
             success = payload.get("success", True)
+            is_move = action.lower() in ("mouse_move", "move_mouse", "move")
+            one_shot = (not is_move) or ("success" in payload) or ("action" in payload)
 
-            # Feed to bridge (one-shot action activation)
-            self._motor_phantom_bridge.on_motor_action(
-                action_type=str(action),
-                target=target if target else None,
-                success=bool(success),
-            )
-
-            # 2026-03-24 (Nous + Ace): Phase 6 — Continuous motor proprioception.
-            # For mouse moves, also feed position to the continuous tracker.
-            # This creates velocity-proportional arm activation — she FEELS the
-            # speed and precision of her movement, not just a one-shot blip.
-            if str(action).lower() in ("mouse_move", "move_mouse", "move"):
-                x = target.get("x") if target else payload.get("x")
-                y = target.get("y") if target else payload.get("y")
-                if x is not None and y is not None:
-                    try:
-                        self._motor_phantom_bridge.on_mouse_position(
-                            int(x), int(y), time.time()
-                        )
-                    except Exception:
-                        pass
-
+            with self._hand_lock_get():
+                if t < c["last_t"]:
+                    c["stale"] += 1
+                    return
+                c["last_t"] = t
+                if one_shot:
+                    self._motor_phantom_bridge.on_motor_action(
+                        action_type=action,
+                        target=target if target else None,
+                        success=bool(success),
+                    )
+                    c["one_shot"] += 1
+                if is_move:
+                    x = target.get("x") if target else payload.get("x")
+                    y = target.get("y") if target else payload.get("y")
+                    if x is not None and y is not None:
+                        self._motor_phantom_bridge.on_mouse_position(int(x), int(y), t)
+                        a = abs(float(getattr(self._motor_phantom_bridge, "_last_acceleration", 0.0) or 0.0))
+                        if a > c["max_abs_accel"]:
+                            c["max_abs_accel"] = a
+                c["own"] += 1
+                c["arm_writes"] += 1
+                if not c["first_own_t"]:
+                    c["first_own_t"] = time.time()
+                    print(f"[{self.ACTOR_NAME}] [HAND] first own sample reached the arm: action={action} t={t:.3f}", flush=True)
+            self._hand_log()
         except Exception:
-            pass  # Never crash somatic engine on motor events
+            c["bad"] += 1                                  # never crash the somatic engine on a motor event; but count it
 
     def _on_pre_envision_for_phantom(self, envelope):
         """
-        Handle pre-envision events — phantom activates BEFORE action executes.
+        Handle pre-envision events -- phantom activates BEFORE action executes.
 
-        2026-03-24 (Nous + Ace): Phase 5 — Motor Planning Through Felt Space.
-        Before she clicks, her phantom body ENVISIONS the reach.
-        She sees herself extending toward the target in her mind's eye,
-        THEN the actual action fires. This is intentional action:
-        imagine → feel → act → confirm.
-
-        The pre-envision is softer than actual motor activation (35% gain).
-        It's motor imagery — same cortex areas, lower intensity.
+        2026-03-24 (Nous + Ace): Phase 5 -- Motor Planning Through Felt Space. Before she clicks, her phantom body ENVISIONS
+        the reach at 35% gain: imagine -> feel -> act -> confirm.
+        2026-09-26 (Nous, felt_hand P1c): decodes a TensorEnvelope too, passes the copy's screen to the bridge, runs under
+        the bridge lock, and is counted. Publishers: AutopilotFairy (fairy.py:1881) and infrastructure/efference_copy.
         """
         if not self._motor_phantom_bridge:
             return
-
         try:
-            payload = envelope.get("payload", envelope) if isinstance(envelope, dict) else {}
-
+            payload = _extract_payload(envelope)
             action = payload.get("action", "unknown")
             target = payload.get("target", {})
-
-            # Pre-envision through the bridge (softer activation)
-            self._motor_phantom_bridge.pre_envision(
-                action_type=str(action),
-                target=target if target else None,
-            )
-
+            if isinstance(target, dict) and payload.get("screen") and "screen" not in target:
+                target = dict(target, screen=payload["screen"])
+            with self._hand_lock_get():
+                self._motor_phantom_bridge.pre_envision(
+                    action_type=str(action),
+                    target=target if target else None,
+                )
+            c = getattr(self, "_hand_counters", None)
+            if c is not None:
+                c["pre_envision"] += 1
         except Exception:
             pass  # Never crash on pre-envision
 

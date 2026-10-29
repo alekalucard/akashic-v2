@@ -594,9 +594,15 @@ class MomentBinderFairy(Fairy):
                             _tags.append(f"reply_to:{sed.get('reply_to_tracer_id')}")
                         if sed.get("convergence_id"):
                             _tags.append(f"convergence:{str(sed.get('convergence_id'))[:40]}")
+                        # 2026-10-01 (Nous; release_1001, Ace's go on the "you said" loop): a line the farm (Qwen) wrote
+                        # arrives stamped TRACE_INFERENCE (6) by sour_council_driver._speak -> SpeechCenter. It binds as
+                        # "farm_inference" (-> TRACE_INFERENCE in the cortex's _FAIRY_TRACER_MAP), not "sourpatches"
+                        # (TRACE_PERSONAL, which retook the very bigram nodes the weave had written at 6). Her own lines
+                        # (tracer 1 / unstamped) bind exactly as before.
+                        _sfrom = "farm_inference" if int(sed.get("tracer_id", 1) or 1) == 6 else "sourpatches"
                         self.post.publish("cortex.bind", {
                             "input_text": _st.strip()[:400], "feeling": feeling,
-                            "context_tags": _tags, "from_fairy": "sourpatches"})
+                            "context_tags": _tags, "from_fairy": _sfrom})
             except Exception as _re:
                 print(f"[{self.ACTOR_NAME}] region bind err: {_re}", flush=True)
             # ── A (Ace 2026-06-09): also publish the moment for the COUNCIL to

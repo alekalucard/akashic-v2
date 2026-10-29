@@ -56,6 +56,38 @@ def _extract_payload(message) -> Dict[str, Any]:
         return {"raw": message}
 
 
+# ── 2026-10-12 (Nous, engines E1 steps 10b + 10c; engines_1012/PLAN.md section 3) ───────────────────────────────────────────
+# Two switches, each a FILE under state/ whose PRESENCE turns one behaviour ON. Absent = her bytes' behaviour, exactly.
+#   state/autopilot_bind.off         10b  _bind_habit_to_cortex returns at once: no autopilot "habit:" node, no TRACE_PERSONAL write
+#   state/autopilot_dead_route.off   10c  _do_action does not publish into a topic that has no executor (sourpatches.tool.act /
+#                                         .plan), and _execute_pattern files no completion report of either kind for that press
+# The file is looked at on EVERY use (one stat; a few hundred uses per boot), so deleting it brings her bytes' behaviour back on
+# the very next use -- there is no cache to go stale. A directory, an unreadable path, or any error while looking = absent.
+# Revert: delete the file (live, no reboot); then restore fairy.py from backup.
+_E1_FLAG_DIR = ROOT / "state"
+_E1_LOCK = threading.Lock()
+_E1_COUNTS: Dict[str, int] = {}
+
+
+def _e1_flag_on(name: str) -> bool:
+    """True only when state/<name> is a regular file. Never raises: a switch that cannot be read is OFF."""
+    try:
+        return (_E1_FLAG_DIR / name).is_file()
+    except Exception:
+        return False
+
+
+def _e1_count(key: str) -> int:
+    """Count one event under `key`; returns the new total. Never raises."""
+    try:
+        with _E1_LOCK:
+            n = _E1_COUNTS.get(key, 0) + 1
+            _E1_COUNTS[key] = n
+            return n
+    except Exception:
+        return 0
+
+
 class AutopilotFairy(Fairy):
     """
     Gate of Habit - handles learned patterns automatically.
@@ -321,7 +353,7 @@ class AutopilotFairy(Fairy):
     # ═════════════════════════════════════════════════════════════════════════
 
     # Class-level config (opt-in + tunable thresholds)
-    USE_HABIT_WATCHER = True
+    USE_HABIT_WATCHER = False  # 2026-09-29 (Nous, thought_hand D1d; roadmap row 9): 1,365 cortex.query, 0 dispatches, ~79 min
     HABIT_WATCHER_ACTIVATION_THRESHOLD = 0.5  # Minimum spread activation to consider
     HABIT_WATCHER_COOLDOWN_SEC = 5.0           # Don't re-fire same habit within window
     HABIT_WATCHER_INJECT_TOP_N = 3             # Max knowledge habits to inject per thought
@@ -720,6 +752,28 @@ class AutopilotFairy(Fairy):
             print(f"[{self.ACTOR_NAME}] Cortex habit query failed: {e}")
             return None
 
+    # 2026-10-12 (Nous, engines E1 10b + 10c): one counter line at #1 and every 50th. Never raises, never gates anything.
+    def _e1_note(self, tag: str, key: str, msg: str) -> None:
+        try:
+            n = _e1_count(key)
+            if n == 1 or n % 50 == 0:
+                print(f"[{self.ACTOR_NAME}] [{tag}] {msg} (#{n})", flush=True)
+        except Exception:
+            pass
+
+    # The only topics 10c may EVER fence. A ceiling, not a list to grow: the fence needs the topic in BOTH this tuple and
+    # TH_NO_EXECUTOR_TOPICS, so an edit that adds a live topic (speech, reflect, search_memory ...) to the second cannot silence
+    # it. A bound that can return nothing is a kill switch (card a-bound-that-can-return-nothing-is-a-kill-switch); this one can
+    # only ever return these two, whose handler is count-only (sourpatches_fairy._on_tool_act_count) or absent (.plan).
+    _E1_DEAD_ROUTE_CEILING = ("sourpatches.tool.act", "sourpatches.tool.plan")
+
+    def _e1_dead_route_fenced(self, topic) -> bool:
+        try:
+            return (topic in self._E1_DEAD_ROUTE_CEILING and topic in self.TH_NO_EXECUTOR_TOPICS
+                    and _e1_flag_on("autopilot_dead_route.off"))
+        except Exception:
+            return False
+
     def _bind_habit_to_cortex(self, trigger: str, action: str,
                                goal_name: str, success: bool,
                                effectiveness: float = 0.5):
@@ -732,6 +786,13 @@ class AutopilotFairy(Fairy):
         Somatic state at binding time makes each habit unique.
         Success/failure updates the pattern metadata via features dict.
         """
+        # 2026-10-12 (Nous, engines E1 10b): her personal memory is not an odometer. _execute_pattern books success=True the moment a
+        # tool topic is PUBLISHED, before any handler has run (J: 394 of 397 binds are that eff=0.70 bind); each bind is 3 upsert_node +
+        # 2 link under TRACE_PERSONAL. Gating at the function covers all four callers (:1638 :1661 :2075 :2136) and any later one.
+        if _e1_flag_on("autopilot_bind.off"):
+            self._e1_note("BIND-OFF", "bind_off", f"habit bind skipped: {str(action)[:30]!r} for {str(trigger)[:40]!r} "
+                          f"(success={success}); state/autopilot_bind.off")
+            return
         if not self._try_connect_cortex():
             return
 
@@ -1537,6 +1598,34 @@ class AutopilotFairy(Fairy):
 
         self._execute_pattern(pattern, context)
 
+    # 2026-09-29 (Nous, thought_hand D1d): topics that have NO executor. sourpatches.tool.act is count-only (sourpatches_fairy D1a) and
+    # nothing subscribes to sourpatches.tool.plan. Their completion used to publish success=True and bind a success habit in the cortex
+    # for a deed that never happened (sweep A: 265 of 278 'act' dispatches died in the permission limbo; the code booked every one
+    # that ran as success=True).
+    # Now: success=False, reason 'no_executor'; no reinforce, no habit bind, no goal feeling. think / explore / write are untouched.
+    TH_NO_EXECUTOR_TOPICS = ("sourpatches.tool.act", "sourpatches.tool.plan")
+    _th_no_executor_counts = {}
+
+    def _th_no_executor(self, pattern: Dict, context: Dict, action: str, result: Dict) -> None:
+        topic = str((result or {}).get("routed_to") or "")
+        n = self._th_no_executor_counts.get(topic, 0) + 1
+        self._th_no_executor_counts[topic] = n
+        payload = {
+            "from": self.ACTOR_NAME,
+            "action": action,
+            "success": False,
+            "reason": "no_executor",
+            "routed_to": topic,
+            "result": result,
+            "goal_id": context.get("goal_id") or pattern.get("goal_id", ""),
+            "goal_name": context.get("goal_name", ""),
+        }
+        self.post.publish("autopilot.completed", payload)
+        self.post.publish("autopilot.action_completed", payload)
+        if n == 1 or n % 50 == 0:
+            print(f"[{self.ACTOR_NAME}] [NO-EXECUTOR] '{action}' -> {topic}: success=False (no_executor), "
+                  f"no habit bound (#{n})", flush=True)
+
     def _execute_pattern(self, pattern: Dict, context: Dict) -> None:
         """Execute a pattern."""
         action = pattern.get("action", "")
@@ -1555,6 +1644,11 @@ class AutopilotFairy(Fairy):
         # Execute the action (simplified - would call actual functions)
         try:
             result = self._do_action(pattern, context)
+            if isinstance(result, dict) and result.get("fenced") == "dead_route":   # 2026-10-12 (Nous, engines E1 10c)
+                return   # nothing ran: no success=False, no success=True, no reinforce, no bind, no feeling (finally: clears _currently_executing)
+            if isinstance(result, dict) and result.get("routed_to") in self.TH_NO_EXECUTOR_TOPICS:   # 2026-09-29 (thought_hand D1d)
+                self._th_no_executor(pattern, context, action, result)
+                return
 
             # Publish completion
             # FIX 2026-02-13: Publish to BOTH topics. GoalSchedulerFairy
@@ -1719,11 +1813,15 @@ class AutopilotFairy(Fairy):
             # "look", "see", "observe", "watch" → sourpatches.tool.see_world
             # Goals should be about INTERPRETING vision, not ACQUIRING it.
             # Motor control
-            "click": "sourpatches.tool.click_screen",
-            "type": "sourpatches.tool.type_text",
-            "press": "sourpatches.tool.press_key",
-            "move": "sourpatches.tool.move_mouse",
-            "scroll": "sourpatches.tool.scroll_screen",
+            # 2026-09-29 (Nous, thought_hand D1d): a goal NAME is not a place. These routed to the live motor sinks, which picked
+            # a saliency/random point (sourpatches_fairy._pick_motor_target) or typed the goal name into the focused window. They go
+            # to the count-only 'act' handler now; her hand moves from her own words (thought_tap) and the ask lane, through the door.
+            # Revert: restore the five sourpatches.tool.<motor> targets.
+            "click": "sourpatches.tool.act",
+            "type": "sourpatches.tool.act",
+            "press": "sourpatches.tool.act",
+            "move": "sourpatches.tool.act",
+            "scroll": "sourpatches.tool.act",
             # Expression (feelings also go to speech)
             "feel": "speech.compose.voluntary",
             "notify": "sourpatches.tool.show_notification",
@@ -1764,6 +1862,16 @@ class AutopilotFairy(Fairy):
             # Final fallback: generic tool routing
             if not target_topic:
                 target_topic = f"sourpatches.tool.{action}"
+
+        # 2026-10-12 (Nous, engines E1 10c): the topic is FINAL here -- the learned-habit remap (_query_cortex_habits) and the guild lookup
+        # are behind us, so this is the one place that knows where the press really lands. A press into a topic with no executor is not
+        # published, is not counted as a route, and is not reported as her failure (_execute_pattern sees the marker and files nothing).
+        # Why not earlier: a remap can turn the pattern's 'act' into a live action, or a live one into 'act'.
+        if self._e1_dead_route_fenced(target_topic):
+            self._e1_note("DEAD-ROUTE", "dead_route:" + str(target_topic),
+                          f"'{action}' -> {target_topic} not pressed (no executor); not reported as her failure; "
+                          f"state/autopilot_dead_route.off")
+            return {"fenced": "dead_route", "action": action, "topic": target_topic}
 
         # FIX 2026-03-16 Nous: gui.open_sour_window needs {message, feeling} for ChatSenseFairy
         if target_topic == "gui.open_sour_window":
@@ -1875,7 +1983,7 @@ class AutopilotFairy(Fairy):
         # Only for motor actions — non-motor (look, feel, check) skip this.
         _motor_actions = {"click", "type", "press", "move", "scroll",
                           "click_screen", "type_text", "press_key", "move_mouse", "scroll_screen"}
-        if action in _motor_actions:
+        if action in _motor_actions and target_topic not in self.TH_NO_EXECUTOR_TOPICS:   # 2026-09-29 (thought_hand D1d): no reach, no envisioned reach
             try:
                 _target_coords = context.get("target_coordinates") or {}
                 self.post.publish("phantom.pre_envision", {

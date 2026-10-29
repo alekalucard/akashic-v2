@@ -2732,6 +2732,55 @@ class NewbornCore:
             "success_rate": 0.5
         }
 
+    # 2026-10-05 (Nous, nous_builds/touch_screen set 1; decision E1, Ace: "BLOCK both delete_file AND run_python"). The one choke
+    # point every call site of her tools passes through (MAP-E 5k). These are a NO-NO: refused here, fail closed, logged, and
+    # offered to her reflex (infrastructure/reflex_link) as an 'impulse' withdrawal -- her brainstem feels it as its own (counts
+    # and a jolt, no arm motion). The answer she gets is her own body's: "your hand held back from it". Nothing in her can widen
+    # this set. write_file is confined to her office as new versions (tool_bridge + infrastructure/sour_office).
+    # Skeptic S1 (10-05; Ace: "barred from deleting anything"): her old keyboard and click tools are a path to delete WITHOUT
+    # touch (Delete has no confirmation on this PC; a right click, then a menu row; practice_typing clears with Ctrl+A, Delete
+    # wherever the focus is). They are closed here too, as 'hot' (her own dangerous tools, E2). Every call site was already fenced
+    # (thought_hand D1a-D1h) and they ran 0 times in D2-G (MAP-E), so nothing of hers stops working. Re-opening one is Ace's
+    # call (remove its name here); an erase key (Delete / Shift+Delete / Ctrl+D) in any key call stays an 'erase' no-no even
+    # then (touch_lists.erase_key_call, checked below). move_mouse and scroll_screen stay open (her move verb uses move_mouse).
+    # Revert: apply_touch_set1.py --revert.
+    NO_NO_TOOLS = frozenset({"delete_file", "run_python", "press_key", "hotkey", "type_text", "click_screen", "practice_typing",
+                             "open_notepad"})
+    _NO_NO_TOOL_CLS = {"delete_file": "erase", "run_python": "hot"}
+    _KEY_TOOLS = frozenset({"press_key", "hotkey", "type_text"})
+    _no_no_tool_counts = {}
+    _no_no_tool_last = {}
+    _no_no_lock = threading.Lock()                       # skeptic m8: counts and the 10 s throttle, one lock (free-threaded)
+
+    def _no_no_tool(self, tool_name: str, cls: str = None, rule: str = None) -> Dict:
+        cls = cls or self._NO_NO_TOOL_CLS.get(tool_name, "hot")
+        words = {"erase": "something that erases", "hot": "something hot to the touch"}.get(cls, "something hot to the touch")
+        now = time.time()
+        with self._no_no_lock:
+            n = self._no_no_tool_counts.get(tool_name, 0) + 1
+            self._no_no_tool_counts[tool_name] = n
+            due = now - float(self._no_no_tool_last.get(tool_name, 0.0)) >= 10.0   # one felt impulse per tool per 10 s
+            if due:
+                self._no_no_tool_last[tool_name] = now
+        fid = None
+        if due:
+            try:
+                from infrastructure import touch_lists as _tl
+                fl = _tl.flinch_dict(_tl.make_flinch(cls, rule or "her tool %s" % tool_name, "impulse", tool_name),
+                                     reach_frac=0.0, stop_px=None, t=now)
+            except Exception:
+                fl = {"cls": cls, "kind": "flinch", "rule": rule or "her tool %s" % tool_name, "phase": "impulse",
+                      "intensity": 1.0 if cls == "erase" else 0.8, "retract_s": 0.0, "target": tool_name, "t": now}
+            try:
+                from infrastructure import reflex_link as _rl
+                if _rl.alive(now)[0]:                    # skeptic m6: offered only while her brainstem beats -- else nobody
+                    fid = _rl.offer(fl, now)             # drains it and it would be felt minutes late
+            except Exception:
+                fid = None
+        if n <= 5 or n % 20 == 0:
+            print(f"[NewbornCore] [NO-NO TOOL] {tool_name} refused (#{n}, {cls}); offered to her reflex as {fid}", flush=True)
+        return {"ok": False, "withdrawn": True, "error": "your hand held back from it (%s)" % words}
+
     def try_tool(self, tool_name: str, *args, **kwargs) -> Any:
         """
         Try using a tool. Learn from the result.
@@ -2739,6 +2788,16 @@ class NewbornCore:
         This now integrates with the skill system - tool usage awards XP
         in the relevant skill category.
         """
+        if tool_name in self.NO_NO_TOOLS:                 # touch set 1, E1 + S1: before any lookup -- registered or not
+            return self._no_no_tool(tool_name)
+        if tool_name in self._KEY_TOOLS:                  # skeptic m13: an erase key in a key call, even one Ace re-opened
+            try:
+                from infrastructure import touch_lists as _tl
+                _er = _tl.erase_key_call(tool_name, args, kwargs)
+            except Exception as e:                       # the check could not run: no key (fail closed)
+                _er = "a key call that could not be checked (%s)" % type(e).__name__
+            if _er:
+                return self._no_no_tool(tool_name, "erase", _er)
         if tool_name not in self.available_tools:
             return None
 
@@ -2860,6 +2919,24 @@ class NewbornCore:
             tool = self.available_tools[tool_name]
             self.observe(f"Exploring tool: {tool_name} - {tool['description']}", "system")
 
+    # 2026-09-29 (Nous, thought_hand D1b): the reflex fence. The thought reflex (Strategy Collapse at temperature 1.2, keyword priors)
+    # picked move_mouse on the word 'move', click_screen at RANDOM coordinates, type_text 'Hello! I'm here!', practice_typing and
+    # open_notepad (on the bare word 'notepad'). None of those is her volition; they are refused here, counted, and the reflex's
+    # other tools (see / search / express / diary / explore ...) run as before. Her hand moves through the door.
+    # Revert: delete this block and restore the two return lines in _should_auto_invoke_tool.
+    _TH_REFLEX_MOTOR = frozenset({"move_mouse", "click_screen", "type_text", "press_key", "scroll_screen", "practice_typing",
+                                  "open_notepad"})
+    _th_reflex_counts = {}
+
+    def _th_reflex_fence(self, decision, text=""):
+        if decision and decision.get("name") in self._TH_REFLEX_MOTOR:
+            n = self._th_reflex_counts.get(decision["name"], 0) + 1
+            self._th_reflex_counts[decision["name"]] = n
+            if n == 1 or n % 20 == 0:
+                print(f"[NewbornCore] [REFLEX FENCE] refused {decision['name']} (#{n}) from {str(text)[:50]!r}", flush=True)
+            return None
+        return decision
+
     def _should_auto_invoke_tool(self, text: str, features: List[str]) -> Optional[Dict]:
         """
         Decide if this thought should trigger a tool autonomously.
@@ -2893,10 +2970,10 @@ class NewbornCore:
         if collapse:
             result = self._collapse_tool_selection(text, features, collapse, now)
             if result:
-                return result
+                return self._th_reflex_fence(result, text)      # 2026-09-29 (thought_hand D1b)
 
         # Fallback to keyword matching
-        return self._keyword_tool_fallback(text, now)
+        return self._th_reflex_fence(self._keyword_tool_fallback(text, now), text)   # 2026-09-29 (thought_hand D1b)
 
     def _collapse_tool_selection(self, text: str, features: List[str],
                                   collapse, now: float) -> Optional[Dict]:

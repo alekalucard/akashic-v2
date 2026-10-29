@@ -71,6 +71,54 @@ def register_gate(gate):
     print(f"[PortalGate] Registered shared gate: {type(gate).__name__}")
 
 
+
+# -- K4(2) (engines E2a / 14b, 2026-10-14 Nous) --------------------------------------------------------------------------------
+# The LocalManifoldGate's GPUSpread was built without a manifold (gpu_spread.py:110 _manifold = None), so its max-affect path
+# fell back to flat 1.0 weights and an all-ones affect vector: affect-charged=0 (Boot N :2615/:2625/:2637), while the other two
+# copies (portal_interior.py:1021, wmh_tools.py:89) inject the manifold and read ~74,000. Once K2 removes the cascade cortex,
+# every get_gate() caller lands on THIS gate for the whole run, so it must see affect first.
+# SWITCH: state/k4_inject.json {"on": true}, read once per gate construction. Absent / unparseable (a BOM included) / "on" not
+# JSON true / any error = today exactly. Revert: delete the file and reboot.
+_K4_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state", "k4_inject.json")
+
+
+def _k4_inject_on():
+    """True only for a JSON object whose "on" is JSON true. Never raises."""
+    try:
+        with open(_K4_FILE, "rb") as f:
+            d = json.loads(f.read().decode("utf-8"))
+        return isinstance(d, dict) and d.get("on") is True
+    except Exception:
+        return False
+
+
+def _gsf_on(key):
+    """gpu_spread_race_1020 (2026-10-20, Nous): True only when state/gpu_spread_fix.json arms the boolean guard `key`. Looks the guard module
+    up in sys.modules under both names it is imported by, imports it if absent; ANY failure = False = today's behaviour. Never raises."""
+    try:
+        _m = sys.modules.get("infrastructure.gpu_spread_fix") or sys.modules.get("gpu_spread_fix")
+        if _m is None:
+            try:
+                from infrastructure import gpu_spread_fix as _m
+            except Exception:
+                import gpu_spread_fix as _m
+        return bool(_m.on(key))
+    except Exception:
+        return False
+
+
+def _gsf_tdeg():
+    """gpu_spread_race_1020 (review T6, 10-20): how many degraded spread results THIS thread has had while a spread guard is armed; None when
+    every spread guard is OFF or on any failure (= today: every key spreads). Never raises."""
+    try:
+        _m = sys.modules.get("infrastructure.gpu_spread_fix") or sys.modules.get("gpu_spread_fix")
+        if _m is None:
+            return None
+        return _m.thread_degraded()
+    except Exception:
+        return None
+
+
 class LocalManifoldGate:
     """In-process gate that wraps ManifoldMemory with the PortalGate API.
 
@@ -179,6 +227,13 @@ class LocalManifoldGate:
                 print(f"[LocalManifoldGate] GPU spreading activation ONLINE "
                       f"({self._gpu_spread.get_stats().get('gpu_name', 'unknown')})",
                       flush=True)
+                if _k4_inject_on():                       # K4(2), engines E2a: state/k4_inject.json {"on": true}
+                    try:
+                        self._gpu_spread._manifold = graph    # the line portal_interior.py:1021 / wmh_tools.py:89 run
+                        print("[LocalManifoldGate] K4(2): _manifold injected into GPUSpread "
+                              "(real weights + affect)", flush=True)
+                    except Exception as _k4_err:
+                        print(f"[LocalManifoldGate] K4(2) inject failed ({_k4_err}) -- flat weights as before", flush=True)
             else:
                 print(f"[LocalManifoldGate] GPU spread: CSR file not found, using CPU fallback", flush=True)
         except Exception as _gpu_err:
@@ -643,6 +698,12 @@ class LocalManifoldGate:
     def wm_query(self, limit: int = 7, min_activation: float = 0.05,
                  spread: bool = False) -> Optional[Dict]:
         import time
+        # gpu_spread_race_1020: the per-key GPU spread only produces 'convergence', which no caller reads (READ.md 5.2). A call with
+        # spread=False never reads the switch; OFF (the default) = spread unchanged.
+        _do_spread = spread and not _gsf_on("wm_query_no_spread")
+        # review T6: with a spread guard armed, once ONE per-key spread of this call came back degraded the remaining keys skip theirs (an empty
+        # convergence, exactly what a degraded spread gives): one timeout_s per call at saturation, not one per key. None = OFF = every key spreads.
+        _gsf_d0 = _gsf_tdeg() if _do_spread else None
         tracers = []
         now = time.time()
         for wk, meta in list(self._wm_keys.items()):
@@ -661,10 +722,11 @@ class LocalManifoldGate:
                 "tags": meta.get("tags", []),
                 "priority": meta.get("priority", 0.5),
             }
-            if spread:
+            if _do_spread:
                 # FIX 2026-04-07 (Nous + Ace): GPU-first with .keys cache.
                 # Reverse key cache eliminates string table page faults.
-                sp = self._spread_gpu_first(wk, initial=act, decay=0.5, depth=2, limit=15)
+                sp = ({} if (_gsf_d0 is not None and (_gsf_tdeg() or 0) > _gsf_d0)   # gpu_spread_race_1020 review T6; OFF: _gsf_d0 is None
+                      else self._spread_gpu_first(wk, initial=act, decay=0.5, depth=2, limit=15))
                 convergence = [(k, v) for k, v in sorted(sp.items(), key=lambda x: x[1], reverse=True)
                                if not k.startswith("wm:") and not k.startswith("cns:")]
                 info["convergence"] = [k for k, _ in convergence[:5]]
@@ -2599,7 +2661,7 @@ class PortalGate:
             "cmd": "wm_query",
             "limit": limit,
             "min_activation": min_activation,
-            "spread": spread,
+            "spread": (False if (spread and _gsf_on("wm_query_no_spread")) else spread),   # gpu_spread_race_1020; OFF = spread
         }, timeout=5.0)
 
     def wm_decay(self, ticks: int = 1) -> Optional[Dict]:

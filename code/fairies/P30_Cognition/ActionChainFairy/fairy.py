@@ -799,6 +799,11 @@ class ActionChainFairy(_template.MyOrganFairy):
 
             if not new_mode or new_mode == "normal":
                 return  # Normal mode = no reflex action needed
+            # 2026-10-05 (Nous, nous_builds/brainstem_fix, B3): the fixed brainstem tells every subscriber its real mode and
+            # marks the few changes that may become a deed. "chain": False = information only: no goal, no chain. A packet
+            # without the key (today's brainstem, or its switch OFF) behaves exactly as before.
+            if payload.get("chain") is False:
+                return
 
             # Map reflex modes to action chains
             _REFLEX_TO_ACTION = {

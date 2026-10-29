@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -54,6 +55,41 @@ from typing import Any, Dict, List, Optional, Tuple
 _USE_GPU_SPREAD = True                      # flag: False -> CPU-only (reversible)
 _GPU_SPREAD_CACHE: Dict[str, Any] = {}      # manifold filepath -> GPUSpread | False (failed)
 
+# gpu_spread_race_1020 (2026-10-20, Nous): armed only by state/gpu_spread_fix.json (absent / malformed = today). _GPU_DEGRADED is what
+# _get_gpu_spread / _gpu_spread_combined hand back when a guard could not give the council a slot or a graph: it means "no association this
+# time" and must NEVER start the CPU per-seed loop (11.5 s per seed at depth 3, mmap page faults). It is an EMPTY dict (falsy): a caller that
+# drops the identity check takes the CPU path (today), it does not crash.
+_GPU_SPREAD_CACHE_LOCK = threading.Lock()
+
+
+class _Degraded(dict):
+    __slots__ = ()
+
+
+_GPU_DEGRADED = _Degraded()
+
+
+def _gsf_fx():
+    """The parsed switch (gpu_spread_fix.Fx) or None. Never raises."""
+    try:
+        import sys as _sys
+        _m = _sys.modules.get("infrastructure.gpu_spread_fix") or _sys.modules.get("gpu_spread_fix")
+        if _m is None:
+            from infrastructure import gpu_spread_fix as _m
+        return _m.switch()
+    except Exception:
+        return None
+
+
+def _gsf_note(why):
+    try:
+        import sys as _sys
+        _m = _sys.modules.get("infrastructure.gpu_spread_fix") or _sys.modules.get("gpu_spread_fix")
+        if _m is not None:
+            _m.note_degraded(why)
+    except Exception:
+        pass
+
 try:
     from infrastructure.manifold_memory import TRACE_BOOKS as _TRACE_BOOKS, \
         TRACE_SYSTEM as _TRACE_SYSTEM
@@ -61,7 +97,7 @@ except Exception:
     _TRACE_BOOKS, _TRACE_SYSTEM = 2, 5      # manifold_memory TRACE_* fallback values
 
 
-def _get_gpu_spread(am):
+def _get_gpu_spread_orig(am):
     """Lazily get-or-create an in-process GPUSpread for this manifold (CSR->VRAM).
 
     Cached per manifold filepath. `_manifold` is set (mirrors portal_interior:1021)
@@ -103,11 +139,36 @@ def _get_gpu_spread(am):
         return None
 
 
+def _get_gpu_spread(am):
+    """gpu_spread_race_1020: with build_lock armed the get-or-create above is a check-then-act under a lock (the original re-checks the cache
+    itself, which is the second check). A caller that cannot get the lock in timeout_s gets _GPU_DEGRADED, not None (None means the CPU loop).
+    OFF (the default) = the original, unchanged."""
+    _fx = _gsf_fx()
+    if _fx is None or not _fx.build_lock:
+        return _get_gpu_spread_orig(am)
+    try:
+        _fp = getattr(am, 'filepath', None)
+        _c = _GPU_SPREAD_CACHE.get(_fp, None) if _fp else None
+        if _c is not None:
+            return _c or None
+        if not _GPU_SPREAD_CACHE_LOCK.acquire(True, _fx.timeout_s):
+            _gsf_note("ctor_wait")
+            return _GPU_DEGRADED
+        try:
+            return _get_gpu_spread_orig(am)
+        finally:
+            _GPU_SPREAD_CACHE_LOCK.release()
+    except Exception:
+        return _get_gpu_spread_orig(am)
+
+
 def _gpu_spread_combined(am, seeds, seed_set, depth, decay, per_seed_limit):
     """Multi-seed spread on the GPU -> {concept: activation} (same shape the CPU
     loop builds as `combined`). Returns None -> caller uses the CPU fallback.
     """
     _gpu = _get_gpu_spread(am)
+    if _gpu is _GPU_DEGRADED:                # gpu_spread_race_1020: no association this time -- never the CPU loop
+        return _GPU_DEGRADED
     if _gpu is None or not hasattr(am, '_key_index'):
         return None
     # concept strings -> node slots
@@ -127,6 +188,8 @@ def _gpu_spread_combined(am, seeds, seed_set, depth, decay, per_seed_limit):
         return None
     if not isinstance(_r, dict) or _r.get("status") != "ok":
         return None
+    if _r.get("degraded"):                   # gpu_spread_race_1020: only present while a guard is armed
+        return _GPU_DEGRADED
     _combined: Dict[str, float] = {}
     _use_keys = getattr(am, '_use_keys', False)
     for _nid, _act in _r.get("activated", []):
@@ -537,6 +600,8 @@ def query_cortex_spread(seeds: list, limit: int = 10,
         if _USE_GPU_SPREAD:
             try:
                 _gc = _gpu_spread_combined(am, seeds, seed_set, depth, decay, _per_seed_limit)
+                if _gc is _GPU_DEGRADED:     # gpu_spread_race_1020
+                    return []
                 if _gc:
                     combined = _gc
             except Exception:

@@ -52,6 +52,9 @@ from infrastructure.manifold_memory import (
 _FAIRY_TRACER_MAP = {
     "SourpatchesFairy": TRACE_PERSONAL,
     "sourpatches": TRACE_PERSONAL,
+    # 2026-10-01 (Nous; release_1001): her spoken line that the farm (Qwen) wrote -- MomentBinder's 'said' strand
+    # stamped tracer 6. A new name: no existing caller sends it, so no other bind changes.
+    "farm_inference": TRACE_INFERENCE,
     "personal_ai_sifter": TRACE_PERSONAL,
     "VisualCortexFairy": TRACE_VISUAL,
     "AudioCortexFairy": TRACE_AUDIO,
@@ -78,6 +81,31 @@ _FAIRY_TRACER_MAP = {
     "ace": TRACE_ACE,
     "ace_chat": TRACE_ACE,
 }
+
+# -- tardis_fix (2026-10-15, Nous; nous_builds/tardis_fix_1015): switch-gated hooks, ALL OFF unless state/tardis_fix.json says
+# otherwise. Everything here fails closed: a missing or partial install, or any error, leaves today's behaviour. -------------
+_TF_FTL = threading.local()              # L0: the TARDIS flush thread's accumulator (top-level laps)
+
+
+def _tf_on(key):
+    try:
+        from infrastructure import tardis_fix as _tfx
+        return _tfx.on(key)
+    except Exception:
+        return False
+
+
+def _tf_l0_acc():
+    return getattr(_TF_FTL, "acc", None)
+
+
+def _tf_merge_pairs(item, pairs_by_tracer, seen_by_tracer, merged_meta):     # tardis_fix B
+    try:
+        from infrastructure import tardis_backlog as _tfb
+        _tfb.merge_pairs_item(item, pairs_by_tracer, seen_by_tracer, merged_meta)
+    except Exception as _tfe:
+        print(f"[TardisFix] could not merge a replayed pair record: {_tfe}", flush=True)
+
 
 # GPU acceleration for spreading activation (optional)
 try:
@@ -6138,8 +6166,17 @@ class AssociationCortexFairy(Fairy):
                         if tracer_id:
                             kw_a["tracer_id"] = tracer_id
                             kw_b["tracer_id"] = tracer_id
+                        _l0 = _tf_l0_acc()                       # tardis_fix L0: None unless this is the armed TARDIS flush thread
+                        if _l0 is not None:
+                            _l0s = _l0.now()
+                            _l0na = _l0.isnew(_am, a)
+                            _l0nb = _l0.isnew(_am, b)
                         _am.upsert_node(a, **kw_a)
+                        if _l0 is not None:
+                            _l0s = _l0.add("upA_new" if _l0na else "upA", _l0s)
                         _am.upsert_node(b, **kw_b)
+                        if _l0 is not None:
+                            _l0s = _l0.add("upB_new" if _l0nb else "upB", _l0s)
 
                         # Link with optional rel_type
                         link_kw = {"weight": weight}
@@ -6149,6 +6186,9 @@ class AssociationCortexFairy(Fairy):
                         if tracer_id:
                             link_kw["tracer_id"] = tracer_id
                         _am.link(a, b, **link_kw)
+                        if _l0 is not None:
+                            _l0.add("link", _l0s)
+                            _l0.pair()
 
                         bound += 1
                         if snippet_a or snippet_b or rel_type is not None:
@@ -6223,10 +6263,14 @@ class AssociationCortexFairy(Fairy):
         self._tardis_flush_thread.start()
         print(f"[{self.ACTOR_NAME}] ⚡ TARDIS bind compression STARTED "
               f"(queue={self._tardis_bind_queue.maxsize})", flush=True)
+        self._tf_b_arm()                           # tardis_fix B: threads only, no file I/O here, never raises
 
     def _stop_tardis_flush(self):
         """Stop the TARDIS flush thread (called on shutdown)."""
         self._tardis_flush_running = False
+        _tfb = getattr(self, "_tf_b", None)          # tardis_fix B: persist (and set the one-way stop flag) before the old final flush
+        if _tfb is not None:
+            _tfb.persist_now("on_shutdown")
         if self._tardis_flush_thread and self._tardis_flush_thread.is_alive():
             self._tardis_flush_thread.join(timeout=3.0)
         # Final flush — don't lose queued data
@@ -6260,13 +6304,22 @@ class AssociationCortexFairy(Fairy):
                 flush_interval = max(0.5, 0.25 / tau)  # τ=5 → 500ms, τ=1 → 500ms
                 time.sleep(flush_interval)
 
+                _tfb = getattr(self, "_tf_b", None)  # tardis_fix B: one-way - after the persist this thread never drains again
+                if _tfb is not None and _tfb.stop_requested:
+                    continue
+
                 # Drain queue
                 batch = self._tardis_drain_queue()
                 if not batch:
                     continue
 
                 # Compress and send
-                self._tardis_process_batch(batch)
+                _l0b = self._tf_l0_begin(len(batch))      # tardis_fix L0: None when l0_timing is OFF (and clears a stale arm)
+                try:
+                    self._tardis_process_batch(batch)
+                finally:
+                    if _l0b is not None:
+                        self._tf_l0_end(_l0b)
                 self._tardis_flushes += 1
 
                 # Periodic stats (every 50 flushes)
@@ -6326,6 +6379,9 @@ class AssociationCortexFairy(Fairy):
         seen_by_tracer = {}           # tracer_id → set(pair_key)
         merged_concept_meta = {}      # Accumulate concept metadata across batch
         for item in batch:
+            if "_tf_pairs" in item:                              # tardis_fix B: only the B feeder creates these items
+                _tf_merge_pairs(item, pairs_by_tracer, seen_by_tracer, merged_concept_meta)
+                continue
             concepts = item.get("concepts_to_bind", [])
             if len(concepts) < 2:
                 continue
@@ -6368,7 +6424,9 @@ class AssociationCortexFairy(Fairy):
                        (_gate and getattr(_gate, '_is_open', False))
         pairs_out = sum(len(_p) for _p in pairs_by_tracer.values())
         if pairs_out and (_am or _gate_usable):
-            for _tracer, _pairs in pairs_by_tracer.items():
+            _tfb = getattr(self, "_tf_b", None)      # tardis_fix B: slices of 4 pairs; on the stop flag the rest is parked
+            _tfc = _tfb.chunker(pairs_by_tracer, merged_concept_meta) if (_tfb is not None and _am) else None
+            for _tracer, _pairs in (pairs_by_tracer.items() if _tfc is None else _tfc):
                 if not _pairs:
                     continue
                 self._portal_io_submit_binding(
@@ -6376,7 +6434,7 @@ class AssociationCortexFairy(Fairy):
                     concept_metadata=merged_concept_meta if merged_concept_meta else None,
                     tracer_id=_tracer,
                 )
-            self._tardis_pairs_sent += pairs_out
+            self._tardis_pairs_sent += pairs_out if _tfc is None else _tfc.submitted
 
         # ── Stats ──
         items_in = len(batch)
@@ -6430,6 +6488,31 @@ class AssociationCortexFairy(Fairy):
             "avg_compression": (self._tardis_compression_total / self._tardis_flushes
                                 if self._tardis_flushes > 0 else 0),
         }
+
+    def _tf_l0_begin(self, n_items):
+        """tardis_fix L0 (hook F4b): arm the per-thread accumulator for this batch. None = OFF (a stale arm is cleared)."""
+        try:
+            from infrastructure import tardis_timing as _tt
+            if _tf_on("l0_timing"):
+                return _tt.begin(self, _TF_FTL, n_items)
+            return _tt.disarm(self, _TF_FTL)
+        except Exception:
+            return None
+
+    def _tf_l0_end(self, token):
+        try:
+            from infrastructure import tardis_timing as _tt
+            _tt.end(self, _TF_FTL, token)
+        except Exception:
+            pass
+
+    def _tf_b_arm(self):
+        """tardis_fix B (hook F3): arm persist/replay for this process. Creates threads only. Never raises."""
+        try:
+            from infrastructure import tardis_backlog as _tb
+            self._tf_b = _tb.arm(self)
+        except Exception:
+            self._tf_b = None
 
     def _recompute_portal_gravity(self) -> None:
         """

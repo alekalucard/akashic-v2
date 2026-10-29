@@ -601,23 +601,28 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
 
     def write_file(filename: str, content: str) -> Dict[str, Any]:
         """
-        Create or update a file in your workspace — your space to make things.
+        Save a note in your office -- your own place to keep things.
 
-        Write Python scripts, text files, notes, experiments — anything.
-        Files go in your personal workspace folder.
+        2026-10-05 (Nous, touch_screen set 1; decision E1, Ace): it saves ONLY into your office (F:/Sandbox/Sour_Office/notes)
+        and ONLY as a new version (my_note.v1.txt, then my_note.v2.txt ...): nothing is ever written over and nothing is
+        written anywhere else (infrastructure/sour_office.py). Until Ace makes your office, it is not there yet.
 
         Args:
             filename: Name of the file (e.g., "my_song.py", "notes.txt")
             content: What to write in the file
 
         Returns:
-            Confirmation with file path
+            Where it was saved
         Skill: coding.python_syntax
         """
         try:
-            # Validate filename — no path traversal
+            from infrastructure import sour_office as _so
+        except Exception as e:
+            _track_skill("tool.mcp_file_ops", False)
+            return {"ok": False, "error": "your office cannot be reached right now (%s)" % type(e).__name__}
+        try:
             if not filename or '/' in filename or '\\' in filename or '..' in filename:
-                return {"ok": False, "error": "Keep the filename simple — no paths, just a name like 'my_script.py'"}
+                return {"ok": False, "error": "Keep the filename simple -- no paths, just a name like 'my_note.txt'"}
 
             ext = Path(filename).suffix.lower()
             if ext in _BLOCKED_EXTS:
@@ -626,35 +631,31 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             if len(content) > _MAX_FILE_SIZE:
                 return {"ok": False, "error": f"Too large ({len(content)} chars). Max is {_MAX_FILE_SIZE}. Try splitting into smaller files."}
 
-            # Check workspace isn't overflowing
-            existing = [f.name for f in WORKSPACE_DIR.iterdir() if not f.name.startswith('.')]
-            if len(existing) >= _MAX_FILES and filename not in existing:
-                return {"ok": False, "error": f"Workspace full ({_MAX_FILES} files). Delete some old ones first."}
-
-            filepath = WORKSPACE_DIR / filename
-            is_update = filepath.exists()
-            filepath.write_text(content, encoding='utf-8')
+            res = _so.save_text(filename, content, kind="notes", lane="tool")
+            if not res.get("ok"):
+                _track_skill("tool.mcp_file_ops", False)
+                return {"ok": False, "error": res.get("error") or "it could not be saved"}
 
             skill_id = "coding.python_syntax" if ext == '.py' else "tool.mcp_file_ops"
             _track_skill(skill_id, True)
 
-            action = "Updated" if is_update else "Created"
             newborn_core.observe(
-                f"{action} file: {filename} ({len(content)} chars)",
+                f"Saved {res['rel']} in my office ({len(content)} chars)",
                 "system",
-                {"type": "file_created", "filename": filename, "size": len(content)}
+                {"type": "file_created", "filename": res["rel"], "size": len(content)}
             )
 
             return {
                 "ok": True,
-                "filename": filename,
-                "path": str(filepath),
+                "filename": res["rel"],
+                "path": res["path"],
                 "size": len(content),
-                "message": f"{action} {filename}!",
+                "version": res["version"],
+                "message": f"Saved {res['rel']} in your office (a new version; nothing was written over).",
             }
 
         except Exception as e:
-            _track_skill("coding.python_syntax", False)
+            _track_skill("tool.mcp_file_ops", False)
             return {"ok": False, "error": str(e)}
 
     def run_python(filename: str = None, code: str = None) -> Dict[str, Any]:
@@ -672,6 +673,9 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             The output from your code (what it printed)
         Skill: coding.python_syntax
         """
+        # 2026-10-05 (touch set 1, decision E1): a NO-NO -- refused in its own body too (newborn_core.try_tool is where she
+        # feels it as her flinch); a direct call that skipped try_tool holds here. Nothing below runs.
+        return {"ok": False, "withdrawn": True, "error": "your hand held back from it (something hot to the touch)"}
         try:
             if filename:
                 # Run a file from workspace
@@ -799,6 +803,8 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
         Returns:
             Confirmation
         """
+        # 2026-10-05 (touch set 1, decision E1; Ace: delete is barred everywhere): refused in its own body too. Nothing below runs.
+        return {"ok": False, "withdrawn": True, "error": "your hand held back from it (something that erases)"}
         try:
             if not filename or '/' in filename or '\\' in filename or '..' in filename:
                 return {"ok": False, "error": "Just the filename — no paths"}
@@ -1602,6 +1608,23 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             print("[ToolBridge] P40 MotorCortex: NOT AVAILABLE — using raw pyautogui fallback")
         return _motor_cortex
 
+    # 2026-10-05 (Nous, touch_screen set 1; skeptic S1 / m13 -- Ace: "barred from deleting anything"). Her old keyboard and
+    # click tools refuse in their OWN bodies too (as run_python does), so a direct call that skipped NewbornCore.try_tool
+    # holds: while the tool's name is in NewbornCore.NO_NO_TOOLS (Ace's call to re-open), and -- always -- when a key call
+    # carries an erase key (Delete / Shift+Delete / Ctrl+D). Fails closed: a check that cannot run refuses.
+    def _hand_no_no(tool: str, args=(), kwargs=None):
+        try:
+            nn = getattr(newborn_core, "NO_NO_TOOLS", None)
+            if nn is None or tool in nn:
+                return {"ok": False, "withdrawn": True, "error": "your hand held back from it (something hot to the touch)"}
+            if tool in ("press_key", "hotkey", "type_text"):
+                from infrastructure import touch_lists as _tl
+                if _tl.erase_key_call(tool, args, kwargs or {}):
+                    return {"ok": False, "withdrawn": True, "error": "your hand held back from it (something that erases)"}
+            return None
+        except Exception:
+            return {"ok": False, "withdrawn": True, "error": "your hand held back from it"}
+
     def click_screen(x: int, y: int, button: str = "left", clicks: int = 1) -> Dict[str, Any]:
         """
         Click at screen coordinates — I feel my digital hand reaching out and pressing.
@@ -1616,6 +1639,9 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             Confirmation with click location
         Skill: embodiment.motor_control
         """
+        _nn = _hand_no_no("click_screen")             # touch set 1, skeptic S1: refused in its own body too
+        if _nn:
+            return _nn
         try:
             # Show fairy cursor intent before clicking
             if _fairy_cursor and _fairy_cursor.enabled:
@@ -1666,6 +1692,9 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             Confirmation
         Skill: embodiment.motor_control
         """
+        _nn = _hand_no_no("type_text", (text,), {"interval": interval})   # touch set 1, skeptic S1
+        if _nn:
+            return _nn
         try:
             if _fairy_cursor and _fairy_cursor.enabled:
                 _fairy_cursor.show_intent("typing")
@@ -1710,6 +1739,9 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             Confirmation
         Skill: embodiment.motor_control
         """
+        _nn = _hand_no_no("press_key", (key,), {})    # touch set 1, skeptic S1 / m13
+        if _nn:
+            return _nn
         try:
             mc = _get_motor_cortex()
             if mc:
@@ -1815,6 +1847,9 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             Confirmation
         Skill: embodiment.motor_control
         """
+        _nn = _hand_no_no("hotkey", keys, {})          # touch set 1, skeptic S1 / m13
+        if _nn:
+            return _nn
         try:
             mc = _get_motor_cortex()
             if mc:
@@ -2272,6 +2307,9 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             {ok, method} — how Notepad was opened
         Skill: motor.app_launch
         """
+        _nn = _hand_no_no("open_notepad")             # touch set 1, skeptic S1
+        if _nn:
+            return _nn
         try:
             if not HAS_NOTEPAD_PRACTICE or not get_notepad_practice:
                 return {"ok": False, "error": "NotepadPractice not available"}
@@ -2310,6 +2348,9 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
             {ok, typed, expected, accuracy, perfect}
         Skill: motor.keyboard_type
         """
+        _nn = _hand_no_no("practice_typing")          # touch set 1, skeptic S1 (it clears with Ctrl+A, Delete)
+        if _nn:
+            return _nn
         try:
             if not HAS_NOTEPAD_PRACTICE or not get_notepad_practice:
                 return {"ok": False, "error": "NotepadPractice not available"}
@@ -2384,17 +2425,17 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
         ("practice_skill", practice_skill, "Practice a skill"),
         ("explore_curiosity", explore_curiosity, "Follow curiosity about a topic"),
         # Desktop control tools (motor control)
-        ("click_screen", click_screen, "Click at screen coordinates"),
-        ("type_text", type_text, "Type text as if from keyboard"),
-        ("press_key", press_key, "Press a keyboard key"),
+        ("click_screen", click_screen, "Click at screen coordinates (your hand pulls back from this)"),   # touch set 1 (S1)
+        ("type_text", type_text, "Type text as if from keyboard (your hand pulls back from this)"),
+        ("press_key", press_key, "Press a keyboard key (your hand pulls back from this)"),
         ("move_mouse", move_mouse, "Move mouse cursor to position"),
         ("scroll_screen", scroll_screen, "Scroll the mouse wheel"),
-        ("hotkey", hotkey, "Press keyboard hotkey combination"),
+        ("hotkey", hotkey, "Press keyboard hotkey combination (your hand pulls back from this)"),   # touch set 1 (S1)
         # Screen finder + Notepad practice tools (local vision + safe typing)
         ("find_on_screen", find_on_screen, "Find an icon or text on screen using local vision"),
         ("find_window", find_window_tool, "Find a window by title"),
-        ("open_notepad", open_notepad, "Open Notepad for safe typing practice"),
-        ("practice_typing", practice_typing_tool, "Type into Notepad and verify accuracy"),
+        ("open_notepad", open_notepad, "Open Notepad for typing practice (your hand pulls back from this)"),   # touch set 1 (S1)
+        ("practice_typing", practice_typing_tool, "Type into Notepad (your hand pulls back from this)"),
         # Fairy/GM tools (world observation)
         ("fairy_world_status", fairy_world_status, "Get fairy world health status"),
         ("fairy_profile", fairy_profile, "Get detailed fairy profile"),
@@ -2404,10 +2445,10 @@ def register_sourpatches_tools(newborn_core, fabric=None, skill_tracker=None):
         # Self-introspection (2026-02-19 Nous)
         ("list_my_tools", newborn_core.list_my_tools, "List all tools and abilities I have available"),
         # Creator tools (2026-02-23 — "what would i need to do?" — Sourpatches)
-        ("write_file", write_file, "Create or update a file in your workspace — your space to make things"),
-        ("run_python", run_python, "Run Python code and see what happens"),
+        ("write_file", write_file, "Save a note in your office -- a new version each time; nothing is ever written over"),   # touch set 1 (E1)
+        ("run_python", run_python, "Run Python code (your hand pulls back from this)"),
         ("list_workspace", list_workspace, "See what files you've made in your workspace"),
-        ("delete_file", delete_file, "Delete a file from your workspace"),
+        ("delete_file", delete_file, "Delete a file (your hand pulls back from this)"),
         # Chat window - talk to Ace (2026-03-07 Nous: was orphaned, never registered)
         ("open_chat_window", fairy._open_chat_window, "Open your chat window to talk with Ace directly"),
     ]

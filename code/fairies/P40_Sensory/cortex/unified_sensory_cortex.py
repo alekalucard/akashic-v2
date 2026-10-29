@@ -428,6 +428,17 @@ class UnifiedSensoryCortex:
             def _on_tool_request(packet):
                 tool = packet.get("tool")
                 params = packet.get("params", {})
+                # 2026-09-29 (Nous, thought_hand_r2 D1h / F4): tool.request reached motor.move_mouse / click / type_text / press_key /
+                # scroll / hotkey with no door, no claim and no Ace-idle check (no publisher of tool.request today). A motor tool is
+                # refused, counted and answered; seeing / conversation / presence tools route as before. Revert: delete this block.
+                if TOOL_CORTEX_MAP.get(tool) == "motor" and tool != "mouse_position":
+                    _c = self.__dict__.setdefault("_th_r2_refused", {})
+                    _c[tool] = _c.get(tool, 0) + 1
+                    if _c[tool] == 1 or _c[tool] % 20 == 0:
+                        print(f"[{self.ACTOR_NAME}] [TOOL] R2 FENCE: tool.request {ascii(tool)} refused (#{_c[tool]}) -- her hand moves only through the door", flush=True)
+                    postal.route("tool.response", {"request_id": packet.get("request_id"), "tool": tool,
+                                                   "result": {"refused": True, "reason": "count_only (thought_hand_r2 F4)"}})
+                    return
                 result = self.route_tool_call(tool, **params)
                 
                 postal.route("tool.response", {

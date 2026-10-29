@@ -21,6 +21,38 @@ import queue
 from pathlib import Path
 from typing import Dict, Optional, Any, Callable
 
+# recall_eyes_1020 (Nous, 2026-10-20): Ace's switch state/recall_eyes_fix.json arms eyes_reader_decouple and reader_survives (infrastructure/
+# recall_eyes_fix.py). Imported here, at load, on the loading thread (a first import from a non-main thread crashed free-threaded Python before:
+# see VisualCortexFairy). Absent / malformed / the module missing = both OFF = this file behaves exactly as it did.
+try:
+    from infrastructure import recall_eyes_fix as _RX0
+except Exception:
+    _RX0 = None
+_RX = [_RX0, -1e9]
+
+
+def _rx():
+    m = _RX[0]
+    if m is None:
+        now = time.monotonic()
+        if now - _RX[1] >= 60.0:
+            _RX[1] = now
+            try:
+                from infrastructure import recall_eyes_fix as m
+                _RX[0] = m
+            except Exception:
+                m = None
+    return m
+
+
+def _rx_on(key):
+    """One key of Ace's recall_eyes_fix switch; OFF on any doubt."""
+    try:
+        m = _rx()
+        return m is not None and bool(m.on(key))
+    except Exception:
+        return False
+
 
 class VisualCortexGate:
     """
@@ -72,6 +104,11 @@ class VisualCortexGate:
 
         # Passive callback (set by fairy)
         self._passive_callback: Optional[Callable[[Dict], None]] = None
+
+        # recall_eyes_1020: inert unless eyes_reader_decouple / reader_survives are armed
+        self._rx_ho = None
+        self._rx_ho_lock = threading.Lock()
+        self._rx_bad = 0
 
         # Reader/stderr threads
         self._reader_thread: Optional[threading.Thread] = None
@@ -208,6 +245,7 @@ class VisualCortexGate:
     def close(self):
         """Close the gate - terminate the visual cortex subprocess."""
         if not self._process:
+            self._rx_close_handoff()      # recall_eyes_1020: also in the auto-restart window (_process None); a no-op without a live hand-off
             return
 
         self._auto_restart = False
@@ -236,6 +274,7 @@ class VisualCortexGate:
               f"Sent {self._requests_sent} requests, "
               f"received {self._passive_frames_received} passive frames, "
               f"{self._errors} errors.")
+        self._rx_close_handoff()          # recall_eyes_1020: stops the hand-off worker (a no-op when there is none)
 
     @property
     def is_open(self) -> bool:
@@ -334,6 +373,7 @@ class VisualCortexGate:
         - response_queue (for synchronous send/receive)
         - passive_callback (for unsolicited passive frame pushes)
         """
+        _rx_proc = self._process          # recall_eyes_1020: for the reader's exit line only
         try:
             for line in self._process.stdout:
                 line = line.strip()
@@ -345,17 +385,29 @@ class VisualCortexGate:
                 except json.JSONDecodeError:
                     continue
 
+                if not isinstance(msg, dict) and _rx_on("reader_survives"):
+                    # recall_eyes_1020: a valid-JSON line that is not an object (123, null, [1]) made msg.get raise below and ended this
+                    # thread silently. Skipped and counted instead (OFF: today's behaviour).
+                    self._rx_bad += 1
+                    if self._rx_bad <= 3:
+                        print("[VisualGate] reader: skipped a JSON line that is not an object (%d so far): %s" % (self._rx_bad, ascii(line[:80])))
+                    continue
+
                 msg_type = msg.get("type", "")
 
                 if msg_type == "passive_frame":
                     # Unsolicited push from passive capture loop
                     self._passive_frames_received += 1
                     if self._passive_callback:
-                        try:
-                            self._passive_callback(msg.get("data", {}))
-                        except Exception as e:
-                            if self._passive_frames_received <= 3:
-                                print(f"[VisualGate] Passive callback error: {e}")
+                        ho = self._rx_handoff()       # recall_eyes_1020: None unless eyes_reader_decouple is armed (then: today's inline call)
+                        if ho is not None:
+                            ho.put(msg.get("data", {}))
+                        else:
+                            try:
+                                self._passive_callback(msg.get("data", {}))
+                            except Exception as e:
+                                if self._passive_frames_received <= 3:
+                                    print(f"[VisualGate] Passive callback error: {e}")
                 else:
                     # Response to a send() call — route to that request's slot
                     # by _req_id. Untagged responses (older interior, or pushes
@@ -373,8 +425,48 @@ class VisualCortexGate:
                     else:
                         self._response_queue.put(msg)
 
+        except Exception as e:
+            # Process died or pipe closed. recall_eyes_1020: said out loud while reader_survives is armed; silent otherwise, as before.
+            if _rx_on("reader_survives"):
+                print("[VisualGate] reader thread exiting on %s: %s" % (type(e).__name__, ascii(str(e))[:120]))
+        else:
+            if _rx_on("reader_survives"):
+                print("[VisualGate] reader: interior stdout closed (pid %s)" % (getattr(_rx_proc, "pid", "?"),))
+
+    def _rx_handoff(self):
+        """recall_eyes_1020 (eyes_reader_decouple): the bounded drop-oldest hand-off between this reader and the frame callback, created on
+        first use. None when the key is OFF, the module is missing or anything goes wrong: the caller then makes today's inline call."""
+        try:
+            if not _rx_on("eyes_reader_decouple"):
+                return None
+            ho = self._rx_ho
+            if ho is not None and not ho.stopped:
+                return ho
+            with self._rx_ho_lock:
+                ho = self._rx_ho
+                if ho is None or ho.stopped:
+                    ho = _rx().Handoff(self._rx_deliver, name="vgate-passive", flight_name="vcf_passive_spread")
+                    self._rx_ho = ho
+                return ho
         except Exception:
-            pass  # Process died or pipe closed
+            return None
+
+    def _rx_deliver(self, data):
+        """Resolved PER FRAME: a callback registered later (set_passive_callback) gets the next frame."""
+        cb = self._passive_callback
+        if cb:
+            cb(data)
+
+    def _rx_close_handoff(self):
+        try:
+            ho = self._rx_ho
+            if ho is not None and not ho.stopped:
+                ho.stop()
+                s = ho.status()
+                print("[VisualGate] passive hand-off at close: received=%d processed=%d dropped=%d errors=%d"
+                      % (s["received"], s["processed"], s["dropped"], s["errors"]))
+        except Exception:
+            pass
 
     def _read_stderr(self):
         """Background thread: read and print stderr from the interior."""
@@ -469,7 +561,7 @@ class VisualCortexGate:
 
     def gate_status(self) -> Dict[str, Any]:
         """Status of the gate itself (not the interior)."""
-        return {
+        _rx_st = {
             "is_open": self.is_open,
             "python_exe": self.python_exe,
             "requests_sent": self._requests_sent,
@@ -481,3 +573,7 @@ class VisualCortexGate:
             ) if self._opened_at else 0,
             "interior_pid": self._process.pid if self._process else None,
         }
+        _rx_ho = self._rx_ho              # recall_eyes_1020: only present while a hand-off exists (OFF: the dict is exactly today's)
+        if _rx_ho is not None:
+            _rx_st["passive_handoff"] = _rx_ho.status()
+        return _rx_st

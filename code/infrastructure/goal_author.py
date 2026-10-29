@@ -353,8 +353,20 @@ def _match_in(items: List[Dict], verb: str, obj: str) -> Optional[int]:
     return best
 
 
-def note_outcome(verb: str, obj: str, ok: Optional[bool], summary: str, deferred: bool = False) -> Optional[int]:
-    """The intention loop reports a MEASURED outcome. Returns the goal index it served, if any."""
+_WINDOW_ONLY = {"window", "windows", "title", "bar", "caption"}
+
+
+def _beyond_window(goal_obj: str, aimed: Optional[str]) -> bool:
+    """eyes_fix F4: the goal names MORE than the window the hand reached (an item in it: 'red ball in Sour's Playroom')."""
+    cw = (lambda t: {w.strip("'") for w in content_words(t)})
+    return bool(cw(goal_obj) - cw(aimed or "") - _WINDOW_ONLY)
+
+
+def note_outcome(verb: str, obj: str, ok: Optional[bool], summary: str, deferred: bool = False, level: Optional[str] = None,
+                 aimed: Optional[str] = None) -> Optional[int]:   # eyes_fix F4: + level, aimed
+    """The intention loop reports a MEASURED outcome. Returns the goal index it served, if any. eyes_fix F4 (only intention
+    with 'hand_honest' passes level): level 'window' = the hand reached a WINDOW's title bar; a goal naming more than that
+    window is noted, never closed by it."""
     _load()
     g = _g()
     with g["lock"]:
@@ -364,6 +376,9 @@ def note_outcome(verb: str, obj: str, ok: Optional[bool], summary: str, deferred
         x = g["items"][i]
         x["note"] = scrub(short_outcome(summary))
         if deferred:
+            _save()
+            return i
+        if ok and level == "window" and _beyond_window(x.get("object", ""), aimed):   # eyes_fix F4: a window is not an item
             _save()
             return i
         x["tries"] = int(x.get("tries", 0)) + 1

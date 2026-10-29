@@ -60,6 +60,26 @@ import collections
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 
+# eyes_fix_1009 F9 (DIAGNOSIS C7): a deed line from the intention ask -- 'verb: object' -- is not synonym drift. Mode 7 erased
+# all 12 of Boot J's "[Intention] none" deeds (11 words, every one unique, 18% function words). Only intention.ask passes
+# deed= (and only with Ace's 'deeds' key); chat speech never does, so Mode 7 still filters her speech byte for byte.
+# 'say' is NOT in the list (verify M2): a 'say:' object becomes her spoken line (intention._DEFERRED -> pop_deferred), so a
+# say IS speech and Mode 7 still erases a degenerate one -- booked 'erased', never voiced.
+_DEED_LINE_RE = re.compile(r"^\s*(?:look|move|remember|open|none|tap|hold|double_tap|touch)\s*:\s*\S", re.I)
+
+
+# cutoff_fix_1019 (2026-10-19, Nous; Ace: "were these thoughts cut off?"): the farm's OWN word on whether a reply was stopped. Only a
+# caller that passes meta= to generate_speech sees it (intention.ask for a say, the council chairman for its trim; each only while its
+# key in state/cutoff_fix.json is ON). hit_cap (= not _ended) is NOT this: it keeps steering the half-word cut and is unchanged.
+def _cf_capped(n_tokens, max_tokens, deadline_hit):
+    """True only when the farm's own numbers prove the reply was stopped: pieces >= the cap, or the adapter's deadline fired.
+    Never from punctuation. A missing count, a 0 count or a missing deadline key is NOT a cap (unlike hit_cap = not _ended)."""
+    try:
+        n, m = int(n_tokens), int(max_tokens)
+    except (TypeError, ValueError):
+        n, m = 0, 0
+    return bool((m > 0 and n >= m) or deadline_hit is True)
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PATHS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -176,6 +196,50 @@ GPU_FALLBACK_MODELS = [
 #     2026-09-01 and predates the 09-08 re-enable. Recent throughput = UNMEASURED.
 # AKASHIC_GPU_PORTAL=0 parks it again without a code edit.
 DISABLE_GPU_PORTAL = os.environ.get("AKASHIC_GPU_PORTAL", "1") != "1"
+
+
+# ---- _FARM_RETRY (2026-09-30, Nous; Ace's go) ----------------------------------------------------------------
+# Measured 09-30 (card the-farm-adapter-hangs-on-a-dead-client): with the farm on .74 (AKASHIC_FARM_REMOTE) ONE
+# failed open at boot left her mute for the WHOLE boot ('Portal failed to open', no retry), and a farm connection
+# that died later was never re-opened. REMOTE ONLY -- a local RWKV portal is an 8 GB subprocess; retrying that is
+# a different decision:
+#   * at boot a failed open is retried with backoff until it opens or her shutdown starts;
+#   * after boot a watcher re-opens a connection that died (EOF, reset, keepalive -- gpu_portal_gate.py), first
+#     at once, then with the same backoff. While it is down, farm.available is False, so the council's
+#     chairman_available() hands her lines to the template lanes exactly as when the farm is off.
+# AKASHIC_FARM_RETRY_S = the waits in seconds (default 30,60,120,240,300; the last repeats).
+# AKASHIC_FARM_RETRY=0 restores the old one-shot behaviour exactly.
+_FARM_RETRY_DEFAULT = (30.0, 60.0, 120.0, 240.0, 300.0)
+_SHUTDOWN_FN = []          # [callable] once resolved; [None] if her shutdown flag cannot be imported here
+
+
+def _farm_retry_on() -> bool:
+    return (bool(os.environ.get("AKASHIC_FARM_REMOTE", "").strip())
+            and os.environ.get("AKASHIC_FARM_RETRY", "1") != "0")
+
+
+def _farm_retry_schedule() -> List[float]:
+    try:
+        s = [float(x) for x in os.environ.get("AKASHIC_FARM_RETRY_S", "").split(",") if x.strip()]
+    except ValueError:
+        s = []
+    s = [x for x in s if x >= 0]
+    return s or list(_FARM_RETRY_DEFAULT)
+
+
+def _farm_shutting_down() -> bool:
+    """Her global shutdown flag (shared_postal_hub) -- the one sourpatches_fairy.py checks after a spawn."""
+    if not _SHUTDOWN_FN:
+        try:
+            from P00_Autonomic.nervous_system.shared_postal_hub import is_global_shutdown
+            _SHUTDOWN_FN.append(is_global_shutdown)
+        except Exception:
+            _SHUTDOWN_FN.append(None)
+    fn = _SHUTDOWN_FN[0]
+    try:
+        return bool(fn()) if fn is not None else False
+    except Exception:
+        return False
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -530,6 +594,10 @@ class SourpatchesFarm:
         self._lock = threading.Lock()
         self._close_lock = threading.Lock()   # 2026-09-11: close() now has two callers
         self._closed = False
+        # 2026-09-30 _FARM_RETRY: retry / reconnect state (see the module comment at _farm_retry_on)
+        self._reconnect_stop = threading.Event()
+        self._reconnect_thread: Optional[threading.Thread] = None
+        self._reconnects = 0
 
         # Speech priority — when Ace sends a chat message, speech generation
         # PREEMPTS the background thought buffer. The buffer checks this flag
@@ -636,6 +704,103 @@ class SourpatchesFarm:
                 return str(f)
         return str(_MODELS_DIR / GPU_MODEL)
 
+    # -- _FARM_RETRY (2026-09-30, Nous; Ace's go) -----------------------------------------------------------
+    def _open_portal_with_retry(self):
+        """Keep trying to open the REMOTE farm with backoff until it opens, her shutdown starts, or close().
+        Runs on the spawn thread (sourpatches_fairy.py's 'sour-farm-lazy-spawn'), which holds the boot claim
+        (_farm_booting) the whole time, so no second spawn can start meanwhile. Each failed attempt costs a
+        refused connect (adapter down), one 'busy' line (adapter serving a live client), or -- against an
+        adapter from before 2026-09-30 still stuck on a dead client -- the gate's 120 s ping wait."""
+        sched = _farm_retry_schedule()
+        attempt = 0
+        while True:
+            wait = sched[min(attempt, len(sched) - 1)]
+            attempt += 1
+            print(f"[SourpatchesFarm] Portal failed to open -- retry {attempt} in {wait:.0f}s "
+                  f"(AKASHIC_FARM_RETRY=0 turns retries off)", flush=True)
+            if not self._retry_wait(wait):
+                print(f"[SourpatchesFarm] farm retry abandoned (shutdown or close)", flush=True)
+                return None
+            try:
+                gate = self._open_portal()
+            except Exception as e:
+                print(f"[SourpatchesFarm] retry {attempt}: portal open raised {e}", flush=True)
+                gate = None
+            if gate:
+                print(f"[SourpatchesFarm] Portal OPEN on retry {attempt}", flush=True)
+                return gate
+
+    def _retry_wait(self, seconds) -> bool:
+        """Wait up to `seconds` against a fixed deadline, waking at least every 0.5 s.
+        False = stop now (her shutdown started, or this farm was closed)."""
+        deadline = time.time() + float(seconds)
+        while True:
+            if self._closed or _farm_shutting_down():
+                return False
+            left = deadline - time.time()
+            if left <= 0:
+                return True
+            self._reconnect_stop.wait(min(0.5, left))
+
+    def _start_reconnect_watch(self):
+        if not (self._use_gpu and _farm_retry_on()) or self._reconnect_thread is not None:
+            return
+        self._reconnect_thread = threading.Thread(target=self._reconnect_loop, daemon=True,
+                                                  name="sour-farm-reconnect")
+        self._reconnect_thread.start()
+        print("[SourpatchesFarm] farm reconnect watch ON (remote farm; AKASHIC_FARM_RETRY=0 turns it off)",
+              flush=True)
+
+    def _reconnect_loop(self):
+        """Re-open a remote farm connection that died after boot. The gate learns of the death from EOF, a reset
+        or a failed keepalive (gpu_portal_gate.py, same date); until the new gate is in place every send()
+        answers None at once and farm.available is False -- what she already does while the farm is down."""
+        while not self._closed:
+            if self._reconnect_stop.wait(2.0):
+                return
+            gate = self._gate
+            if self._closed or not self._ready or gate is None or gate.is_open:
+                continue
+            t_lost = time.time()
+            print("[SourpatchesFarm] farm connection LOST -- re-opening (first try now, then backoff)", flush=True)
+            try:
+                gate.close()
+            except Exception:
+                pass
+            waits = [0.0] + _farm_retry_schedule()
+            attempt = 0
+            new = None
+            while new is None:
+                if not self._retry_wait(waits[min(attempt, len(waits) - 1)]):
+                    return
+                attempt += 1
+                try:
+                    new = self._open_portal()
+                except Exception as e:
+                    print(f"[SourpatchesFarm] re-open attempt {attempt} raised {e}", flush=True)
+                    new = None
+                if new is None:
+                    print(f"[SourpatchesFarm] re-open attempt {attempt} failed; next in "
+                          f"{waits[min(attempt, len(waits) - 1)]:.0f}s", flush=True)
+            if not self._stateless_backend and not self._carry_state:
+                try:
+                    new.send({"cmd": "reset_states"}, timeout=10.0)
+                except Exception:
+                    pass
+            with self._close_lock:
+                if not self._closed:
+                    self._gate = new
+                    self._reconnects += 1
+                    new = None
+            if new is not None:                    # close() won the race: do not leak the new connection
+                try:
+                    new.close()
+                except Exception:
+                    pass
+                return
+            print(f"[SourpatchesFarm] farm connection RE-OPENED after {time.time() - t_lost:.0f}s "
+                  f"(reconnect #{self._reconnects})", flush=True)
+
     def _close_gate_safely(self):
         """Close the portal gate/subprocess without crashing.
 
@@ -667,6 +832,8 @@ class SourpatchesFarm:
         # 2. Open portal (spawns subprocess)
         try:
             self._gate = self._open_portal()
+            if not self._gate and self._use_gpu and _farm_retry_on() and not DISABLE_GPU_PORTAL:
+                self._gate = self._open_portal_with_retry()      # 2026-09-30 _FARM_RETRY: backoff, not mute
             if not self._gate:
                 print(f"[SourpatchesFarm] Portal failed to open")
                 return
@@ -690,6 +857,7 @@ class SourpatchesFarm:
             # Start background threads
             self._start_thought_buffer()
             self._start_prediction_priming()
+            self._start_reconnect_watch()      # 2026-09-30 _FARM_RETRY (remote farm only)
         else:
             # CPU portal: explicit model load + OpenMP config
             try:
@@ -1771,7 +1939,7 @@ class SourpatchesFarm:
                 print(f"[SourpatchesFarm] Reflection error: {e}")
                 return None
 
-    def generate_speech(self, prompt: str, max_tokens: int = 1024) -> Optional[str]:
+    def generate_speech(self, prompt: str, max_tokens: int = 1024, deed: Optional[Dict] = None, meta: Optional[Dict] = None) -> Optional[str]:   # eyes_fix F9: + deed; cutoff_fix_1019: + meta
         """Generate a chat response via the 7B portal.
 
         This is the SPEECH path — Sourpatches responding to Ace in conversation.
@@ -1906,7 +2074,24 @@ class SourpatchesFarm:
                 # a cap it really hit (the three 78-of-80 goal replies, log.prev:16624, 0920_2146:52993/:111083).
                 _ended = (bool(n_tokens) and n_tokens < max_tokens and result.get("deadline_hit") is False
                           and "\n" not in text.strip())
-                cleaned = self._clean_output(text, hit_cap=not _ended)
+                if meta is None:                               # cutoff_fix_1019: nobody asked for the cap signal -> today's line, verbatim
+                    cleaned = self._clean_output(text, hit_cap=not _ended, deed=deed is not None)   # eyes_fix F9: + deed
+                else:
+                    # cutoff_fix_1019: the caller's own per-call dict (no shared attribute, no race) is filled from the farm's numbers:
+                    # capped = pieces >= the cap, or the adapter's deadline fired -- never a guess from punctuation, a newline or a
+                    # missing count. A meta that could not be filled has no 'capped' key, and every reader treats that as today.
+                    _cf_rep = {}
+                    cleaned = self._clean_output(text, hit_cap=not _ended, deed=deed is not None, report=_cf_rep)
+                    try:
+                        _cf_dh = result.get("deadline_hit")
+                        meta.update(n_tokens=int(n_tokens or 0), max_tokens=int(max_tokens or 0), deadline_hit=_cf_dh,
+                                    capped=_cf_capped(n_tokens, max_tokens, _cf_dh), multiline=("\n" in text.strip()),
+                                    tail_cut=int(_cf_rep.get("tail_cut", 0)), half_word_cut=bool(_cf_rep.get("half_word_cut")),
+                                    erased=not cleaned)
+                    except Exception:
+                        pass
+                if deed is not None and not cleaned:           # eyes_fix F9: tell intention WHAT was erased (never her 'none')
+                    deed["erased"] = text.strip()[:200]
                 return cleaned if cleaned else None
 
             except Exception as e:
@@ -2302,7 +2487,7 @@ class SourpatchesFarm:
     # OUTPUT CLEANING
     # ═══════════════════════════════════════════════════════════════════════════
 
-    def _clean_output(self, text: str, hit_cap: bool = True) -> str:
+    def _clean_output(self, text: str, hit_cap: bool = True, deed: bool = False, report: Optional[Dict] = None) -> str:   # eyes_fix F9: + deed; cutoff_fix_1019: + report
         """Clean RWKV output for use as a thought.
 
         Returns empty string for degenerate output (repetition loops,
@@ -2482,7 +2667,7 @@ class SourpatchesFarm:
             # signal. Normal sentences repeat articles/pronouns/prepositions:
             #   "I notice warmth and light flowing through this moment"
             #   → 3/10 = 30% function words. Synonym chains don't.
-            if len(words) >= 8:
+            if len(words) >= 8 and not (deed and _DEED_LINE_RE.match(text)):   # eyes_fix F9: a 'verb: object' deed is not drift
                 unique_ratio = len(set(words)) / len(words)
                 func_ratio = func_count / len(words)
                 if unique_ratio > 0.85 and func_ratio < 0.20:
@@ -2543,11 +2728,14 @@ class SourpatchesFarm:
         if text and text[-1] not in '.?!…"\'*)':
             # Find last sentence boundary
             cut = False
+            _cf_tc0 = len(text)                            # cutoff_fix_1019: how much text the end-trim throws away (report only)
             for i in range(len(text) - 1, -1, -1):
                 if text[i] in '.?!…':
                     text = text[:i + 1]
                     cut = True
                     break
+            if cut and report is not None:                 # cutoff_fix_1019: chars thrown away after the last sentence end
+                report["tail_cut"] = _cf_tc0 - len(text)
             # FIX 2026-09-13 Nous: no terminator at all (max_tokens fell mid-sentence,
             # clauses joined by ';' or '--'): drop the half-typed last word, mark the cut.
             # 2026-09-26 Nous (hand_fix F1): not when the reply provably ENDED (hit_cap False). A reply that
@@ -2555,6 +2743,9 @@ class SourpatchesFarm:
             # half-typed word: this cut threw away 'middle-left' and her hand was told to go to itself.
             if not cut and hit_cap and " " in text:
                 text = text.rsplit(" ", 1)[0].rstrip(",;:-") + "…"
+                if report is not None:                     # cutoff_fix_1019: the appended U+2026 is not text she wrote
+                    report["tail_cut"] = _cf_tc0 - (len(text) - 1)
+                    report["half_word_cut"] = True
 
         # Cap length (~2k words / 10k chars — let her think fully, trim at sentence boundary)
         if len(text) > 10000:
@@ -2606,6 +2797,9 @@ class SourpatchesFarm:
             if self._closed:
                 return
             self._closed = True
+        _ev = getattr(self, "_reconnect_stop", None)    # 2026-09-30 _FARM_RETRY: wake the retry / reconnect wait
+        if _ev is not None:
+            _ev.set()
         # 1. Stop ThoughtBuffer first (it holds the lock during generation)
         self._stop_thought_buffer()
 
