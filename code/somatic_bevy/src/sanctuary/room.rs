@@ -23,6 +23,8 @@ use bevy::prelude::*;
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+use super::camera::SanctuaryCamera;
+
 /// Env switch: the room is added only when SANCTUARY_ROOM=1. Unset = OFF.
 pub fn room_enabled() -> bool {
     std::env::var("SANCTUARY_ROOM").unwrap_or_else(|_| "0".to_string()) == "1"
@@ -47,7 +49,7 @@ impl Plugin for RoomPlugin {
             app.insert_resource(MonitorFeed::new(Box::new(TestPattern::new(MONITOR_W, MONITOR_H))));
         }
         app.add_systems(Startup, spawn_room)
-            .add_systems(Update, (move_her_body, update_gaze, update_monitor));
+            .add_systems(Update, (move_her_body, update_gaze, update_monitor, hand_view_to_her_eyes));
     }
 }
 
@@ -328,6 +330,16 @@ fn update_gaze(
     }
 }
 
+/// With the room ON, she sees through her eyes: switch off the island observer camera
+/// so there is one active view (and no wasted render pass).
+fn hand_view_to_her_eyes(mut cams: Query<&mut Camera, (With<SanctuaryCamera>, Without<HerEyes>)>) {
+    for mut cam in cams.iter_mut() {
+        if cam.is_active {
+            cam.is_active = false;
+        }
+    }
+}
+
 /// Pull one frame from the feed into each monitor's image.
 fn update_monitor(
     mut feed: ResMut<MonitorFeed>,
@@ -390,6 +402,17 @@ mod tests {
         assert_eq!(a.len(), (MONITOR_W * MONITOR_H * 4) as usize);
         assert_ne!(a, b, "monitor texture must change between frames");
         assert!(b.iter().any(|&v| v != 0 && v != 255), "frame must contain the test pattern");
+    }
+
+    #[test]
+    fn island_camera_is_deactivated_so_her_eyes_are_the_view() {
+        let mut app = headless_app();
+        let island = app.world_mut().spawn((Camera3d::default(), SanctuaryCamera)).id();
+        app.update();
+        let world = app.world_mut();
+        assert!(!world.get::<Camera>(island).unwrap().is_active, "island camera must be off");
+        let eyes_active = world.query_filtered::<&Camera, With<HerEyes>>().single(world).is_active;
+        assert!(eyes_active, "her eyes must stay active");
     }
 
     #[test]
