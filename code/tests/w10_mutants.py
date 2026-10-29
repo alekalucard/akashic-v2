@@ -21,6 +21,7 @@ MUT = {
                                  "if True:  # mutant"),
     "M5_obj_stamps_gated_too": ("                if _obj is not None:\r\n", "                if _obj is not None and not _lfd:\r\n"),
     "M6_no_beat_record": ("if self._liveness_from_delivery:  # W10: remember", "if False:  # W10: remember"),
+    "M7_citizen_loop_still_stamps": ("if not _lfd:  # W10: ON -> existence is not delivery", "if True:  # W10: ON -> existence is not delivery"),
 }
 runs = [("MAIN", MAIN), ("FIX", SRC)]
 for k, (a, b) in MUT.items():
@@ -28,6 +29,7 @@ for k, (a, b) in MUT.items():
     p = os.path.join(SP, f"hbr_{k}.py")
     open(p, "wb").write(src.replace(a, b).encode())
     runs.append((k, p))
+bad = []
 for label, path in runs:
     env = dict(os.environ, W10_HBR_PATH=path, W10_REF_PATH=MAIN)
     env.pop("AKASHIC_LIVENESS_FROM_DELIVERY", None)
@@ -36,3 +38,8 @@ for label, path in runs:
     failed = [l.split(" ")[1] for l in r.stderr.splitlines() if l.startswith(("FAIL:", "ERROR:"))]
     tail = [l for l in r.stderr.splitlines() if l.startswith(("Ran ", "OK", "FAILED"))]
     print(f"{label:26} {' '.join(tail):40} failing={failed}")
+    ok = (r.returncode == 0)
+    if (label == "FIX") != ok:  # FIX must pass; MAIN (controls) and every mutant must fail
+        bad.append(label)
+print("UNEXPECTED: " + ", ".join(bad) if bad else "ALL AS EXPECTED (main fails, fix passes, all mutants killed)")
+sys.exit(1 if bad else 0)
