@@ -177,8 +177,90 @@ class GateModule(Base):
         os.environ["AKASHIC_COMA_GATE"] = "1"
         f = FakeFairy()
         self.citizens[f.ACTOR_NAME] = f
-        self.assertEqual(self.g.on_boot_request({"fairy_name": "PainDriveFairy"}, log=self.log), "refused:not-listed")
+        self.assertEqual(self.g.on_boot_request({"fairy_name": "PainDriveFairy", "gate": "autonomy"}, log=self.log),
+                         "refused:not-listed")
         self.assertTrue(f._comatose)
+
+    def test_only_her_three_gates_may_open(self):
+        os.environ["AKASHIC_COMA_GATE"] = "1"
+        f = FakeFairy()
+        self.citizens[f.ACTOR_NAME] = f
+        self.write("gate:PainDriveFairy\n")
+        for g in ("k2_fallback", "anybody", "unknown", None):
+            p = {"fairy_name": "PainDriveFairy"}
+            if g is not None:
+                p["gate"] = g
+            self.assertEqual(self.g.on_boot_request(p, log=self.log), "refused:not-a-gate", g)
+        self.assertTrue(f._comatose)
+        self.assertIn("not one of her three gates", self.logs[0])
+        for g in ("autonomy", "autopilot", "embodiment"):
+            self.assertIn(self.g.on_boot_request({"fairy_name": "PainDriveFairy", "gate": g}, log=self.log), ("woke", "awake"))
+        self.assertEqual(f.on_boot_calls, 1)
+
+    def test_owner_line_is_also_open_to_her_gates_and_prefix_is_case_insensitive(self):
+        os.environ["AKASHIC_COMA_GATE"] = "1"
+        a, b = FakeFairy("PainDriveFairy"), FakeFairy("SomaticAvatarFairy")
+        self.citizens.update({a.ACTOR_NAME: a, b.ACTOR_NAME: b})
+        self.write("PainDriveFairy\nGATE: SomaticAvatarFairy\n")
+        self.assertEqual(self.g.on_boot_request({"fairy_name": "PainDriveFairy", "gate": "embodiment"}, log=self.log), "woke")
+        self.assertEqual(self.g.on_boot_request({"fairy_name": "SomaticAvatarFairy", "gate": "embodiment"}, log=self.log), "woke")
+
+    def test_slow_wake_still_once_and_lock_not_held_across_wake(self):
+        os.environ["AKASHIC_COMA_GATE"] = "1"
+        release = threading.Event()
+
+        class Slow(FakeFairy):
+            def wake(inner, reason="explicit"):       # worst case: clears _comatose only AFTER a slow on_boot
+                if not inner._comatose:
+                    return True
+                inner.on_boot()
+                release.wait(5)
+                inner._comatose = False
+                return True
+
+        a, b = Slow("PainDriveFairy"), FakeFairy("SomaticAvatarFairy")
+        self.citizens.update({a.ACTOR_NAME: a, b.ACTOR_NAME: b})
+        self.write("gate:PainDriveFairy\ngate:SomaticAvatarFairy\n")
+        out = []
+        t1 = threading.Thread(target=lambda: out.append(self.g.on_boot_request(
+            {"fairy_name": "PainDriveFairy", "gate": "autonomy"}, log=self.log)))
+        t1.start()
+        for _ in range(200):
+            if a.on_boot_calls:
+                break
+            threading.Event().wait(0.01)
+        r2 = []
+        t2 = threading.Thread(target=lambda: r2.append(self.g.on_boot_request(
+            {"fairy_name": "SomaticAvatarFairy", "gate": "autonomy"}, log=self.log)))
+        t2.start()
+        t2.join(2)
+        self.assertEqual(r2, ["woke"], "another fairy's wake was blocked by a slow on_boot")
+        self.assertEqual(self.g.on_boot_request({"fairy_name": "PainDriveFairy", "gate": "autopilot"}, log=self.log), "waking")
+        release.set()
+        t1.join(5)
+        self.assertEqual(out, ["woke"])
+        self.assertEqual(a.on_boot_calls, 1)
+
+    def test_second_copy_is_not_woken(self):
+        os.environ["AKASHIC_COMA_GATE"] = "1"
+        one, copy = FakeFairy(), FakeFairy()
+        self.citizens["PainDriveFairy"] = one
+        self.write("gate:PainDriveFairy\n")
+        self.assertEqual(self.g.on_boot_request({"fairy_name": "PainDriveFairy", "gate": "autonomy"}, instance=copy,
+                                                log=self.log), "refused:not-the-one")
+        self.assertTrue(copy._comatose)
+        self.assertEqual(self.g.on_boot_request({"fairy_name": "PainDriveFairy", "gate": "autonomy"}, instance=one,
+                                                log=self.log), "woke")
+
+    def test_wake_marks_directory_record_running(self):
+        os.environ["AKASHIC_COMA_GATE"] = "1"
+        f = FakeFairy("SRMIngestFairy")
+        self.citizens[f.ACTOR_NAME] = f
+        rec = types.SimpleNamespace(metadata={"fairy_instance": f}, status="sleeping")
+        directory = types.SimpleNamespace(get_fairy=lambda n: rec if n == "SRMIngestFairy" else None)
+        self.write("gate:SRMIngestFairy\n")
+        self.g.on_boot_request({"fairy_name": "SRMIngestFairy", "gate": "autonomy"}, directory=directory, log=self.log)
+        self.assertEqual(rec.status, "running")
 
     def test_never_builds_an_instance(self):
         os.environ["AKASHIC_COMA_GATE"] = "1"
@@ -285,6 +367,36 @@ class ServerHandler(Base):
         self.assertEqual(f.on_boot_calls, 1)
         self.assertEqual(FakeFairy.built, 1)
         self.assertEqual(self.resolves, 0)
+
+    def test_on_listed_awake_unregistered_instance_is_not_rebuilt(self):
+        self.write("gate:PainDriveFairy\n")
+        h = self.make(gate_on=True)
+        f = FakeFairy("PainDriveFairy", asleep=False)
+        self.citizens["PainDriveFairy"] = f
+        h({"fairy_name": "PainDriveFairy", "gate": "autonomy", "boot_id": "b"})
+        self.assertEqual(FakeFairy.built, 1)
+        self.assertEqual(self.resolves, 0)
+
+    def test_on_listed_wake_error_does_not_rebuild(self):
+        self.write("gate:PainDriveFairy\n")
+        h = self.make(gate_on=True)
+
+        class Bad(FakeFairy):
+            def wake(inner, reason="explicit"):
+                raise RuntimeError("boom")
+
+        f = Bad("PainDriveFairy", asleep=True)
+        self.citizens["PainDriveFairy"] = f
+        h({"fairy_name": "PainDriveFairy", "gate": "autonomy", "boot_id": "b"})
+        self.assertEqual(FakeFairy.built, 1)
+        self.assertEqual(self.resolves, 0)
+
+    def test_on_not_a_gate_falls_through_to_todays_path(self):
+        self.write("gate:PainDriveFairy\n")
+        h = self.make(gate_on=True)
+        h({"fairy_name": "PainDriveFairy", "gate": "k2_fallback", "boot_id": "b"})
+        self.assertEqual(self.resolves, 1)
+        self.assertTrue(self.citizens["PainDriveFairy"]._comatose)
 
     def test_on_not_listed_stays_asleep(self):
         self.write("gate:SomeOtherFairy\n")

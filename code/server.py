@@ -5865,10 +5865,11 @@ def boot_system() -> bool:
             if not fairy_name:
                 return
 
-            # W13 coma gate (ON only): an existing, asleep, listed instance is woken in place; nothing is built.
+            # W13 coma gate (ON only): a listed fairy that already has an instance is never built again; an asleep one
+            # is woken in place. Unlisted / not-a-gate / no instance -> falls through to today's path.
             try:
                 if (_coma_gate is not None and _coma_gate.find_instance(fairy_name, SYSTEM.directory) is not None
-                        and _coma_gate.on_boot_request(payload, directory=SYSTEM.directory) == "woke"):
+                        and _coma_gate.on_boot_request(payload, directory=SYSTEM.directory) in _coma_gate.HANDLED):
                     return
             except Exception:
                 pass
@@ -5968,7 +5969,7 @@ def boot_system() -> bool:
                 # W13 coma gate (ON only): the instance just built went to sleep in boot(); a listed one is woken in place.
                 try:
                     if _coma_gate is not None:
-                        _coma_gate.on_boot_request(payload, instance=instance)
+                        _coma_gate.on_boot_request(payload, directory=SYSTEM.directory, instance=instance)
                 except Exception:
                     pass
 

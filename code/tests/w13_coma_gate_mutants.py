@@ -13,10 +13,20 @@ MUT = [
     ("M6 wake bypassed: on_boot called directly", GATE, 'wake(reason="coma_gate:%s" % source)', 'inst.on_boot()'),
     ("S1 server switch ON when unset", SERVER, 'os.environ.get("AKASHIC_COMA_GATE", "0") == "1"', 'os.environ.get("AKASHIC_COMA_GATE", "1") == "1"'),
     ("S2 server: drop the post-build hook", SERVER,
-     '                    if _coma_gate is not None:\n                        _coma_gate.on_boot_request(payload, instance=instance)\n',
+     '                    if _coma_gate is not None:\n                        _coma_gate.on_boot_request(payload, directory=SYSTEM.directory, instance=instance)\n',
      '                    pass\n'),
     ("S3 server: early hook does not return (falls through)", SERVER,
-     '== "woke"):\n                    return\n', '== "woke"):\n                    pass\n'),
+     'in _coma_gate.HANDLED):\n                    return\n', 'in _coma_gate.HANDLED):\n                    pass\n'),
+    ("S4 server: early hook returns only on woke", SERVER, 'in _coma_gate.HANDLED)', '== "woke")'),
+    ("X1 no per-name claim (_waking)", GATE, '        if name in _waking:\n            return "waking"\n', ''),
+    ("X2 owner names not open to her gates", GATE, '    return owner, gate | owner\n', '    return owner, gate\n'),
+    ("X3 gate: prefix case-sensitive", GATE, 'if line.lower().startswith("gate:"):', 'if line.startswith("gate:"):'),
+    ("X4 any gate value accepted", GATE, '    if gate not in GATES:\n', '    if False:\n'),
+    ("X5 second copy not refused", GATE, 'if instance is not None and the_one is not None and the_one is not instance:',
+     'if False:'),
+    ("X6 directory record not marked running", GATE, '            rec.status = "running"\n', '            pass\n'),
+    ("X7 lock held across wake()", GATE, '        _waking.add(name)\n    try:\n        wake(reason=',
+     '        _waking.add(name)\n        wake(reason="coma_gate:%s" % source)\n    try:\n        (lambda **k: None)(reason='),
 ]
 tmp = tempfile.mkdtemp()
 for label, path, old, new in MUT:
