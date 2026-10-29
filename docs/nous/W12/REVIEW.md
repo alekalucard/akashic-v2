@@ -38,3 +38,22 @@
 Fix suggestions: R2-3: restore after the persister init (round-1 spot) and keep #11 as a safe logged skip, or init the persister before the subscriptions (changes OFF order, so gate it). R2-4: choose the branch by the switch (`os.environ.get(RESTORE,"0")=="1"`), not by the flag, so every ON-mode prune holds the lock.
 
 **Round-2 verdict: REFUTED** — R2-3 can drop restored moments (MAJOR); R2-4 leaves the #12 consolidation race open.
+
+---
+
+# Round 3 — origin/nous/w12-moment-hold @ dea2c2a
+
+| # | finding | severity | evidence |
+|---|---------|----------|----------|
+| R3-1 | Suite 28/28 on branch; main's files: 5 F + 23 E; c61a504's module+fairy: 6 F (incl. the new R2-3 and R2-6 tests, plus 4 wiring controls) | NONE | [M] three runs |
+| R3-2 | OFF path matches main at the AST level: unwrapping `with (lock if _MH_RESTORE_ON else nullcontext())` to its body, and `if _MH_RESTORE_ON:` to its else, makes EVERY MomentBinderFairy method AST-equal to origin/main. nullcontext never suppresses exceptions, so the append/evict lines behave as before; the only additions are 2 module constants (no I/O) | NONE | [M] AST diff script → `[]`; [C] fairy.py:47-48, 696 |
+| R2-4 → closed | A restore landing between the snapshot and the prune (forced via a hooked lock on the 2nd acquire) keeps all 60 tracers; the next cycle remembered 0 and day-stored 0 | NONE | [M] /tmp/w12atk/race3.py running the branch's own `_consolidate_episodic` |
+| R2-3 → closed | Restore is again the last step after the persister init; persister None → "skipped", no marker, hold empty (set left for a later boot) | NONE | [M] atk3.py; [C] moment_hold_save.py:295-298 |
+| R2-6 → closed in-process | 8 binders racing one marker → exactly 1 restored; others "already restored". `_RESTORE_LOCK` is taken before the binder lock and the appender takes only the binder lock → no lock-order inversion | NONE | [M] atk3.py; [C] |
+| R3-3 | #11 is back with the old placement: ticks + subscriptions run during the slow persister init (incl. `from server import SYSTEM`), so the hold is often non-empty at restore → safe logged skip, the set stays unconsumed, and the next boot likely skips the same way. Meets "prefer empty hold, else skip + log", but the feature may rarely or never fire in practice | MINOR | [C] fairy.py on_boot order; [I] |
+| R3-4 | The persister guard only proves the persister EXISTS: `persist()` failures are still swallowed at the eviction site, so a restored moment can roll off unpersisted, exactly like any live moment on main | MINOR | [C] fairy.py ~706-711 |
+| R3-5 | Switch read once at import: `.env` is applied at server.py:1556 (module top), before fairies are spawned → consistent. `restore_into` still re-reads the env; a mismatch can only turn the restore off | NONE | [C]; [I] |
+| R3-6 | Still OPEN as declared: #8 (deleted marker → restore again), cross-process marker race, #10, #14 | MINOR | [M] atk3.py |
+| R3-7 | CR count 0/0/0 | NONE | [M] |
+
+**Round-3 verdict: NOT REFUTED** — no BLOCKER/MAJOR. OFF path AST-identical to main; R2-3, R2-4 and in-process R2-6 verified closed. Remaining: R3-3 (feature may seldom fire), R3-4, declared opens.
