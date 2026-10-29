@@ -2,14 +2,17 @@
   "_doc": [
     "W14 parity table. One row = some subscriptions + ONE publish; counts are deliveries per subscription, in order.",
     "Read by test_w14_no_double.py (Python, measured) and by topic_bus.rs w14_parity_table (Rust, measured).",
-    "rust: TopicBus.subscribe_filtered(base, .., Some(full intent)) + publish_routed(base, letter) -- the path",
-    "      _BaseTopicPostal uses when USING_RUST (tensor_fabric.py subscribe/publish). Same for RETURN_TO_SENDER 0/1.",
+    "rust: TopicBus.subscribe_filtered(base, .., Some(full intent)) + publish_routed(base, letter) -- the TopicBus calls",
+    "      lib.rs PyPostalCore.subscribe/publish forward to when _BaseTopicPostal runs with USING_RUST. lib.rs itself",
+    "      (PyO3) is NOT exercised: no extension build here. Same counts for RETURN_TO_SENDER 0/1.",
     "core: _python_fallback.PostalCore used directly. bridge: tensor_fabric._BaseTopicPostal over that PostalCore",
     "      (the path fairies take in Python mode). Keys are PREFIX_ANY_DEPTH + NO_DOUBLE, e.g. '01' = any-depth off,",
     "      no-double on. Each holds for RETURN_TO_SENDER both 0 and 1 (no row sub is a postal.returned.* mailbox).",
     "STILL DIFFERS from Rust under every switch combo: bridge R14, R15, R16, R19. _BaseTopicPostal.publish delivers to its",
     "      own exact-intent + base-wildcard handlers when it has ANY and then never calls PostalCore.publish, so 2-level and",
     "      prefix subscribers of that letter get 0 (Rust: 1). NO_DOUBLE only helps letters that fall through to PostalCore.",
+    "DIFFERS ONLY UNDER SOME COMBOS: R05, R06, R15(core), R16(core), R17, R18 while NO_DOUBLE=0 (the 2-level key is added",
+    "      twice); R08, R09, R10, R21, and R14/R19 in core, while PREFIX_ANY_DEPTH=0 (Python only looks up depth 1 and 2).",
     "NOT MODELLED: the pool_router fast path for CRITICAL_VOLUME topics (exact-topic lookup, attached at runtime)."
   ],
   "rows": [

@@ -664,8 +664,9 @@ mod tests {
     }
 
     // ── W14 parity table (shared with python/tests_nous/test_w14_no_double.py) ─────────────
-    /// For every row of w14_parity_table.json: subscribe exactly as _BaseTopicPostal does when USING_RUST
-    /// (pool = base topic, filter = full intent; tensor_fabric.py subscribe/publish), publish the row's letter
+    /// For every row of w14_parity_table.json: make the TopicBus calls that lib.rs PyPostalCore.subscribe/publish
+    /// forward to when _BaseTopicPostal runs with USING_RUST (pool = base topic, filter = full intent; lib.rs itself
+    /// is not exercised here), publish the row's letter
     /// routed into its base pool, count REAL handler invocations per subscription, and assert the table's
     /// "rust" column. Runs with return_to_sender off and on. Prints the measured table:
     ///     cargo test w14_parity_table -- --nocapture

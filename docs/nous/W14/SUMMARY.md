@@ -63,7 +63,7 @@ Branch `nous/w14-no-double` (based on `origin/nous/w2-return-to-sender`). Tags: 
 ## Could NOT verify
 - Her live tree, logs or real subscriber set: how many real fairies sit on a 2-level key with 3+ segment traffic is unknown [I].
 - The pool_router fast path (critical topics) and any PostalFarm effect: not exercised (no router attached in tests).
-- The compiled Rust extension through PyO3 (no maturin build here): Rust is tested at TopicBus level, not from Python.
+- The compiled Rust extension through PyO3 (no maturin build here): Rust is tested at TopicBus level, not through `lib.rs`. A broken `lib.rs:147` (intent -> None) or `:175` (pool ignored) would pass every suite (REVIEW round 2). OPEN.
 - Whether any real handler relies on getting two copies (e.g. counters or idempotency assumptions): not checked [I].
 
 ## CHECK THESE 3
@@ -72,4 +72,24 @@ Branch `nous/w14-no-double` (based on `origin/nous/w2-return-to-sender`). Tags: 
 3. The bridge short-circuit is why R14/R15/R16/R19 still differ from Rust: `tensor_fabric.py:375-387` vs `topic_bus.rs:110-115`.
 
 ## REVIEW
-(pending)
+Fresh reviewer sessions (claude-code-remote create_session), given only the task and the diff from origin/nous/w2-return-to-sender to this branch, told to refute.
+Round 1 (session_01WZwX7nbSkDo3VS3M4o9sTK) found: mutants X4 (ON drops base subs at 5+ segments), X5 (new line written LF),
+X6 (extra metrics key OFF), X7 (prefix-any-depth capped at 4) all passed the suite; the "why rows differ" was not written in the
+table. FIXED: rows R20/R21, `test_line_endings_kept`, OFF metrics compared with the original, mutants M7-M10 (all now FAIL), `_doc` text.
+Round 2 (session_01WZwX7k4cYehgwhWTfbU7TX), final verdict table:
+
+| # | check | verdict | evidence |
+|---|---|---|---|
+| 1a | `run_w14_matrix.py` | HOLDS | controls FAIL (5+1, 6+1), FIX PASS 8/8, M1-M10 FAIL |
+| 1b | `run_w2_matrix.py` (byte-identical-when-off vs origin/main) | HOLDS | control FAIL (18), FIX PASS 21/21, 12 mutants FAIL |
+| 1c | `cargo test --lib` | HOLDS | 31 pass, 2 fail (both pre-existing on main); `w14_parity_table` ok |
+| 1d | suite with W14_FALLBACK = origin/main, = w2 base | HOLDS | main 5F+2E, w2 5F+1E |
+| 2 | switch default | HOLDS | `_python_fallback.py:843`; unset, "", "0", " 1", "1 ", "true", "yes", "on", "2" all OFF |
+| 3 | other copies of the lookup | HOLDS | only `_python_fallback.py:1106,1116`; bridge lookup picks pools only; pool_router exact-topic |
+| 4 | behaviour change with switch OFF | HOLDS | enqueue set/count/order + `_metrics` equal to w2 base for RTS x PAD; CRLF kept |
+| 5a | table `_doc` on rows that differ | HOLDS | every cell re-measured; asked to also name partial-combo rows -> FIXED (`_doc` lines added) |
+| 5b | Rust test measures the USING_RUST path | OPEN | TopicBus calls match `lib.rs:123-176`, but nothing goes through `lib.rs` itself; wording softened in `_doc` and `topic_bus.rs` doc comment |
+| 6 | own mutants | OPEN (lib.rs only) | caught: `wants` without '.', switch read per publish, NO_DOUBLE skipping high-volume topics; NOT caught: `lib.rs:147` None, `lib.rs:175` pool ignored; NO_DOUBLE only-when-parent-has-subs is behaviour-equivalent |
+
+OPEN after review: (1) no PyO3-level test (needs a maturin build); (2) bridge short-circuit rows R14/R15/R16/R19 (out of W14 scope);
+(3) pool_router fast path not modelled. Round 2 was not re-run after the wording-only fix of 5a/5b.
