@@ -141,7 +141,7 @@ def measure(mod, mode, rts, pad, nd, rows=TABLE):
         pc.shutdown()
 
 
-def enqueue_log(mod, **env):
+def enqueue_log(mod, with_metrics=False, **env):
     """Every (publish index, pool, handler_id) enqueue for the table in core mode, in order."""
     seq = []
     cls = mod._WorkerPool
@@ -162,9 +162,12 @@ def enqueue_log(mod, **env):
         for r in TABLE:
             cur[0] = r["id"]
             pc.publish(r["pub"], {"row": r["id"]})
+        metrics = dict(pc._metrics)                               # counted synchronously in publish()
     finally:
         cls.enqueue_no_signal = real
         pc.shutdown()
+    if with_metrics:
+        return seq, metrics
     return seq
 
 
@@ -209,9 +212,16 @@ class TestSwitchOff(unittest.TestCase):
         orig = load(orig_path, "w14_fallback_original")
         for rts, pad in itertools.product((0, 1), repeat=2):
             env = combo_env(rts, pad, 0)
-            a, b = enqueue_log(orig, **env), enqueue_log(FB, **env)
+            (a, ma), (b, mb) = enqueue_log(orig, True, **env), enqueue_log(FB, True, **env)
             self.assertTrue(a)
             self.assertEqual(a, b, env)
+            self.assertEqual(ma, mb, env)                         # same metric keys and counts (REVIEW X6)
+
+    def test_line_endings_kept(self):
+        """REVIEW X5: the file is CRLF on every line; an edit must not introduce a bare LF."""
+        with open(os.environ.get("W14_FALLBACK", DEFAULT_FALLBACK), "rb") as f:
+            src = f.read()
+        self.assertEqual(src.count(b"\r\n"), src.count(b"\n"))
 
     def test_on_removes_only_the_repeat(self):
         """NO_DOUBLE=1 = the OFF sequence with each repeated (pool, handler) of one publish dropped, order kept."""

@@ -35,6 +35,22 @@ MUTANTS = {
                                        "                if False:\n"),
     "M6 condition inverted": ("                if len(parts) >= 2 and not self._no_double:\n",
                               "                if len(parts) >= 2 and self._no_double:\n"),
+    # added after the REVIEW (X4-X7 there): each passed the first version of the suite
+    "M7 ON drops base subs for 5+ segments": (
+        "                subs.extend(self._subscribers.get(topic, []))\n",
+        "                if not (self._no_double and len(parts) >= 5):\n"
+        "                    subs.extend(self._subscribers.get(topic, []))\n"),
+    "M8 new line written with LF": "RAW",
+    "M9 extra metrics key on the OFF path": (
+        '        self._no_double = os.environ.get("AKASHIC_POSTAL_NO_DOUBLE", "0") == "1"\n',
+        '        self._no_double = os.environ.get("AKASHIC_POSTAL_NO_DOUBLE", "0") == "1"\n'
+        '        self._metrics["w14_no_double"] = 0\n'),
+    "M10 prefix-any-depth stops at depth 4": ("for _k in range(3, len(parts)):",
+                                              "for _k in range(3, min(len(parts), 5)):"),
+}
+RAW = {
+    "M8 new line written with LF": (b'        self._no_double = os.environ.get("AKASHIC_POSTAL_NO_DOUBLE", "0") == "1"\r\n',
+                                    b'        self._no_double = os.environ.get("AKASHIC_POSTAL_NO_DOUBLE", "0") == "1"\n'),
 }
 
 
@@ -82,7 +98,13 @@ def main():
             ("FIX", FIX, True)]
     for name, pairs in MUTANTS.items():
         mp = os.path.join(tmp, re.sub(r"\W+", "_", name) + ".py")
-        open(mp, "wb").write(mutate(fix_src, pairs, name))
+        if pairs == "RAW":                                        # byte-level, no line-ending conversion
+            o, n = RAW[name]
+            assert fix_src.count(o) == 1, name
+            out = fix_src.replace(o, n)
+        else:
+            out = mutate(fix_src, pairs, name)
+        open(mp, "wb").write(out)
         rows.append((name, mp, False))
     ok_all = True
     for name, path, want_pass in rows:

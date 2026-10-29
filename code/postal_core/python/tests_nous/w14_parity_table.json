@@ -6,7 +6,11 @@
     "      _BaseTopicPostal uses when USING_RUST (tensor_fabric.py subscribe/publish). Same for RETURN_TO_SENDER 0/1.",
     "core: _python_fallback.PostalCore used directly. bridge: tensor_fabric._BaseTopicPostal over that PostalCore",
     "      (the path fairies take in Python mode). Keys are PREFIX_ANY_DEPTH + NO_DOUBLE, e.g. '01' = any-depth off,",
-    "      no-double on. Each holds for RETURN_TO_SENDER both 0 and 1 (no row sub is a postal.returned.* mailbox)."
+    "      no-double on. Each holds for RETURN_TO_SENDER both 0 and 1 (no row sub is a postal.returned.* mailbox).",
+    "STILL DIFFERS from Rust under every switch combo: bridge R14, R15, R16, R19. _BaseTopicPostal.publish delivers to its",
+    "      own exact-intent + base-wildcard handlers when it has ANY and then never calls PostalCore.publish, so 2-level and",
+    "      prefix subscribers of that letter get 0 (Rust: 1). NO_DOUBLE only helps letters that fall through to PostalCore.",
+    "NOT MODELLED: the pool_router fast path for CRITICAL_VOLUME topics (exact-topic lookup, attached at runtime)."
   ],
   "rows": [
     {"id": "R01", "subs": ["r01"], "pub": "r01", "rust": [1],
@@ -65,6 +69,12 @@
      "bridge": {"00": [2], "10": [2], "01": [1], "11": [1]}},
     {"id": "R19", "subs": ["r19.b.c", "r19.b.c.d"], "pub": "r19.b.c.d", "rust": [1, 1],
      "core":   {"00": [0, 1], "10": [1, 1], "01": [0, 1], "11": [1, 1]},
-     "bridge": {"00": [0, 1], "10": [0, 1], "01": [0, 1], "11": [0, 1]}}
+     "bridge": {"00": [0, 1], "10": [0, 1], "01": [0, 1], "11": [0, 1]}},
+    {"id": "R20", "subs": ["r20"], "pub": "r20.a.b.c.d", "rust": [1],
+     "core":   {"00": [1], "10": [1], "01": [1], "11": [1]},
+     "bridge": {"00": [1], "10": [1], "01": [1], "11": [1]}},
+    {"id": "R21", "subs": ["r21.a.b.c.d"], "pub": "r21.a.b.c.d.e.f", "rust": [1],
+     "core":   {"00": [0], "10": [1], "01": [0], "11": [1]},
+     "bridge": {"00": [0], "10": [1], "01": [0], "11": [1]}}
   ]
 }
