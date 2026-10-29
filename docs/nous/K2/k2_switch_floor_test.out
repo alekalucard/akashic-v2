@@ -1,0 +1,83 @@
+== switch parse ==
+absent               -> []
+empty                -> []
+on_true              -> ['AssociationCortexFairy']
+on_true_BOM          -> []
+on_string_true       -> []
+on_1                 -> []
+on_false             -> []
+list                 -> []
+trailing_garbage     -> []
+utf16                -> []
+names_ok             -> ['AssociationCortexFairy']
+names_other          -> []
+names_str            -> []
+names_empty          -> []
+dup_key_last_true    -> ['AssociationCortexFairy']
+true_caps            -> []
+path_is_dir          -> []
+SWITCH_FILE = /home/user/akashic-v2/.claude/worktrees/agent-acb113ccd04b7a573/code/state/k2_serial_owned.json
+
+== floor scenarios (ON) ==
+-- cascade before serial start
+   results: [False, None]
+   published: []
+   stats: {'owned': ['AssociationCortexFairy'], 'started': ['AssociationCortexFairy'], 'succeeded': [], 'skipped': {}, 'fallback_sent': []}
+   log: [K2] AssociationCortexFairy cascade request before serial start: not skipped (today's path)
+-- start, skip, success
+   results: [None, True, True]
+   published: []
+   stats: {'owned': ['AssociationCortexFairy'], 'started': ['AssociationCortexFairy'], 'succeeded': ['AssociationCortexFairy'], 'skipped': {'AssociationCortexFairy': 1}, 'fallback_sent': []}
+   log: [K2] AssociationCortexFairy owned by serial boot (started), cascade copy skipped
+   log: [K2] AssociationCortexFairy serial boot done: directory record stamped running, status only (one cortex; no instance, so the shutdown route is today's)
+-- start, skip, FAIL -> fallback; fallback not skipped; second fail no 2nd fallback
+   results: [None, True, True, True, False, False, False]
+   published: [('boot.fairy.request', {'fairy_name': 'AssociationCortexFairy', 'gate': 'k2_fallback', 'boot_id': 'k2_fallback', 'k2_fallback': True})]
+   stats: {'owned': ['AssociationCortexFairy'], 'started': [], 'succeeded': [], 'skipped': {'AssociationCortexFairy': 1}, 'fallback_sent': ['AssociationCortexFairy']}
+   log: [K2] AssociationCortexFairy owned by serial boot (started), cascade copy skipped
+   log: [K2] AssociationCortexFairy serial boot FAILED after a skip: the cascade was asked again once (floor)
+   log: [K2] AssociationCortexFairy cascade request before serial start: not skipped (today's path)
+   log: [K2] AssociationCortexFairy serial boot FAILED; no cascade request was skipped, nothing to re-ask
+-- start, FAIL before any skip -> no fallback; later cascade not skipped
+   results: [None, False, False]
+   published: []
+   stats: {'owned': ['AssociationCortexFairy'], 'started': [], 'succeeded': [], 'skipped': {}, 'fallback_sent': []}
+   log: [K2] AssociationCortexFairy serial boot FAILED; no cascade request was skipped, nothing to re-ask
+   log: [K2] AssociationCortexFairy cascade request before serial start: not skipped (today's path)
+-- start, skip, success then serial_failed (raise after register)
+   results: [None, True, True, False]
+   published: []
+   stats: {'owned': ['AssociationCortexFairy'], 'started': ['AssociationCortexFairy'], 'succeeded': ['AssociationCortexFairy'], 'skipped': {'AssociationCortexFairy': 1}, 'fallback_sent': []}
+   log: [K2] AssociationCortexFairy owned by serial boot (started), cascade copy skipped
+   log: [K2] AssociationCortexFairy serial boot done: directory record stamped running, status only (one cortex; no instance, so the shutdown route is today's)
+   log: [K2] AssociationCortexFairy serial block raised after the cortex was registered; nothing to re-ask
+-- start, skip, boot()->False
+   results: [None, True, True]
+   published: [('boot.fairy.request', {'fairy_name': 'AssociationCortexFairy', 'gate': 'k2_fallback', 'boot_id': 'k2_fallback', 'k2_fallback': True})]
+   stats: {'owned': ['AssociationCortexFairy'], 'started': [], 'succeeded': [], 'skipped': {'AssociationCortexFairy': 1}, 'fallback_sent': ['AssociationCortexFairy']}
+   log: [K2] AssociationCortexFairy owned by serial boot (started), cascade copy skipped
+   log: [K2] AssociationCortexFairy serial boot done: directory record stamped running, status only (one cortex; no instance, so the shutdown route is today's)
+   log: [K2] AssociationCortexFairy serial boot returned False from boot() (an explicit False; her template re-raises instead) after a skip: the cascade was asked again once (floor)
+-- start, skip, success with coma-style boot()->True, no record
+   results: [None, True, False]
+   published: []
+   stats: {'owned': ['AssociationCortexFairy'], 'started': ['AssociationCortexFairy'], 'succeeded': ['AssociationCortexFairy'], 'skipped': {'AssociationCortexFairy': 1}, 'fallback_sent': []}
+   log: [K2] AssociationCortexFairy owned by serial boot (started), cascade copy skipped
+   log: [K2] AssociationCortexFairy serial boot done; no directory record to stamp (GoBoot boots only records it finds)
+-- forged fallback payload before any fallback was sent
+   results: [None, False, True]
+   published: []
+   stats: {'owned': ['AssociationCortexFairy'], 'started': ['AssociationCortexFairy'], 'succeeded': [], 'skipped': {'AssociationCortexFairy': 1}, 'fallback_sent': []}
+   log: [K2] AssociationCortexFairy owned by serial boot (started), cascade copy skipped
+-- publish raises
+   results: [None, True, False]
+   published: []
+   stats: {'owned': ['AssociationCortexFairy'], 'started': [], 'succeeded': [], 'skipped': {'AssociationCortexFairy': 1}, 'fallback_sent': ['AssociationCortexFairy']}
+   log: [K2] AssociationCortexFairy owned by serial boot (started), cascade copy skipped
+   log: [K2] AssociationCortexFairy fallback re-request failed (ZeroDivisionError)
+
+== OFF (no file) ==
+describe: OFF (state/k2_serial_owned.json absent or not {"on": true}: today's behaviour) | skip: False | fallback: False | stats: {'owned': [], 'started': [], 'succeeded': [], 'skipped': {}, 'fallback_sent': []}
+
+== read-once: file appears after first read ==
+before: [] after file written: []
