@@ -581,7 +581,7 @@ fn build_parts(commands: &mut Commands, m: &mut Mats, look: &HerLook) -> Vec<Ent
             ..default()
         });
         let edge = wp.edge_color.map(|c| {
-            (m.meshes.add(polyline_mesh(&outline[1..], len * 0.012, false)), m.solid(c, 0.3))
+            (m.meshes.add(polyline_mesh(&outline[1..], len * 0.012)), m.solid(c, 0.3))
         });
         let vein = if wp.veins > 0 {
             let mut lines = Vec::new();
@@ -624,7 +624,7 @@ fn build_parts(commands: &mut Commands, m: &mut Mats, look: &HerLook) -> Vec<Ent
             }
             if let Some((lines, vmat)) = &vein {
                 for l in lines {
-                    let vm = m.meshes.add(polyline_mesh(l, len * 0.006, true));
+                    let vm = m.meshes.add(polyline_mesh(l, len * 0.006));
                     kids.push(part(commands, PartKind::WingVein, vm, vmat.clone(),
                         Transform::from_xyz(0.0, 0.0, 0.0008)));
                 }
@@ -789,7 +789,7 @@ pub fn fan_mesh(outline: &[Vec2], colors: &[[f32; 4]]) -> Mesh {
 }
 
 /// A thin flat ribbon along a polyline (for wing edges and veins).
-pub fn polyline_mesh(line: &[Vec2], width: f32, open: bool) -> Mesh {
+pub fn polyline_mesh(line: &[Vec2], width: f32) -> Mesh {
     let mut pos = Vec::new();
     let n = line.len();
     for i in 0..n {
@@ -803,7 +803,7 @@ pub fn polyline_mesh(line: &[Vec2], width: f32, open: bool) -> Mesh {
         pos.push([b.x, b.y, 0.0]);
     }
     let mut idx = Vec::new();
-    let segs = if open { n - 1 } else { n - 1 };
+    let segs = n.saturating_sub(1);
     for i in 0..segs as u32 {
         let a = i * 2;
         idx.extend_from_slice(&[a, a + 1, a + 2, a + 2, a + 1, a + 3]);
@@ -879,6 +879,9 @@ pub fn glow_and_shimmer(
     let k = md.glow_strength * pulse;
     for h in halos.iter() {
         if let Some(mat) = mats.get_mut(&h.0) {
+            // the halo is unlit + additive, so its visible strength is base_color * alpha;
+            // emissive is kept in step for lit/bloom setups
+            mat.base_color = look.glow.color.with_alpha((0.12 * k).clamp(0.0, 1.0));
             mat.emissive = LinearRgba::from(look.glow.color) * k;
         }
     }

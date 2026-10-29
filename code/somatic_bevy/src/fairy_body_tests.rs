@@ -110,8 +110,10 @@ fn changing_the_look_rebuilds_without_duplicates() {
 fn halo_emissive(app: &mut App) -> f32 {
     let mut q = app.world_mut().query_filtered::<&MeshMaterial3d<StandardMaterial>, With<GlowHalo>>();
     let h = q.iter(app.world()).next().unwrap().0.clone();
-    let e = app.world().resource::<Assets<StandardMaterial>>().get(&h).unwrap().emissive;
-    e.red + e.green + e.blue
+    let m = app.world().resource::<Assets<StandardMaterial>>().get(&h).unwrap();
+    let e = m.emissive;
+    // unlit additive halo: what shows is base colour x alpha, so both must follow the input
+    (e.red + e.green + e.blue) * m.base_color.alpha()
 }
 
 #[test]
