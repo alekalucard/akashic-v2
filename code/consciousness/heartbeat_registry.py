@@ -314,7 +314,10 @@ class HeartbeatRegistry:
         _lfd = os.environ.get("AKASHIC_LIVENESS_FROM_DELIVERY", "0") == "1"
         self._liveness_from_delivery = _lfd
         if _lfd:
-            self._liveness_beat = pulse_data.get("beat", self._total_pulses)
+            try:  # never let the watch-only path raise before the stamps below
+                self._liveness_beat = pulse_data.get("beat", self._total_pulses)
+            except Exception:
+                pass
 
         # Snapshot callbacks under lock (fast -- just dict copy)
         with self._lock:

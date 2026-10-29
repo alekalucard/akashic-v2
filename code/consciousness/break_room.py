@@ -28,6 +28,13 @@ import sys
 from typing import Any, Dict, List, Optional
 
 
+def _int(v) -> int:
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def snapshot(registry, citizens: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Copy (read-only) what the break-room report needs out of a HeartbeatRegistry."""
     if citizens is None:
@@ -48,7 +55,7 @@ def snapshot(registry, citizens: Optional[Dict[str, Any]] = None) -> Dict[str, A
         cb_names = list(registry._callbacks.keys())
     return {
         "liveness_from_delivery": bool(getattr(registry, "_liveness_from_delivery", False)),
-        "beat": int(getattr(registry, "_liveness_beat", 0) or 0),
+        "beat": _int(getattr(registry, "_liveness_beat", 0)),
         "callbacks": cb_names,
         "planes": planes,
         "citizens": cit_planes,
@@ -74,7 +81,7 @@ def break_room(source, n_beats: int = 10, citizens: Optional[Dict[str, Any]] = N
     """
     snap = source if isinstance(source, dict) else snapshot(source, citizens)
     on = bool(snap.get("liveness_from_delivery"))
-    beat = int(snap.get("beat", 0) or 0)
+    beat = _int(snap.get("beat", 0))
     cbs = set(snap.get("callbacks", []))
     cit = dict(snap.get("citizens", {}))
     planes = dict(snap.get("planes", {}))
@@ -91,6 +98,10 @@ def break_room(source, n_beats: int = 10, citizens: Optional[Dict[str, Any]] = N
         if not on:
             continue  # no delivery data collected while the switch is off
         lb = last.get(name)
+        try:
+            lb = None if lb is None else int(lb)
+        except (TypeError, ValueError):
+            lb = None  # unusable beat value -> treated as never delivered
         if lb is None:
             why = "never delivered"
         elif beat - int(lb) > n_beats:
