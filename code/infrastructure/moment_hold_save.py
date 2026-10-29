@@ -294,6 +294,7 @@ def restore_into(binder, seed_path: str, marker_path: str) -> str:
             done = getattr(binder, "_consolidated_tracers", None)
             if isinstance(done, set):
                 done.update(m.get("tracer") for m in moments)
+            binder._mh_restored = True   # tells _consolidate_episodic to prune under the lock (fairy.py)
         return "restored %d moment(s) (set %s)" % (len(moments), sid[:12])
     except Exception as e:
         return "error: %s: %s" % (type(e).__name__, str(e)[:160])

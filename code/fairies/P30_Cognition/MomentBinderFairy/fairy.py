@@ -180,6 +180,18 @@ class MomentBinderFairy(Fairy):
             super().on_boot()
         except Exception as e:
             print(f"[{self.ACTOR_NAME}] super().on_boot error: {e}", flush=True)
+        # W12 MOMENT HOLD RESTORE (2026-10-29, Nous) -- OFF unless AKASHIC_MOMENT_HOLD_RESTORE=1. Put the moments the last
+        # shutdown saved (dream_seed.json mind_pools["moment_hold"]) back into this EMPTY hold, as saved, once per set. Runs BEFORE the subscriptions below: with no strand
+        # yet, _maybe_emit_moment binds nothing (active_channels < 1), so the hold is still empty here.
+        import os as _mh_os
+        if _mh_os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1":
+            try:
+                from infrastructure.moment_hold_save import restore_into as _mh_restore
+                _mh_r = _mh_restore(self, str(ROOT / "state" / "dream_seed.json"),
+                                    str(ROOT / "state" / "moment_hold_restored.json"))
+                print(f"[{self.ACTOR_NAME}] moment hold restore: {_mh_r}", flush=True)
+            except Exception as _mh_e:
+                print(f"[{self.ACTOR_NAME}] moment hold restore FAILED: {_mh_e}", flush=True)
         try:
             self.post.subscribe("somatic.organs", self._on_somatic)
             self.post.subscribe("sensory.visual.frame", self._on_visual)
@@ -246,17 +258,6 @@ class MomentBinderFairy(Fairy):
         except Exception as e:
             self._epi_persister = None
             print(f"[{self.ACTOR_NAME}] linear-persist init skipped: {e}", flush=True)
-        # W12 MOMENT HOLD RESTORE (2026-10-29, Nous) -- OFF unless AKASHIC_MOMENT_HOLD_RESTORE=1. Put the moments the last
-        # shutdown saved (dream_seed.json mind_pools["moment_hold"]) back into this EMPTY hold, as saved, once per set.
-        import os as _mh_os
-        if _mh_os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1":
-            try:
-                from infrastructure.moment_hold_save import restore_into as _mh_restore
-                _mh_r = _mh_restore(self, str(ROOT / "state" / "dream_seed.json"),
-                                    str(ROOT / "state" / "moment_hold_restored.json"))
-                print(f"[{self.ACTOR_NAME}] moment hold restore: {_mh_r}", flush=True)
-            except Exception as _mh_e:
-                print(f"[{self.ACTOR_NAME}] moment hold restore FAILED: {_mh_e}", flush=True)
         return True
 
     def on_die(self):
@@ -771,7 +772,13 @@ class MomentBinderFairy(Fairy):
             window = [m for m in self._episodic_buffer
                       if m.get("tracer") not in self._consolidated_tracers]
         # Prune dedup to tracers still in the rolling buffer (bounds it ≤ buffer size)
-        self._consolidated_tracers &= _live
+        if getattr(self, "_mh_restored", False):
+            # W12b (set only by a moment-hold restore, AKASHIC_MOMENT_HOLD_RESTORE=1): prune under the lock against the
+            # CURRENT hold, so a restore landing between the snapshot above and this line keeps its tracers reviewed.
+            with self._moment_lock:
+                self._consolidated_tracers &= {m.get("tracer") for m in self._episodic_buffer}
+        else:
+            self._consolidated_tracers &= _live
         if not window:
             return
         ranked = sorted(window, key=lambda m: -m.get("significance", 0.0))

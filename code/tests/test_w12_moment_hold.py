@@ -324,6 +324,7 @@ class TestRestore(Base):
         self.assertEqual(list(b._episodic_buffer), self.moments)      # every field, oldest-first, nothing merged/dropped
         self.assertEqual(b._episodic_buffer.maxlen, 60)                # same hold structure, same cap
         self.assertEqual(b._consolidated_tracers, {m["tracer"] for m in self.moments})   # rememberer skips them
+        self.assertIs(b._mh_restored, True)
         self.assertEqual(self.seed_bytes(), self.seed_before)          # the seed is never written
         # crash-restart: a second boot with a fresh, empty hold must NOT restore the same set again
         b2 = self.fresh()
@@ -391,7 +392,21 @@ class TestRestore(Base):
 
 class TestFairyWiring(unittest.TestCase):
     """CONTROL (static, no import): MomentBinderFairy.on_boot calls restore_into, gated on
-    os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1", as the last step before `return True`."""
+    os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1", before it subscribes to any strand."""
+
+    def test_prune_under_lock_only_after_restore(self):
+        with open(FAIRY_PATH, "r", encoding="utf-8") as f:
+            src = f.read()
+        tree = ast.parse(src)
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MomentBinderFairy")
+        fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "_consolidate_episodic")
+        ifs = [n for n in fn.body if isinstance(n, ast.If) and "_mh_restored" in ast.unparse(n.test)]
+        self.assertEqual(len(ifs), 1)
+        on, off = ifs[0].body, ifs[0].orelse
+        self.assertEqual([ast.unparse(x) for x in off], ["self._consolidated_tracers &= _live"])   # OFF: as on main
+        self.assertIsInstance(on[0], ast.With)
+        self.assertEqual(ast.unparse(on[0].items[0].context_expr), "self._moment_lock")
+        self.assertIn("self._episodic_buffer", ast.unparse(on[0]))
 
     def test_control_on_boot_calls_restore(self):
         with open(FAIRY_PATH, "r", encoding="utf-8") as f:
@@ -399,9 +414,10 @@ class TestFairyWiring(unittest.TestCase):
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MomentBinderFairy")
         fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "on_boot")
         body = fn.body
-        self.assertIsInstance(body[-1], ast.Return)
-        gate = body[-2]
-        self.assertIsInstance(gate, ast.If, "no gated block before on_boot's return")
+        # right after super().on_boot() (body[0]) and its import, BEFORE the subscriptions (no strand -> empty hold)
+        gate = body[2]
+        self.assertIsInstance(gate, ast.If, "no gated restore block right after super().on_boot()")
+        self.assertIn("subscribe", ast.unparse(body[3]))
         t = gate.test
         self.assertIsInstance(t.ops[0], ast.Eq)
         self.assertEqual(t.comparators[0].value, "1")
