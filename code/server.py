@@ -5641,6 +5641,15 @@ def boot_system() -> bool:
             _one_cortex = None
             print("[Server] [K2] serial-owned: OFF (module unavailable: %s)" % type(_k2_imp_err).__name__)
 
+        # -- W13 coma gate (2026-10-29 Nous): infrastructure/coma_gate.py. Switch AKASHIC_COMA_GATE=1; unset/other = None =
+        # today's behaviour exactly. ON: a listed fairy's ONE existing instance is woken in place (its own wake()), never rebuilt.
+        _coma_gate = None
+        try:
+            if os.environ.get("AKASHIC_COMA_GATE", "0") == "1":
+                from infrastructure import coma_gate as _coma_gate
+        except Exception:
+            _coma_gate = None
+
         # ═══════════════════════════════════════════════════════════════════
         # WAKE CASCADE: Trigger organic boot alongside BootOrchestrator
         # The cascade lets gates boot their domain fairies in priority order.
@@ -5856,6 +5865,14 @@ def boot_system() -> bool:
             if not fairy_name:
                 return
 
+            # W13 coma gate (ON only): an existing, asleep, listed instance is woken in place; nothing is built.
+            try:
+                if (_coma_gate is not None and _coma_gate.find_instance(fairy_name, SYSTEM.directory) is not None
+                        and _coma_gate.on_boot_request(payload, directory=SYSTEM.directory) == "woke"):
+                    return
+            except Exception:
+                pass
+
             import time
             start = time.time()
 
@@ -5948,6 +5965,13 @@ def boot_system() -> bool:
                 elif hasattr(instance, 'on_boot'):
                     instance.on_boot()
 
+                # W13 coma gate (ON only): the instance just built went to sleep in boot(); a listed one is woken in place.
+                try:
+                    if _coma_gate is not None:
+                        _coma_gate.on_boot_request(payload, instance=instance)
+                except Exception:
+                    pass
+
                 elapsed = (time.time() - start) * 1000
                 registered_fairies.append(fairy_name)
 
@@ -6003,6 +6027,12 @@ def boot_system() -> bool:
         if SYSTEM.fabric:
             SYSTEM.fabric.subscribe("boot.fairy.request", _handle_fairy_boot_request)
             print("[Server]   - boot.fairy.request handler: WIRED")
+            # W13 coma gate (ON only): the owner's path -- re-read the allow-list file and wake owner-listed fairies.
+            try:
+                if _coma_gate is not None:
+                    _coma_gate.start_owner_watch(directory=SYSTEM.directory)
+            except Exception:
+                pass
 
         # P00: DreamSeedFairy (BOOTSTRAP spark - provides initial thoughts on wake)
         # MUST boot BEFORE ConsciousnessLoopFairy so dream seeds are loaded first
