@@ -11,7 +11,7 @@ This module hands the HOLD, AS IT IS, to the dream seed that shutdown_system() h
 right after that write, on every shutdown path (HTTP route, reboot, Ctrl+C).
 
 - Content: each moment dict is carried unchanged (a JSON round trip of the same dict; a value JSON cannot
-  carry exactly makes the hand-off refuse, it is never coerced).
+  carry exactly is left out and counted as "refused" -- never coerced).
 - Bound: at most MAX_MOMENTS moments and MAX_BYTES bytes of moments. If the bound forces a drop, the
   moments with the LOWEST "significance" go first -- the score the binder already computes
   (MomentBinderFairy._score_significance, stored on each moment as "significance"). Equal scores are
@@ -88,7 +88,7 @@ def select(moments: List[Dict[str, Any]], max_n: int = MAX_MOMENTS, max_bytes: i
     while len(idx) - len(removed) > max_n:
         removed.add(removal[r])
         r += 1
-    sizes = {i: len(json.dumps(moments[i])) for i in idx}
+    sizes = {i: len(json.dumps(moments[i], indent=2)) for i in idx}   # as written (indent=2)
     total = sum(sizes[i] for i in idx if i not in removed)
     while total > max_bytes and r < len(removal):
         i = removal[r]
@@ -114,6 +114,14 @@ def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
+        try:                                   # make the rename itself durable (POSIX; no-op elsewhere)
+            dfd = os.open(d, os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        except OSError:
+            pass
     except BaseException:
         try:
             os.unlink(tmp)
@@ -129,7 +137,13 @@ def hand_off(binder, seed_path: str, max_n: int = MAX_MOMENTS, max_bytes: int = 
             return "off"
         if binder is None:
             return "skipped: no MomentBinderFairy instance"
-        moments = [_exact_copy(m) for m in _snapshot(binder)]
+        held = _snapshot(binder)
+        moments, refused = [], []
+        for m in held:   # a moment JSON cannot carry exactly is left out (counted), never altered
+            try:
+                moments.append(_exact_copy(m))
+            except Exception:
+                refused.append(str(m.get("tracer", "?")) if isinstance(m, dict) else "?")
         if not os.path.isfile(seed_path):
             return "skipped: no dream seed at %s (not created)" % seed_path
         with open(seed_path, "r", encoding="utf-8") as f:
@@ -144,15 +158,17 @@ def hand_off(binder, seed_path: str, max_n: int = MAX_MOMENTS, max_bytes: int = 
         kept, dropped = select(moments, max_n, max_bytes)
         pools[SEED_KEY] = {
             "moments": kept,
-            "held": len(moments),
+            "held": len(held),
             "saved": len(kept),
             "dropped": dropped,
+            "refused": len(refused),
+            "refused_tracers": refused[:60],
             "drop_rule": "lowest significance first (MomentBinderFairy._score_significance); ties by tracer",
             "saved_ts": time.time(),
             "from_fairy": BINDER_NAME,
         }
         _atomic_write_json(seed_path, seed)
-        return "saved %d of %d held moments (dropped %d)" % (len(kept), len(moments), dropped)
+        return "saved %d of %d held moments (dropped %d, refused %d)" % (len(kept), len(held), dropped, len(refused))
     except Exception as e:
         return "error: %s: %s" % (type(e).__name__, str(e)[:160])
 

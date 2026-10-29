@@ -210,11 +210,15 @@ class TestSwitchOn(Base):
             self.assertEqual(f.read(), "[1, 2]")
 
     def test_value_json_cannot_carry_is_refused_not_coerced(self):
-        before = self.seed_bytes()
-        ms = [dict(self.moments[0], vision=("scene:desk", "color:#000000"))]   # tuple -> list would change it
-        r = self.mod.hand_off(FakeBinder(ms), self.seed_path)
-        self.assertTrue(r.startswith("error"), r)
-        self.assertEqual(self.seed_bytes(), before)
+        bad = dict(self.moments[0], vision=("scene:desk", "color:#000000"))   # tuple -> list would change it
+        nan = dict(self.moments[1], significance=float("nan"))
+        ok = self.moments[2:5]
+        r = self.mod.hand_off(FakeBinder([bad, nan] + [dict(m) for m in ok]), self.seed_path)
+        self.assertIn("refused 2", r)
+        mh = self.seed()["mind_pools"]["moment_hold"]
+        self.assertEqual(mh["moments"], ok)                    # the others carried exactly; nothing coerced
+        self.assertEqual((mh["held"], mh["refused"]), (5, 2))
+        self.assertEqual(mh["refused_tracers"], [bad["tracer"], nan["tracer"]])
 
     def test_find_binder_never_instantiates(self):
         sysm = FakeSystem(self.binder)
