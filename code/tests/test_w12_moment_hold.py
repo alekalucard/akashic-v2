@@ -180,6 +180,27 @@ class TestSwitchOn(Base):
         self.assertLessEqual(max(m["significance"] for m in dropped), min(m["significance"] for m in kept))
         self.assertEqual(kept, [m for m in ms if m in kept])   # HOLD order kept
 
+    def test_byte_bound_holds_on_disk(self):
+        """The moments array as it sits in the written file stays within max_bytes (measured on the file)."""
+        for cap in (3000, 6000, 12000, 40000):
+            r = self.mod.hand_off(FakeBinder([dict(m) for m in self.moments]), self.seed_path, max_bytes=cap)
+            with open(self.seed_path, "r", encoding="utf-8") as f:
+                raw = f.read()
+            s = json.loads(raw)
+            empty = json.loads(raw)
+            empty["mind_pools"]["moment_hold"]["moments"] = []
+            on_disk = len(raw) - len(json.dumps(empty, indent=2))
+            self.assertLessEqual(on_disk, cap, (cap, r))
+            self.assertTrue(s["mind_pools"]["moment_hold"]["moments"], r)
+
+    def test_non_dict_entry_refused_alone(self):
+        ok = self.moments[:4]
+        r = self.mod.hand_off(FakeBinder(["a string", 7] + [dict(m) for m in ok]), self.seed_path)
+        self.assertIn("refused 2", r)
+        mh = self.seed()["mind_pools"]["moment_hold"]
+        self.assertEqual(mh["moments"], ok)
+        self.assertEqual((mh["held"], mh["saved"], mh["refused"]), (6, 4, 2))
+
     def test_atomic_crash_mid_write_leaves_seed_intact(self):
         before = self.seed_bytes()
         real_dump = json.dump

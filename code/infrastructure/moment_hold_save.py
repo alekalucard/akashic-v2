@@ -78,6 +78,16 @@ def _sig(m: Dict[str, Any]) -> float:
         return 0.0
 
 
+_ITEM_INDENT = 8   # seed{ mind_pools{ moment_hold{ moments[ item: each item line sits 4 levels (indent=2) deep
+
+
+def _written_size(m: Dict[str, Any]) -> int:
+    """Bytes this moment adds to the moments array as _atomic_write_json writes it: its indent=2 text, every line
+    indented _ITEM_INDENT more, plus the ',\n' separator."""
+    text = json.dumps(m, indent=2)
+    return len(text) + _ITEM_INDENT * (text.count("\n") + 1) + 2
+
+
 def select(moments: List[Dict[str, Any]], max_n: int = MAX_MOMENTS, max_bytes: int = MAX_BYTES):
     """-> (kept, dropped_count). Drops lowest significance first (ties: tracer id), keeps HOLD order."""
     idx = list(range(len(moments)))
@@ -88,7 +98,7 @@ def select(moments: List[Dict[str, Any]], max_n: int = MAX_MOMENTS, max_bytes: i
     while len(idx) - len(removed) > max_n:
         removed.add(removal[r])
         r += 1
-    sizes = {i: len(json.dumps(moments[i], indent=2)) for i in idx}   # as written (indent=2)
+    sizes = {i: _written_size(moments[i]) for i in idx}
     total = sum(sizes[i] for i in idx if i not in removed)
     while total > max_bytes and r < len(removal):
         i = removal[r]
@@ -139,8 +149,10 @@ def hand_off(binder, seed_path: str, max_n: int = MAX_MOMENTS, max_bytes: int = 
             return "skipped: no MomentBinderFairy instance"
         held = _snapshot(binder)
         moments, refused = [], []
-        for m in held:   # a moment JSON cannot carry exactly is left out (counted), never altered
+        for m in held:   # a moment JSON cannot carry exactly (or not a dict) is left out (counted), never altered
             try:
+                if not isinstance(m, dict):
+                    raise TypeError("not a moment dict")
                 moments.append(_exact_copy(m))
             except Exception:
                 refused.append(str(m.get("tracer", "?")) if isinstance(m, dict) else "?")
