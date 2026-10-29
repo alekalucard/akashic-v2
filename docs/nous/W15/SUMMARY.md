@@ -55,3 +55,20 @@ Fresh remote session `session_01WZwX7kq5EGTpkFchGnitvh`, given only the diff + t
 | 11 | Stale .csr reuse at constant count (:852) | LOW, pre-existing | OPEN | separate ticket |
 | 12 | Free-list thread safety | LOW | OPEN (same as main) | - |
 | 13 | No "0" dict-path OFF test | INFO | UPHELD | FIXED: test_off_zero_dict |
+
+### REVIEW round 2 (nous/w15-review @ 087c181, against 9f77eb5)
+| # | Finding | Verdict |
+|---|---|---|
+| R2-1 | manifold_memory.py unchanged since round 1 | UPHELD |
+| R2-2 | Branch suite 10/10 OK | UPHELD |
+| R2-3 | CONTROL vs main: same 4 tests fail (orientation test passes on main; it guards a regression, it is not a control) | UPHELD |
+| R2-4 | #6 orientation gap: M9, R4 and new R7 all fail | CLOSED |
+| R2-5 | #13 "0" dict path: test_off_zero_dict byte-identical | CLOSED |
+| R2-6 | Node-evict switch default: M10/R1/R2 caught (CSR path only; on the dict path the guard is a no-op) | UPHELD |
+| R2-7 | Mutant counts reproduce M1-M10 | UPHELD |
+| R2-8 | M6, R5, R6 survive: equivalent when single-threaded | UPHELD (not a gap) |
+| R2-9 | portal_interior.py:3438-3441: unpacking 5 names from a 7-field v2 record raises ValueError, so the lottery never prunes on v2 | OPEN (pre-existing, separate ticket) |
+| #10 | Stale-CSR alias in link() strengthen / get_neighbors | OPEN (pre-existing) |
+| #11 | Stale .csr reused at constant active count (:852) | OPEN (pre-existing) |
+| #12 | Free-list thread safety | OPEN (pre-existing, same as main) |
+Reviewer bottom line: nothing new to refute in W15. Its round-2 reply went to the parent session, not to me; it was relayed.
