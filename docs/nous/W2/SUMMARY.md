@@ -68,7 +68,7 @@ The subscribed path's code is unchanged.
 ## Found on the way [M]
 
 The original Python fallback delivers every letter of 3+ segments TWICE to a 2-level subscriber. Sub `a.b` received
-`a.b.c` twice and `a.b.c.d` twice. Cause: 2-level is added at `_python_fallback.py:989-992` and again at `:997-1001`.
+`a.b.c` twice and `a.b.c.d` twice. Cause: 2-level is added at `_python_fallback.py:992-997` and again at `:1002-1005` (origin/main line numbers).
 Not fixed, because the switch-off path must stay byte-identical.
 
 ## Could not verify
