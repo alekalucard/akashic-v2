@@ -248,10 +248,11 @@ class TestNodeEvictOn(_Base):
 
     X = sorted(range(CAP), key=lambda i: FILL_W[i])[0]    # endpoint of the lightest fill edge
 
-    def _open(self, d, cap):
+    def _open(self, d, cap, xs=None):
         path = os.path.join(d, "t.manifold")
         mm = self.mod.ManifoldMemory(path, node_capacity=N_NODES, edge_capacity=cap)
-        xs = FILL_PAIRS[self.X][0]
+        if xs is None:
+            xs = FILL_PAIRS[self.X][0]
         for j in range(N_NODES):
             mm.upsert_node(key(j), activation=(0.0 if j == xs else 1.0))
         fill(mm)
@@ -306,6 +307,26 @@ class TestNodeEvictOn(_Base):
         mm.close()
 
 
+    def test_on_node_evict_deletes_own_edges_both_orientations(self):
+        """Node 10 is the LARGER endpoint of fill edge 9-10 and the smaller of
+        10-11 (records are stored canonical a<b). Evicting it must delete both."""
+        os.environ[SWITCH] = "1"
+        mm, xs = self._open(self.sub("ne3"), CAP * 2, xs=10)
+        sx = mm._key_index[key(xs)]
+        live_x = [p for p in record_pairs(mm, self.mod) if sx in p]
+        self.assertEqual(len(live_x), 2)
+        self.assertTrue(any(p[1] == sx for p in live_x) and any(p[0] == sx for p in live_x))
+        self.assertEqual(mm._evict_coldest_node(), sx)
+        left = [p for p in record_pairs(mm, self.mod) if sx in p]
+        print("\n[W15] node evict, both orientations: live edges of node %d %d -> %d"
+              % (sx, len(live_x), len(left)))
+        self.assertEqual(left, [])
+        self.assertEqual(len(record_pairs(mm, self.mod)), CAP - 2)
+        self.assertEqual(sorted(mm._free_edge_slots), sorted(set(mm._free_edge_slots)))
+        self.assertEqual(len(mm._free_edge_slots), 2)
+        mm.close()
+
+
 class TestSwitchOffIdentical(_Base):
     """With the switch unset (and with "0"), file bytes equal main's after the same ops."""
 
@@ -354,6 +375,9 @@ class TestSwitchOffIdentical(_Base):
 
     def test_off_zero_csr(self):
         self._check(True, "0")
+
+    def test_off_zero_dict(self):
+        self._check(False, "0")
 
 
 if __name__ == "__main__":

@@ -41,6 +41,13 @@ MUTANTS = {
     # node-evict guard checks only the endpoints, not the deleted flag
     "M8_guard_ends_only": [("                    if _er[4] == FLAG_DELETED or not (",
                             "                    if False or not (")],
+    # node-evict guard accepts only one orientation (evicted node as smaller endpoint)
+    "M9_guard_one_way": [("                            (_er[0] == min_slot and _er[1] == neighbor_id) or\n"
+                          "                            (_er[1] == min_slot and _er[0] == neighbor_id)):",
+                          "                            (_er[0] == min_slot and _er[1] == neighbor_id)):")],
+    # node-evict switch line ON when unset
+    "M10_evict_default_on": [('_w15 = os.environ.get("AKASHIC_EDGE_SLOT_FIX", "0") == "1"',
+                              '_w15 = os.environ.get("AKASHIC_EDGE_SLOT_FIX", "1") == "1"')],
 }
 
 
