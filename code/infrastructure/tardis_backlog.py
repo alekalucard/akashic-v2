@@ -128,6 +128,16 @@ def _sw(key: str, fresh: bool = False) -> bool:
         return False
 
 
+def _carry() -> bool:
+    """W11 AKASHIC_BIND_CARRYOVER (env, OFF unless exactly "1"): it also turns b_persist ON (tardis_fix.ENV_ALIAS), and here it
+    adds three things: queue items are written with ALL their fields when that round-trips exactly (else today's record), no
+    done-* file is ever deleted, and persist_owner() serves the exit routes that never set the shutdown Event."""
+    try:
+        return os.environ.get("AKASHIC_BIND_CARRYOVER", "0") == "1"
+    except Exception:
+        return False
+
+
 def _norm(p) -> str:
     try:
         return os.path.normcase(os.path.abspath(str(p)))
@@ -310,6 +320,22 @@ _OWNER = {"b": None}
 def _reset_for_tests() -> None:
     with _OWNER_LOCK:
         _OWNER["b"] = None
+
+
+def persist_owner(reason: str) -> bool:
+    """W11: persist the armed owner's queue NOW, for the exit routes that never set the shutdown Event (the HTTP reboot route,
+    Ctrl+C). AKASHIC_BIND_CARRYOVER OFF -> does nothing and returns False. persist_now is idempotent. Never raises."""
+    try:
+        if not _carry():
+            return False
+        with _OWNER_LOCK:
+            b = _OWNER["b"]
+        if b is None:
+            return False
+        b.persist_now(str(reason))
+        return True
+    except Exception:
+        return False
 
 
 def arm(cx):
@@ -598,6 +624,10 @@ class Backlog:
             if len(cs) < 2:
                 self.counters["no_pairs"] += 1
                 return None
+            if _carry():
+                full = self._verbatim_record(it, src)
+                if full is not None:
+                    return full
             keep = {"concepts_to_bind": cs}
             for k in ("concept_key", "from_fairy", "origin_fairy", "feeling", "origin_plane", "origin_channel"):
                 if k in it:
@@ -609,6 +639,24 @@ class Backlog:
             return {"t": "item", "seq": self._next_seq(), "src": src, "i": keep}
         except Exception:
             self.counters["lost"] += 1
+            return None
+
+    def _verbatim_record(self, it, src):
+        """W11 (AKASHIC_BIND_CARRYOVER): the queue item with EVERY field, in its own key order, or None (-> today's record).
+        Only when it survives the file exactly: JSON round-trip equal to the item, valid at replay, and one line under max_line.
+        Keys starting _tf_ are this module's own bookkeeping (a replayed item's _tf_replay) and are never carried."""
+        try:
+            keep = {k: v for k, v in it.items() if not (isinstance(k, str) and k.startswith("_tf_"))}
+            if not _valid_item(keep):
+                return None
+            if json.loads(json.dumps(keep, ensure_ascii=True)) != keep:
+                return None
+            rec = {"t": "item", "seq": self._seq + 1, "src": src, "i": keep}
+            if len(_enc(rec)) > cfg("max_line"):
+                return None
+            self._next_seq()
+            return rec
+        except Exception:
             return None
 
     def _pairs_item_record(self, it, src):
@@ -981,6 +1029,8 @@ class Backlog:
         self._inhand = None
         if tag == "done":
             self.counters["files_done"] += 1
+            if _carry():
+                return                                  # W11: a replayed file is moved aside (done-*), never deleted
             done = self._list("done-")
             for n in done[:max(0, len(done) - cfg("done_keep"))]:
                 try:

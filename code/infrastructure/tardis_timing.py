@@ -34,8 +34,8 @@ except Exception:                       # pragma: no cover
     _psutil = None
 
 TOP = ("upA", "upA_new", "upB", "upB_new", "link")
-DEEP_LINK = ("l.scan", "l.str", "l.new", "l.hdr")
-DEEP_UP = ("u.rd", "u.wr", "u.new")
+DEEP_LINK = ("l.scan", "l.str", "l.new", "l.hdr", "l.evict")    # W11: l.evict / u.evict = the full-table eviction scan
+DEEP_UP = ("u.rd", "u.wr", "u.new", "u.evict")
 
 CFG = {"min_gap_s": 10.0, "flushes_per_line": 120, "max_silence_s": 120.0, "reservoir": 256, "err_latch": 5}
 FLOOR = {"min_gap_s": 10.0, "flushes_per_line": 1, "max_silence_s": 30.0, "reservoir": 16, "err_latch": 1}

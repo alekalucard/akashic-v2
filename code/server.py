@@ -3881,6 +3881,7 @@ class StatusHandler(BaseHTTPRequestHandler):
                 import subprocess
                 time.sleep(0.5)  # Give HTTP response time to send
                 print("[Server] Running reboot shutdown...", flush=True)
+                _w11_bind_carryover("reboot")   # W11: OFF (AKASHIC_BIND_CARRYOVER unset) = no-op
 
                 # Wait for fairy context save
                 if hasattr(SYSTEM, 'shutdown_fairy') and SYSTEM.shutdown_fairy:
@@ -9132,6 +9133,19 @@ def _sdfix_main_wait():
     return True
 
 
+def _w11_bind_carryover(reason):
+    """W11 (2026-10-29, Nous): AKASHIC_BIND_CARRYOVER OFF (unset / not exactly "1") = returns at once, nothing imported. ON: the exit
+    routes that never set the shutdown Event (HTTP reboot, Ctrl+C) persist the unwritten TARDIS bind queue too
+    (infrastructure/tardis_backlog.persist_owner; idempotent, never raises). The HTTP shutdown route needs no call: its Event does it."""
+    if not (os.environ.get("AKASHIC_BIND_CARRYOVER", "0") == "1"):
+        return
+    try:
+        from infrastructure import tardis_backlog as _w11_tb
+        _w11_tb.persist_owner(reason)
+    except Exception as _w11_e:
+        print("[Server] W11 bind carryover (%s) failed: %s" % (reason, type(_w11_e).__name__), flush=True)
+
+
 def shutdown_system():
     """
     Graceful shutdown using biological sleep model.
@@ -9773,6 +9787,7 @@ def main():
     # Run shutdown_system for Ctrl+C path
     # HTTP path already called it in the daemon thread
     if not SYSTEM.shutdown_requested:
+        _w11_bind_carryover("ctrl_c")   # W11: OFF (AKASHIC_BIND_CARRYOVER unset) = no-op
         # Wait for fairy context save if it was initiated by signal handler
         if hasattr(SYSTEM, 'shutdown_fairy') and SYSTEM.shutdown_fairy:
             SYSTEM.shutdown_fairy.wait_for_completion(timeout=8.0)

@@ -90,9 +90,26 @@ def switch() -> dict:
     return dict(data)
 
 
+# W11 (2026-10-29, Nous; nous/w11-bind-carryover): two ENVIRONMENT switches that turn a layer ON without the file. Each is ON
+# only when its variable is exactly "1"; unset / anything else = the file decides, exactly as before. They can only add ON,
+# never turn a layer OFF that the file turned ON. a1_fastlink has no environment switch.
+ENV_ALIAS = {"b_persist": "AKASHIC_BIND_CARRYOVER", "l0_timing": "AKASHIC_BIND_TIMING"}
+
+
+def env_on(key: str) -> bool:
+    """The W11 environment switch for this key; False when unset or on any doubt. Never raises."""
+    try:
+        name = ENV_ALIAS.get(str(key))
+        return bool(name) and os.environ.get(name, "0") == "1"
+    except Exception:
+        return False
+
+
 def on(key: str, fresh: bool = False) -> bool:
     """One key of Ace's TARDIS-fix switch; OFF on any doubt. fresh=True skips the TTL (still cached on mtime/size)."""
     try:
+        if env_on(key):
+            return True
         if not fresh:
             with _LOCK:
                 if time.monotonic() - _CACHE["t"] < _ttl():

@@ -363,6 +363,15 @@ def _tf_np():
 # (infrastructure/tardis_timing.py). Every other thread finds none and measures nothing; OFF costs one getattr per call. ------
 _TF_L0_TL = threading.local()
 
+
+def _w11_timing():
+    """W11 AKASHIC_BIND_TIMING (env, OFF unless exactly "1"): split the full-table eviction scans out of l.new / u.new as their
+    own L0 laps (l.evict / u.evict). Asked only on the eviction branch, and only when an L0 accumulator is armed. Never raises."""
+    try:
+        return os.environ.get("AKASHIC_BIND_TIMING", "0") == "1"
+    except Exception:
+        return False
+
 #  magic(4) + version(4) + node_count(4) + edge_count(4) +
 #  string_offset(8) + edge_offset(8) + string_used(8) +
 #  node_capacity(4) + edge_capacity(4) = 48 bytes
@@ -2268,7 +2277,12 @@ class ManifoldMemory:
             self._publish_shared_counters()
         else:
             # Full — evict coldest (lowest activation)
+            _w11e = _tfl0 if (_tfl0 is not None and _w11_timing()) else None   # W11 timing: the full-table scan is its own lap
+            if _w11e is not None:
+                _tfs = _w11e.add("u.new", _tfs)
             slot = self._evict_coldest_node()
+            if _w11e is not None:
+                _tfs = _w11e.add("u.evict", _tfs)
             if slot is None:
                 return -1  # Truly full, shouldn't happen
 
@@ -2719,7 +2733,12 @@ class ManifoldMemory:
             self._publish_shared_counters()
         else:
             # Full — evict weakest edge
+            _w11e = _tfl0 if (_tfl0 is not None and _w11_timing()) else None   # W11 timing: the full-table scan is its own lap
+            if _w11e is not None:
+                _tfs = _w11e.add("l.new", _tfs)
             slot = self._evict_weakest_edge()
+            if _w11e is not None:
+                _tfs = _w11e.add("l.evict", _tfs)
             if slot is None:
                 return False
 
