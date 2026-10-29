@@ -37,11 +37,16 @@ PLANE_DIRS = ("P00_", "P10_", "P20_", "P30_", "P40_", "P50_", "P60_")
 SKIP_DIRS = {"__pycache__", ".git", "node_modules", "target", "venv", ".venv",
              "site-packages", "dist", "build"}
 
-PUBLISH_METHODS = {"publish", "send", "emit", "post"}
-SUBSCRIBE_METHODS = {"subscribe", "subscribe_cross_plane"}  # the latter wraps fabric.subscribe
+# route/receive are aliases of publish/subscribe on the hubs fairies hold as self.post:
+#   code/P00_Autonomic/nervous_system/shared_postal_hub.py:257-267 (route -> publish, receive -> subscribe)
+#   code/postal_core/python/postal_core/tensor_fabric.py:1332-1345  (TensorFabric.route -> publish)
+# `request` publishes the intent and waits on <intent>.response.<id> (tensor_fabric.py:1411-1460).
+# W3 fix: before this they were not scanned at all (about 570 `.route(` calls).
+PUBLISH_METHODS = {"publish", "send", "emit", "post", "route", "request"}
+SUBSCRIBE_METHODS = {"subscribe", "subscribe_cross_plane", "receive"}  # cross_plane wraps fabric.subscribe
 UNSUBSCRIBE_METHODS = {"unsubscribe"}
 ALWAYS_METHODS = {"publish", "subscribe", "unsubscribe", "subscribe_cross_plane"}   # any receiver
-GATED_METHODS = {"send", "emit", "post"}                   # postal-ish receiver only
+GATED_METHODS = {"send", "emit", "post", "route", "receive", "request"}  # postal-ish receiver only
 POSTAL_RECEIVER = re.compile(r"(post|postal|hub|bus|fabric)", re.I)
 POSTAL_CLASS = re.compile(r"(postal|hub|bus|fabric|shim)", re.I)
 TOPIC_KWARGS = ("topic", "intent", "channel")
@@ -68,14 +73,30 @@ def is_test(p: Path) -> bool:
             or name.startswith("test_") or name.endswith("_test.py"))
 
 
+def _modname(p: Path) -> str:
+    parts = list(p.relative_to(CODE).with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
 def census():
+    """live, tests, shadowed, reached.
+
+    A file code/fairies/P*/X has a twin code/P*/X that wins a BARE import (`import P30_...`), because
+    code/ is first on sys.path. But `import fairies.P30_...X` is a different module name and always
+    loads the code/fairies/ copy. W3 fix: the copy is excluded as shadowed only when NOTHING (outside
+    tests) imports it by its `fairies.` name. Copies that are imported that way go to `reached` and are
+    scanned as live. (Before W3 every such copy was excluded; for working_memory_hub_fairy the winner
+    is a 53-line re-export of the copy, code/P30_Cognition/cognition/working_memory_hub_fairy.py:27.)
+    """
     files = []
     for dirpath, dirnames, filenames in os.walk(CODE):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
         for fn in sorted(filenames):
             if fn.endswith(".py"):
                 files.append(Path(dirpath) / fn)
-    tests, shadowed, live = [], [], []
+    tests, twins, live = [], [], []
     for p in files:
         if is_test(p):
             tests.append(p)
@@ -84,10 +105,36 @@ def census():
         if r.parts[0] == "fairies" and len(r.parts) > 2 and r.parts[1].startswith(PLANE_DIRS):
             winner = CODE.joinpath(*r.parts[1:])
             if winner.exists():
-                shadowed.append((p, winner))
+                twins.append((p, winner))
                 continue
         live.append(p)
-    return live, tests, shadowed
+    shadowed, reached = [], []
+    if twins:
+        texts = [(q, q.read_text(encoding="utf-8", errors="replace")) for q in files if not is_test(q)]
+        twin_set = {p for p, _ in twins}
+        for p, winner in twins:
+            full = _modname(p)
+            parent, _, leaf = full.rpartition(".")
+            pats = [re.compile(r"(?:from|import)\s+" + re.escape(full) + r"\b"),
+                    re.compile(r"from\s+" + re.escape(parent) + r"\s+import\s+\(?[^\n]*\b"
+                               + re.escape(leaf) + r"\b")]
+            # a relative import from a non-twin sibling (itself only loadable as fairies.X)
+            rel_pat = re.compile(r"from\s+\.\s*" + re.escape(leaf) + r"\b|from\s+\.\s+import\s+[^\n]*\b"
+                                 + re.escape(leaf) + r"\b")
+            if leaf == "__init__" or p.name == "__init__.py":
+                rel_pat = None
+            def imports_copy(q, t):
+                if q == p:
+                    return False
+                if any(x.search(t) for x in pats):
+                    return True
+                return (rel_pat is not None and q.parent == p.parent and q not in twin_set
+                        and bool(rel_pat.search(t)))
+            if any(imports_copy(q, t) for q, t in texts):
+                reached.append((p, winner))
+            else:
+                shadowed.append((p, winner))
+    return live + [p for p, _ in reached], tests, shadowed, reached
 
 
 # ─────────────────────────────────────────────────────────────── module index
@@ -486,8 +533,9 @@ def topic_arg(call: ast.Call):
 
 
 class Scanner(ast.NodeVisitor):
-    def __init__(self, mod: Module, sites: list):
+    def __init__(self, mod: Module, sites: list, wrappers: list | None = None):
         self.mod, self.sites = mod, sites
+        self.wrappers = wrappers if wrappers is not None else []
         self.cls_stack, self.fn_stack = [], []
         self.res = Resolver()
 
@@ -525,6 +573,10 @@ class Scanner(ast.NodeVisitor):
         if arg is None:
             return  # e.g. bus.subscribe() with no topic -> not a topic site
         kind = ("pub" if m in PUBLISH_METHODS else "sub" if m in SUBSCRIBE_METHODS else "unsub")
+        self.record(node, arg, kind, f"{recv}.{m}")
+
+    def record(self, node, arg, kind, method, keep_unresolved=True):
+        cls = self.cls_stack[-1] if self.cls_stack else None
         ctx = Ctx(self.mod, cls, list(self.fn_stack))
         try:
             topics = sorted(set(self.res.value(arg, ctx)))
@@ -535,10 +587,35 @@ class Scanner(ast.NodeVisitor):
             topics, reason = [], "pure wildcard"
         if not topics and not reason:
             reason = "empty class-level list (subclasses fill it)"
-        self.sites.append(Site(kind=kind, file=self.mod.path, line=node.lineno,
-                               expr=ast.unparse(arg), topics=topics, reason=reason,
-                               cls=cls.name if cls else "", actor=actor_name(self.mod, cls),
-                               method=f"{recv}.{m}"))
+        site = Site(kind=kind, file=self.mod.path, line=node.lineno,
+                    expr=ast.unparse(arg), topics=topics, reason=reason,
+                    cls=cls.name if cls else "", actor=actor_name(self.mod, cls),
+                    method=method)
+        if topics or keep_unresolved:
+            self.sites.append(site)
+        if reason == "parameter" and kind in ("pub", "sub"):
+            self._maybe_wrapper(arg, kind, site, cls)
+        return site
+
+    def _maybe_wrapper(self, arg, kind, site, cls):
+        """W3: the topic is a parameter of the enclosing def -> that def is a wrapper. Its callers are
+        resolved in a second pass (wrapper_pass). Only a def that is directly a module function or a
+        method (fn_stack depth 1), and not itself one of the hub verbs (those are counted directly)."""
+        if not isinstance(arg, ast.Name) or len(self.fn_stack) != 1:
+            return
+        fn = self.fn_stack[0]
+        if fn.name in WRAPPER_SKIP or fn.name.startswith("__"):
+            return
+        params = [a.arg for a in fn.args.posonlyargs + fn.args.args]
+        kwonly = [a.arg for a in fn.args.kwonlyargs]
+        if arg.id not in params and arg.id not in kwonly:
+            return
+        is_method = cls is not None and bool(params) and params[0] in ("self", "cls")
+        pos = params.index(arg.id) if arg.id in params else None
+        if pos is not None and is_method:
+            pos -= 1
+        self.wrappers.append(Wrapper(self.mod.path, cls.name if cls is not None else "", fn.name,
+                                     pos, arg.id, kind, site, is_method))
 
 
 def declared_subscriptions(paths):
@@ -560,12 +637,103 @@ def declared_subscriptions(paths):
     return out
 
 
+WRAPPER_SKIP = ALWAYS_METHODS | GATED_METHODS | UNSUBSCRIBE_METHODS
+WRAPPER_ROUNDS = 3   # a wrapper of a wrapper of a wrapper
+
+
+class Wrapper:
+    __slots__ = ("file", "cls", "name", "pos", "param", "kind", "site", "is_method", "callers")
+
+    def __init__(self, file, cls, name, pos, param, kind, site, is_method):
+        self.file, self.cls, self.name, self.pos, self.param = file, cls, name, pos, param
+        self.kind, self.site, self.is_method, self.callers = kind, site, is_method, 0
+
+
+class WrapperCalls(Scanner):
+    """Second pass: calls to known wrappers become sites, with the caller's argument resolved in the
+    caller's context. Matching is deliberately narrow:
+      * plain name `f(...)`: a module-level wrapper `f` in the same module, or one imported by name
+        (`from m import f`) from the module that defines it;
+      * `self.f(...)` / `cls.f(...)`: a method wrapper `f` on the enclosing class or on a base class
+        with the same name (bases matched by name, in any scanned module)."""
+
+    def __init__(self, mod, sites, by_func, by_method, new_wrappers):
+        super().__init__(mod, sites, new_wrappers)
+        self.by_func, self.by_method = by_func, by_method
+
+    def _class_names(self):
+        if not self.cls_stack:
+            return set()
+        out, todo = set(), [self.cls_stack[-1].name]
+        while todo:
+            c = todo.pop()
+            if c in out:
+                continue
+            out.add(c)
+            node = self.mod.classes.get(c)
+            if node is not None:
+                todo += [b.id if isinstance(b, ast.Name) else b.attr for b in node.bases
+                         if isinstance(b, (ast.Name, ast.Attribute))]
+            elif self.cls_stack and c == self.cls_stack[-1].name:
+                todo += [b.id if isinstance(b, ast.Name) else b.attr for b in self.cls_stack[-1].bases
+                         if isinstance(b, (ast.Name, ast.Attribute))]
+        return out
+
+    def visit_Call(self, node):
+        ast.NodeVisitor.generic_visit(self, node)
+        f = node.func
+        targets = []
+        if isinstance(f, ast.Name):
+            for w in self.by_func.get(f.id, []):
+                if w.file == self.mod.path:
+                    targets.append(w)
+                elif f.id in self.mod.imports:
+                    modname, attr, level = self.mod.imports[f.id]
+                    if attr == w.name and find_module(modname, level, self.mod.path) == w.file:
+                        targets.append(w)
+        elif isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) \
+                and f.value.id in ("self", "cls") and self.cls_stack:
+            names = self._class_names()
+            targets = [w for w in self.by_method.get(f.attr, []) if w.cls in names]
+            targets.sort(key=lambda w: w.file != self.mod.path)   # same-module definition first
+        for w in targets[:1]:   # one definition wins; several same-named wrappers -> first found
+            arg = None
+            if w.pos is not None and len(node.args) > w.pos and not any(
+                    isinstance(a, ast.Starred) for a in node.args[:w.pos + 1]):
+                arg = node.args[w.pos]
+            for kw in node.keywords:
+                if kw.arg == w.param:
+                    arg = kw.value
+            if arg is None:
+                continue
+            w.callers += 1
+            # An unresolved caller is not added to C (the wrapper's own site is already there); if its
+            # argument is again a parameter, the caller becomes a wrapper for the next round.
+            self.record(node, arg, w.kind, f"{ast.unparse(f)}() wraps {w.site.loc}", keep_unresolved=False)
+
+
 def scan(paths) -> list[Site]:
-    sites = []
+    sites, wrappers = [], []
+    mods = []
     for p in paths:
         mod = load(p)
         if mod is not None:
-            Scanner(mod, sites).visit(mod.tree)
+            mods.append(mod)
+            Scanner(mod, sites, wrappers).visit(mod.tree)
+    pending = wrappers
+    for _ in range(WRAPPER_ROUNDS):
+        if not pending:
+            break
+        by_func, by_method = defaultdict(list), defaultdict(list)
+        for w in pending:
+            (by_method if w.is_method else by_func)[w.name].append(w)
+        new = []
+        for mod in mods:
+            WrapperCalls(mod, sites, by_func, by_method, new).visit(mod.tree)
+        for w in pending:
+            if w.callers:
+                w.site.reason = f"parameter (wrapper; {w.callers} call site(s) scanned)"
+        pending = new
     return sites
 
 
@@ -643,7 +811,7 @@ def import_counts(shadowed):
     return out
 
 
-def build_report(live, tests, shadowed, sites, test_sites, shadow_sites, declared) -> str:
+def build_report(live, tests, shadowed, sites, test_sites, shadow_sites, declared, reached=()) -> str:
     pubs = [s for s in sites if s.kind == "pub"]
     subs = [s for s in sites if s.kind == "sub"]
     unsubs = [s for s in sites if s.kind == "unsub"]
@@ -681,8 +849,13 @@ def build_report(live, tests, shadowed, sites, test_sites, shadow_sites, declare
     w("## Summary")
     w("")
     w(f"* Python files scanned (live): **{len(live)}**. Excluded tests: {len(tests)}. "
-      f"Shadowed copies: {len(shadowed)}. Unparseable: {len(PARSE_ERRORS)}.")
+      f"Shadowed copies excluded: {len(shadowed)} (another {len(reached)} code/fairies/ twins are imported "
+      f"as `fairies.X` and scanned as live). Unparseable: {len(PARSE_ERRORS)}.")
     w(f"* Sites: {len(pubs)} publish, {len(subs)} subscribe, {len(unsubs)} unsubscribe.")
+    n_wrap = sum(1 for s in sites if " wraps " in s.method)
+    n_alias = sum(1 for s in sites if s.method.endswith((".route", ".receive", ".request")))
+    w(f"* Of these, {n_alias} are `.route(`/`.receive(`/`.request(` aliases and {n_wrap} are calls to a "
+      f"wrapper function whose topic parameter reaches a publish/subscribe (both added in W3).")
     w(f"* Distinct resolved topics: {len(pub_topics)} published, {len(sub_topics)} subscribed.")
     w(f"* **A. Dead letters: {len(dead)} topics** ({len(dead_sites)} publish sites).")
     w(f"* **B. Deaf ears: {len(deaf)} topics.**")
@@ -886,25 +1059,35 @@ def build_report(live, tests, shadowed, sites, test_sites, shadow_sites, declare
     # ── listings
     w("## Excluded and shadowed files")
     w("")
-    w("### Shadowed copies (code/fairies/P*/X loses to code/P*/X, first on sys.path)")
+    w("### Twin copies (code/fairies/P*/X next to code/P*/X)")
     w("")
-    w("Sites inside shadowed copies are NOT counted above. Caveat: this applies to `import P00_Autonomic.x`")
-    w("style imports. A module loaded by file path (`spec_from_file_location`) is not shadowed.")
-    w("")
-    w("**Surprise: the rule above holds only for bare imports.** Most code imports these modules as")
-    w("`fairies.P00_Autonomic...`, a different package name, which always resolves to the code/fairies/ copy.")
+    w("A bare `import P30_Cognition.x` finds code/P30_Cognition/x first (code/ is first on sys.path).")
+    w("`import fairies.P30_Cognition.x` is a different module name and always loads the code/fairies/ copy.")
+    w("Rule since W3: a copy is scanned as LIVE when any non-test file imports it by its `fairies.` name")
+    w("(or by a relative import from a non-twin sibling); only copies nobody imports that way are excluded.")
+    w("Example: code/P30_Cognition/cognition/working_memory_hub_fairy.py is a 53-line re-export of the")
+    w("code/fairies/ copy (its line 27), so the copy is the hub that runs.")
     w("The two right-hand columns count import statements (whole code/ tree, tests included) of each form.")
-    w("Where `fairies.X` imports outnumber bare ones, the \"shadowed\" copy is the one most callers run.")
     w("")
-    ic = import_counts(shadowed)
-    w("| shadowed copy | winning copy | pub/sub sites in shadowed copy | bare imports (winner) | `fairies.` imports (copy) |")
-    w("|---|---|---|---|---|")
-    for p, win in shadowed:
-        n = sum(1 for s in shadow_sites if s.file == p)
+    twins = sorted([(p, win, "live (scanned)") for p, win in reached] +
+                   [(p, win, "**excluded**") for p, win in shadowed])
+    ic = import_counts([(p, win) for p, win, _ in twins])
+    w("| code/fairies/ copy | twin | status | pub/sub sites in copy | bare imports (twin) | `fairies.` imports (copy) |")
+    w("|---|---|---|---|---|---|")
+    for p, win, status in twins:
+        n = sum(1 for s in (shadow_sites + sites) if s.file == p)
         nb, nf = ic[p]
-        w(f"| {rel(p)} | {rel(win)} | {n} | {nb} | {nf} |")
+        w(f"| {rel(p)} | {rel(win)} | {status} | {n} | {nb} | {nf} |")
     w("")
-    w("### Sensitivity: counting the code/fairies/ copies as live too")
+    reached_files = {p for p, _ in reached}
+    d0, f0 = dead_and_deaf(sites)
+    dold, fold = dead_and_deaf([s for s in sites if s.file not in reached_files])
+    w("### Sensitivity: the pre-W3 rule (all twin copies excluded)")
+    w("")
+    w(f"Dropping the {sum(1 for s in sites if s.file in reached_files)} sites in the {len(reached)} reached "
+      f"copies gives A = {len(dold)}, B = {len(fold)} (now {len(d0)}, {len(f0)}).")
+    w("")
+    w("### Sensitivity: counting the still-excluded copies as live too")
     w("")
     d0, f0 = dead_and_deaf(sites)
     d1, f1 = dead_and_deaf(sites + shadow_sites)
@@ -997,12 +1180,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--stdout", action="store_true")
     args = ap.parse_args()
-    live, tests, shadowed = census()
+    live, tests, shadowed, reached = census()
     sites = scan(live)
     test_sites = scan(tests)
     shadow_sites = scan([p for p, _ in shadowed])
     text, counts = build_report(live, tests, shadowed, sites, test_sites, shadow_sites,
-                                declared_subscriptions(live))
+                                declared_subscriptions(live), reached)
     if args.stdout:
         sys.stdout.write(text)
     else:

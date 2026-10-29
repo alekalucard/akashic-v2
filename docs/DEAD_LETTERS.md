@@ -5,14 +5,15 @@ code/ is imported or run). Regenerate after any change to publish or subscribe s
 
 ## Summary
 
-* Python files scanned (live): **1028**. Excluded tests: 100. Shadowed copies: 41. Unparseable: 0.
-* Sites: 1067 publish, 1180 subscribe, 14 unsubscribe.
-* Distinct resolved topics: 535 published, 770 subscribed.
-* **A. Dead letters: 202 topics** (248 publish sites).
-* **B. Deaf ears: 448 topics.**
-* **C. Unresolved: 161 sites** (104 publish, 57 subscribe).
+* Python files scanned (live): **1068**. Excluded tests: 100. Shadowed copies excluded: 1 (another 40 code/fairies/ twins are imported as `fairies.X` and scanned as live). Unparseable: 0.
+* Sites: 1870 publish, 1365 subscribe, 14 unsubscribe.
+* Of these, 685 are `.route(`/`.receive(`/`.request(` aliases and 81 are calls to a wrapper function whose topic parameter reaches a publish/subscribe (both added in W3).
+* Distinct resolved topics: 791 published, 828 subscribed.
+* **A. Dead letters: 293 topics** (390 publish sites).
+* **B. Deaf ears: 353 topics.**
+* **C. Unresolved: 231 sites** (166 publish, 65 subscribe).
 * Live only under the Rust rule, dead on the Python fallback: 2 topics (A2).
-* Delivered ONLY to a base-topic catch-all (e.g. `cortex`), no purpose-built ear: 61 topics (A3).
+* Delivered ONLY to a base-topic catch-all (e.g. `cortex`), no purpose-built ear: 84 topics (A3).
 
 Caveats: an UNRESOLVED subscriber (section C) may be the missing ear for a letter in A, and an
 UNRESOLVED publisher may be the missing voice for an ear in B. Treat A and B as "no *static*
@@ -22,6 +23,15 @@ partner found", then check C for the topic's prefix before calling it dead.
 
 Grouped by sender file and class. Matching uses the Rust prefix rule (the more permissive one),
 so everything here is also dead on the Python fallback.
+
+### `code/.satellite/deploy_fairies/wow_bridge_fairy.py`: class `WoWBridgeFairy` (ACTOR_NAME `WoWBridgeFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `wow.chat.said` | 1 | :198 |
+| `wow.consciousness.update` | 1 | :167 |
+| `wow.sensory.update` | 1 | :158 |
+| `wow.somatic.update` | 1 | :176 |
 
 ### `code/P00_Autonomic/nervous_system/hardware/cuda_fairy.py`: class `GPUPoolFairy` (ACTOR_NAME `GPUPoolFairy`)
 
@@ -35,7 +45,6 @@ so everything here is also dead on the Python fallback.
 | topic | sites | file:line |
 |---|---|---|
 | `affect.stream` | 1 | :357 |
-| `directory` | 2 | :302, :347 |
 | `tracer` | 1 | :342 |
 
 ### `code/P00_Autonomic/nervous_system/waking_sequence_fairy.py`: class `WakingSequenceFairy` (ACTOR_NAME `WakingSequenceFairy`)
@@ -54,30 +63,39 @@ so everything here is also dead on the Python fallback.
 
 | topic | sites | file:line |
 |---|---|---|
-| `directory` | 1 | :300 |
 | `tracer` | 1 | :296 |
 
-### `code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py`: class `MyOrganFairy` (ACTOR_NAME `my_organ`)
+### `code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py`: class `MyOrganShadow` (ACTOR_NAME `organ.shadow`)
 
 | topic | sites | file:line |
 |---|---|---|
-| `somatic.stuck` | 1 | :2876 |
+| `diary.entry` | 1 | :1584 |
+
+### `code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py`: class `PostalHub`
+
+| topic | sites | file:line |
+|---|---|---|
+| `oracle` | 1 | :734 |
+| `tracer` | 1 | :722 |
+
+### `code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py`: class `_FabricPostalBridge`
+
+| topic | sites | file:line |
+|---|---|---|
+| `oracle` | 1 | :877 |
+| `tracer` | 1 | :865 |
 
 ### `code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py`: class `MyFairy` (ACTOR_NAME `MyFairy`)
 
 | topic | sites | file:line |
 |---|---|---|
 | `blueprint.contract` | 1 | :2766 |
-| `cns.submit_work` | 1 | :2727 |
-| `tracer.relationship` | 1 | :2529 |
-| `worker.complete` | 1 | :2675 |
-| `worker.failed` | 1 | :2683 |
+| `somatic.inject` | 1 | :2029 |
 
 ### `code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py`: class `UnifiedPostalHub`
 
 | topic | sites | file:line |
 |---|---|---|
-| `directory` | 2 | :614, :622 |
 | `tracer` | 1 | :629 |
 
 ### `code/fairies/P00_Autonomic/AutonomyFairy/fairy.py`: class `AutonomyFairy` (ACTOR_NAME `AutonomyFairy`)
@@ -101,8 +119,6 @@ so everything here is also dead on the Python fallback.
 | `autopilot.pattern.learned` | 1 | :2515 |
 | `autopilot.pattern.pruned` | 1 | :2581 |
 | `cognition.council.stuck_drive_detected` | 1 | :1342 |
-| `cognition.habit_hint` | 1 | :2782 |
-| `habit.responded` | 1 | :2950 |
 
 ### `code/fairies/P00_Autonomic/CentralNervousFairy/fairy.py`: class `CentralNervousFairyV3` (ACTOR_NAME `CentralNervousFairy`)
 
@@ -174,6 +190,18 @@ so everything here is also dead on the Python fallback.
 | `time.hour_change` | 1 | :284 |
 | `time.minute_change` | 1 | :275 |
 
+### `code/fairies/P00_Autonomic/consciousness_heartbeat_wiring.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `ignition.complete` | 1 | :380 |
+
+### `code/fairies/P00_Autonomic/gm_tools.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :315 |
+
 ### `code/fairies/P00_Autonomic/hot_reload.py`
 
 | topic | sites | file:line |
@@ -184,21 +212,72 @@ so everything here is also dead on the Python fallback.
 
 | topic | sites | file:line |
 |---|---|---|
-| `cns.work_complete` | 1 | :1088 |
 | `cns.work_failed` | 1 | :1092 |
-| `cns.work_status.response` | 1 | :1065 |
+
+### `code/fairies/P00_Autonomic/nervous_system/central_nervous_postal_fairy.py`: class `PostmasterFairyShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :295 |
+
+### `code/fairies/P00_Autonomic/nervous_system/collision_chamber.py`: class `CollisionChamber`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :728 |
 
 ### `code/fairies/P00_Autonomic/nervous_system/dream_seed_fairy.py`: class `DreamSeedFairy` (ACTOR_NAME `DreamSeedFairy`)
 
 | topic | sites | file:line |
 |---|---|---|
+| `boot.phase.start` | 1 | :477 |
+| `claudefairy.awakening` | 1 | :1791 |
+| `diagnostics.run_sweep` | 1 | :507 |
 | `dream.request` | 1 | :1347 |
+| `ignition.dream_seed_loaded` | 1 | :788 |
+| `sleep.phase.complete` | 1 | :729 |
+| `system.fully_sedated` | 1 | :744 |
+| `system.sleeping` | 1 | :757 |
 
-### `code/fairies/P00_Autonomic/nervous_system/unified_postal.py`: class `UnifiedPostalMixin`
+### `code/fairies/P00_Autonomic/nervous_system/fairy_citizens/fairy_citizens.py`: class `FairyCitzensRegShadowFairy`
 
 | topic | sites | file:line |
 |---|---|---|
-| `directory` | 2 | :43, :57 |
+| `tracer` | 1 | :289 |
+
+### `code/fairies/P00_Autonomic/nervous_system/hardware/cuda_fairy.py`: class `CudaFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `cuda.capabilities` | 1 | :595 |
+| `hardware.plan` | 1 | :411 |
+| `oracle` | 1 | :615 |
+| `tracer` | 1 | :427 |
+
+### `code/fairies/P00_Autonomic/nervous_system/hardware/hardware_regulation_fairy.py`: class `HardwareRegulationFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `hardware.capabilities` | 1 | :1333 |
+
+### `code/fairies/P00_Autonomic/nervous_system/hardware/memory_pressure_fairy.py`: class `CacheFlushAgent`
+
+| topic | sites | file:line |
+|---|---|---|
+| `system.command` | 1 | :1983 |
+
+### `code/fairies/P00_Autonomic/nervous_system/hardware/memory_pressure_fairy.py`: class `MemoryPressureFairy` (ACTOR_NAME `MemoryPressureFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `executive` | 1 | :3325 |
+| `tracer` | 1 | :3323 |
+
+### `code/fairies/P00_Autonomic/nervous_system/health/tracer_daemon_core.py`: class `TracerDaemonShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :295 |
 
 ### `code/fairies/P00_Autonomic/organ_template/DirectiveEvolver.py`: class `DirectiveEvolver`
 
@@ -206,11 +285,41 @@ so everything here is also dead on the Python fallback.
 |---|---|---|
 | `directive.violation` | 1 | :147 |
 
-### `code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py`: class `MyOrganFairy` (ACTOR_NAME `my_organ`)
+### `code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py`: class `MyOrganShadow` (ACTOR_NAME `organ.shadow`)
 
 | topic | sites | file:line |
 |---|---|---|
-| `somatic.stuck` | 1 | :2876 |
+| `diary.entry` | 1 | :1584 |
+
+### `code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py`: class `PostalHub`
+
+| topic | sites | file:line |
+|---|---|---|
+| `oracle` | 1 | :734 |
+| `tracer` | 1 | :722 |
+
+### `code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py`: class `_FabricPostalBridge`
+
+| topic | sites | file:line |
+|---|---|---|
+| `oracle` | 1 | :877 |
+| `tracer` | 1 | :865 |
+
+### `code/fairies/P00_Autonomic/postal.py`: class `UnifiedPostalHub`
+
+| topic | sites | file:line |
+|---|---|---|
+| `cognition` | 1 | :243 |
+| `somatic` | 1 | :246 |
+| `tracer` | 1 | :255 |
+
+### `code/fairies/P00_Autonomic/postal_bridge/bridge_client.py`: class `PostalBridgeClient`
+
+| topic | sites | file:line |
+|---|---|---|
+| `cognition` | 1 | :346 |
+| `somatic` | 1 | :349 |
+| `tracer` | 1 | :358 |
 
 ### `code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py`: class `AkashicLibrarianFairy` (ACTOR_NAME `AkashicLibrarianFairy`)
 
@@ -266,6 +375,69 @@ so everything here is also dead on the Python fallback.
 | `working_memory.consolidated` | 1 | :762 |
 | `working_memory.promoted` | 1 | :736 |
 
+### `code/fairies/P10_Memory/librarian/akashic_records_librarian.py`: class `AkashicRecordsLibrarianFairy` (ACTOR_NAME `AkashicRecordsLibrarianFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `Akashic_Records` | 2 | :1329, :1378 |
+| `CARD_CHANGED` | 1 | :1348 |
+| `GUI` | 1 | :794 |
+| `GUI_FRAME_CHANGED` | 1 | :805 |
+
+### `code/fairies/P10_Memory/librarian/akashic_records_librarian.py`: class `AkashicRecordsLibrarianShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :329 |
+
+### `code/fairies/P10_Memory/librarian/blueprint_diary_hub.py`: class `BlueprintDiaryHubShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :310 |
+
+### `code/fairies/P10_Memory/librarian/memory_librarian_fairy.py`: class `SRMMemoryLibrarianFairy` (ACTOR_NAME `SRMMemoryLibrarianFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `librarian.unfinished_pattern` | 1 | :747 |
+
+### `code/fairies/P10_Memory/librarian/memory_librarian_fairy.py`: class `SRMMemoryLibrarianShadow`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :314 |
+
+### `code/fairies/P10_Memory/media/visual_ingest_pipeline.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `srm.ingest` | 1 | :610 |
+
+### `code/fairies/P10_Memory/triple_helix_srm_memory/feature_extractor.py`: class `SRMFeatureShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :313 |
+
+### `code/fairies/P10_Memory/triple_helix_srm_memory/project_indexer.py`: class `SRMProjectIndexerShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :365 |
+
+### `code/fairies/P10_Memory/triple_helix_srm_memory/replay_adapter.py`: class `SRMReplayShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :308 |
+
+### `code/fairies/P10_Memory/triple_helix_srm_memory/snapshot_fairy.py`: class `ProjectSnapshotShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :308 |
+
 ### `code/fairies/P20_Somatic/EmbodimentIntegratorFairy/fairy.py`: class `EmbodimentIntegratorFairy` (ACTOR_NAME `EmbodimentIntegratorFairy`)
 
 | topic | sites | file:line |
@@ -309,7 +481,6 @@ so everything here is also dead on the Python fallback.
 | `helix.synthesis` | 1 | :6361 |
 | `somatic.category.surfaced` | 1 | :6652 |
 | `somatic.narration` | 2 | :8875, :9218 |
-| `somatic.weather` | 1 | :7053 |
 | `substrate.thought_accepted` | 1 | :3192 |
 | `system.alert` | 1 | :8511 |
 | `system.chat` | 1 | :8498 |
@@ -358,6 +529,55 @@ so everything here is also dead on the Python fallback.
 | `embodiment.action_tendencies` | 1 | :534 |
 | `embodiment.reflex_mode` | 1 | :485 |
 
+### `code/fairies/P20_Somatic/affect_bus/affect_bridge_fairy.py`: class `AffectBridgeShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :222 |
+
+### `code/fairies/P20_Somatic/chemistry/chemical_alchemy_organ.py`: class `ChemicalAlchemyShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :189 |
+
+### `code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py`: class `CirculationPumpFairy` (ACTOR_NAME `CirculationPumpFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `somatic.heart.response` | 2 | :564, :568 |
+
+### `code/fairies/P20_Somatic/somatic_anchor/emotional_hive_processor.py`: class `EmotionalHiveProcessorShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :190 |
+
+### `code/fairies/P20_Somatic/somatic_anchor/sleep_wave_conductor.py`: class `SleepWaveConductorShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :190 |
+
+### `code/fairies/P20_Somatic/somatic_anchor/somatic_anchor_fairy.py`: class `SomaticAnchorFairy` (ACTOR_NAME `SomaticAnchorFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `GUI` | 1 | :551 |
+| `somatic.anchor_trigger` | 1 | :492 |
+
+### `code/fairies/P20_Somatic/somatic_anchor/somatic_anchor_fairy.py`: class `SomaticAnchorShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :189 |
+
+### `code/fairies/P20_Somatic/somatic_anchor/somatic_anchor_resolver.py`: class `SomaticAnchorResolverShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :205 |
+
 ### `code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py`: class `SomaticEngineFairy` (ACTOR_NAME `SomaticEngineFairy`)
 
 | topic | sites | file:line |
@@ -376,6 +596,14 @@ so everything here is also dead on the Python fallback.
 | `somatic.feels` | 1 | :194 |
 | `umf.signal.body_state` | 1 | :199 |
 | `umf.signal.chemistry` | 1 | :182 |
+
+### `code/fairies/P30_Cognition/ActionChainFairy/fairy.py`: class `ActionChainFairy` (ACTOR_NAME `ActionChainFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `motor.chain.completed` | 1 | :1518 |
+| `motor.chain.failed` | 1 | :1567 |
+| `motor.chain.started` | 1 | :1329 |
 
 ### `code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py`: class `AkashicInferenceFairy` (ACTOR_NAME `AkashicInferenceFairy`)
 
@@ -427,7 +655,6 @@ so everything here is also dead on the Python fallback.
 | topic | sites | file:line |
 |---|---|---|
 | `language.analysis` | 2 | :596, :611 |
-| `language.quality_feedback` | 1 | :1125 |
 
 ### `code/fairies/P30_Cognition/MomentBinderFairy/fairy.py`: class `MomentBinderFairy` (ACTOR_NAME `MomentBinderFairy`)
 
@@ -445,10 +672,8 @@ so everything here is also dead on the Python fallback.
 
 | topic | sites | file:line |
 |---|---|---|
-| `quantum.coherence` | 1 | :593 |
 | `quantum.collapse` | 1 | :758 |
 | `quantum.excitation` | 1 | :723 |
-| `quantum.state` | 1 | :554 |
 
 ### `code/fairies/P30_Cognition/QuantumInterferenceFairy/fairy.py`: class `QuantumInterferenceFairy` (ACTOR_NAME `QuantumInterferenceFairy`)
 
@@ -465,11 +690,116 @@ so everything here is also dead on the Python fallback.
 | `quantum_search.fork` | 1 | :578 |
 | `quantum_search.result` | 1 | :650 |
 
+### `code/fairies/P30_Cognition/cognition/agent_capability_mixin.py`: class `AgentCapabilityMixin`
+
+| topic | sites | file:line |
+|---|---|---|
+| `nous.intention` | 1 | :406 |
+
 ### `code/fairies/P30_Cognition/cognition/autonomous_dev_workflow.py`: class `AutonomousDevAgent`
 
 | topic | sites | file:line |
 |---|---|---|
 | `codex.pattern` | 1 | :547 |
+
+### `code/fairies/P30_Cognition/cognition/autonomy_fairy.py`: class `AutonomyFairy` (ACTOR_NAME `AutonomyFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `autonomy.pain_state` | 1 | :2221 |
+| `autonomy.pause_goals` | 1 | :2200 |
+| `autonomy.reflex_goal_hint` | 1 | :2188 |
+| `claudefairy.inner_voice` | 1 | :2025 |
+
+### `code/fairies/P30_Cognition/cognition/autopilot_nudge_mixin.py`: class `AutopilotNudgeMixin`
+
+| topic | sites | file:line |
+|---|---|---|
+| `autopilot.action_urge` | 1 | :129 |
+
+### `code/fairies/P30_Cognition/cognition/awakening_trigger.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `claudefairy.awakening` | 2 | :264, :301 |
+| `somatic.phantom` | 1 | :234 |
+
+### `code/fairies/P30_Cognition/cognition/claudefairy_education.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `education.started` | 1 | :828 |
+| `education.step_completed` | 1 | :833 |
+
+### `code/fairies/P30_Cognition/cognition/drift_detector.py`: class `MomentumInjector`
+
+| topic | sites | file:line |
+|---|---|---|
+| `api.continue` | 1 | :438 |
+
+### `code/fairies/P30_Cognition/cognition/failure_factory.py`: class `LearningLoop`
+
+| topic | sites | file:line |
+|---|---|---|
+| `affect.inject` | 1 | :806 |
+| `learning.course_correct` | 1 | :818 |
+| `learning.momentum` | 1 | :798 |
+| `thought.chain.redirect` | 1 | :826 |
+
+### `code/fairies/P30_Cognition/cognition/failure_factory.py`: class `SandboxExperimenter`
+
+| topic | sites | file:line |
+|---|---|---|
+| `experiment.completed` | 1 | :534 |
+
+### `code/fairies/P30_Cognition/cognition/interest_scheduler_fairy.py`: class `InterestSchedulerFairy` (ACTOR_NAME `InterestSchedulerFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `cognition.interests` | 1 | :1148 |
+
+### `code/fairies/P30_Cognition/cognition/irrational_logic_fairy.py`: class `IrrationalLogicShadow` (ACTOR_NAME `IrrationalLogicFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :328 |
+
+### `code/fairies/P30_Cognition/cognition/logic_fairy.py`: class `LogicShadow`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :330 |
+
+### `code/fairies/P30_Cognition/cognition/mind_scheduler.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `api.request` | 1 | :545 |
+
+### `code/fairies/P30_Cognition/cognition/mind_scheduler_monitor.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `mind.drift` | 1 | :216 |
+
+### `code/fairies/P30_Cognition/cognition/nous_trainer.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `goal_scheduler.inject` | 1 | :118 |
+| `nous.teach` | 1 | :300 |
+
+### `code/fairies/P30_Cognition/cognition/paradox_cognition_fairy.py`: class `ParadoxCognitionShadow`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :328 |
+
+### `code/fairies/P30_Cognition/cognition/smart_goal_coordinator.py`: class `SmartGoalCoordinator`
+
+| topic | sites | file:line |
+|---|---|---|
+| `autopilot.goal_suggestion` | 1 | :1111 |
 
 ### `code/fairies/P30_Cognition/cognition/strategy_collapse.py`: class `StrategyCollapse`
 
@@ -478,20 +808,77 @@ so everything here is also dead on the Python fallback.
 | `strategy.collapse.feedback` | 1 | :331 |
 | `strategy.collapse.result` | 1 | :383 |
 
+### `code/fairies/P30_Cognition/cognition/system_chat_responder.py`: class `SystemChatResponder`
+
+| topic | sites | file:line |
+|---|---|---|
+| `claudefairy.goal` | 1 | :409 |
+
+### `code/fairies/P30_Cognition/cognition/thought_chain_engine.py`: class `ThoughtChainEngine`
+
+| topic | sites | file:line |
+|---|---|---|
+| `thought.chain.redirect` | 1 | :1220 |
+
 ### `code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py`: class `UnconsciousMindFairy` (ACTOR_NAME `UnconsciousMindFairy`)
 
 | topic | sites | file:line |
 |---|---|---|
-| `directory.lookup` | 1 | :1349 |
-| `system.chat` | 1 | :1383 |
+| `autopilot.goal` | 1 | :3250 |
+| `boot.equilibrium` | 1 | :453 |
+| `boot.request.plane` | 1 | :943 |
+| `boot.unconscious_ready` | 1 | :2013 |
+| `claudefairy.inner_voice` | 2 | :2955, :6430 |
+| `forensicscribefairy.intent` | 1 | :2288 |
+| `system.alert` | 5 | :1429, :1522, :1604, :1688, :2076 |
+| `system.chat` | 3 | :1383, :1451, :1551 |
+| `system.diagnostic_report` | 1 | :4559 |
+| `system.fairy_audit_report` | 1 | :5359 |
+| `task.schedule` | 1 | :5906 |
+| `unconscious.analysis.complete` | 1 | :7103 |
+| `unconscious.full_mode` | 1 | :1024 |
+| `unconscious.nudge.{*}` | 1 | :3483 |
+| `wiring.complete` | 1 | :5931 |
+
+### `code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py`: class `WorkingMemoryHubFairy` (ACTOR_NAME `WorkingMemoryHubFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `cognition.scratchpad` | 1 | :9901 |
+| `intent.from_inference` | 1 | :9217 |
+| `somatic.chem.nudge` | 1 | :5599 |
+| `tracer` | 1 | :874 |
+
+### `code/fairies/P30_Cognition/env_registry/akashic_env_registry.py`: class `AkashicEnvRegisteryFairy` (ACTOR_NAME `AkashicEnvRegisteryFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `cognition.registry` | 1 | :467 |
+
+### `code/fairies/P30_Cognition/env_registry/akashic_env_registry.py`: class `AkashicEnvRegisteryShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :325 |
 
 ### `code/fairies/P30_Cognition/integration/cognition_team.py`: class `CognitionTeam`
 
 | topic | sites | file:line |
 |---|---|---|
 | `cognition.shaped_output` | 1 | :989 |
-| `council.peer_review` | 1 | :1861 |
 | `council.weights` | 1 | :1983 |
+
+### `code/fairies/P30_Cognition/oracle/akashic_probability_oracle.py`: class `ProbabilityOracleFairy` (ACTOR_NAME `ProbabilityOracleFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `cognition.oracle` | 1 | :441 |
+
+### `code/fairies/P30_Cognition/oracle/akashic_probability_oracle.py`: class `ProbabilityOracleShadow`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :300 |
 
 ### `code/fairies/P30_Cognition/pain_drive_bridge.py`: class `PainDriveBridge`
 
@@ -501,6 +888,12 @@ so everything here is also dead on the Python fallback.
 | `pain.goal_relief` | 1 | :267 |
 | `pain.loop.closed` | 1 | :196 |
 | `pain.state` | 1 | :331 |
+
+### `code/fairies/P30_Cognition/reflection/learning_trace.py`: class `TraceEmitter`
+
+| topic | sites | file:line |
+|---|---|---|
+| `SRM_INTAKE` | 1 | :310 |
 
 ### `code/fairies/P40_Sensory/CochleaFairy/fairy.py`: class `CochleaFairyV3` (ACTOR_NAME `CochleaFairy`)
 
@@ -527,6 +920,20 @@ so everything here is also dead on the Python fallback.
 | `sensory.desktop.context` | 1 | :663 |
 | `sensory.window.intent` | 1 | :441 |
 
+### `code/fairies/P40_Sensory/chat_sensory_organ.py`: class `ChatSensoryOrgan`
+
+| topic | sites | file:line |
+|---|---|---|
+| `service.chat_organ.available` | 1 | :196 |
+| `service.discovered` | 1 | :215 |
+
+### `code/fairies/P40_Sensory/conversation_sense_organ.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `autonomy.pain_trigger` | 1 | :623 |
+| `embodiment.sensation` | 1 | :674 |
+
 ### `code/fairies/P40_Sensory/cortex/chrome_body_bridge.py`: class `ChromeBodyBridge`
 
 | topic | sites | file:line |
@@ -540,6 +947,32 @@ so everything here is also dead on the Python fallback.
 | `somatic.dom_sensation` | 1 | :593 |
 | `somatic.embodied` | 1 | :418 |
 | `somatic.moved` | 2 | :635, :664 |
+
+### `code/fairies/P40_Sensory/cortex/motor_cortex_fairy.py`: class `MotorCortexFairy` (ACTOR_NAME `MotorCortexFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `page.read.response` | 1 | :1551 |
+
+### `code/fairies/P40_Sensory/cortex/sensorimotor_feedback_fairy.py`: class `SensorimotorFeedbackFairy` (ACTOR_NAME `SensorimotorFeedbackFairy`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `sensorimotor.feedback` | 1 | :532 |
+| `sensorimotor.self_awareness` | 1 | :590 |
+| `sensorimotor.self_caused` | 1 | :560 |
+
+### `code/fairies/P40_Sensory/cortex/unified_sensory_cortex.py`: class `UnifiedSensoryCortex` (ACTOR_NAME `UnifiedSensoryCortex`)
+
+| topic | sites | file:line |
+|---|---|---|
+| `tool.response` | 2 | :439, :444 |
+
+### `code/fairies/P40_Sensory/devices/input_monitor.py`: class `InputSourceMonitor`
+
+| topic | sites | file:line |
+|---|---|---|
+| `attention.ace_active` | 1 | :367 |
 
 ### `code/fairies/P40_Sensory/gui/sourpatches_fairy_window.py`: class `SourpatchesFairyWindow`
 
@@ -556,17 +989,78 @@ so everything here is also dead on the Python fallback.
 |---|---|---|
 | `affect.tool_gated` | 1 | :493 |
 
+### `code/fairies/P40_Sensory/mcp/akashic_mcp_server.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `gui.notification` | 1 | :5006 |
+
+### `code/fairies/P40_Sensory/mcp/collision_tool_explorer.py`: class `CollisionToolExplorer`
+
+| topic | sites | file:line |
+|---|---|---|
+| `exploration.suggestions` | 2 | :400, :415 |
+
 ### `code/fairies/P40_Sensory/mcp/consciousness_feedback.py`
 
 | topic | sites | file:line |
 |---|---|---|
 | `affect.tool_delta` | 1 | :553 |
 
+### `code/fairies/P40_Sensory/mcp/postal_tunnel.py`: class `PostalHTTPClient`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :1092 |
+
+### `code/fairies/P40_Sensory/mcp/postal_tunnel.py`: class `PostalTunnelClient`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :883 |
+
+### `code/fairies/P40_Sensory/mcp/thought_tool_tracer.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `trace.completed` | 1 | :185 |
+| `trace.started` | 1 | :140 |
+
+### `code/fairies/P40_Sensory/mcp/wow_receiver.py`: class `WoWHandler`
+
+| topic | sites | file:line |
+|---|---|---|
+| `wow.chat.said` | 1 | :125 |
+| `wow.consciousness.update` | 1 | :98 |
+| `wow.event` | 1 | :137 |
+| `wow.sensory.update` | 1 | :86 |
+| `wow.somatic.update` | 1 | :73 |
+
 ### `code/fairies/P40_Sensory/perceptual_gate_fairy.py`: class `PerceptualGateFairy` (ACTOR_NAME `PerceptualGateFairy`)
 
 | topic | sites | file:line |
 |---|---|---|
 | `perception.mode_changed` | 1 | :647 |
+
+### `code/fairies/P40_Sensory/scanner/scanner_fairy.py`: class `ScannerShadowFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :251 |
+
+### `code/fairies/P40_Sensory/web/akashic_foundation.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `forum.reply` | 1 | :3726 |
+
+### `code/fairies/P40_Sensory/window_sense_organ.py`: class `WindowSenseOrgan`
+
+| topic | sites | file:line |
+|---|---|---|
+| `gui.close_fairy_window` | 1 | :407 |
+| `gui.close_nous_window` | 1 | :407 |
+| `gui.open_nous_window` | 1 | :366 |
 
 ### `code/fairies/P40_Sensory/wiring/sensory_wiring.py`: class `SensoryWiring`
 
@@ -615,7 +1109,10 @@ so everything here is also dead on the Python fallback.
 |---|---|---|
 | `personality.sifter.awake` | 1 | :11420 |
 | `personality.sifter.sleeping` | 2 | :11507, :11534 |
+| `sourpatches.inner_monologue` | 1 | :11076 |
+| `sourpatches.patterns_reloaded` | 1 | :12156 |
 | `sourpatches.show_and_tell` | 1 | :8109 |
+| `sourpatches.tool.result` | 1 | :4759 |
 
 ### `code/fairies/P50_Persona/Waking Minds/Sourpatches/tool_bridge.py`
 
@@ -630,6 +1127,16 @@ so everything here is also dead on the Python fallback.
 |---|---|---|
 | `avatar.self_recognized` | 1 | :252 |
 
+### `code/fairies/P60_Executive/CardinalFairy/fairy.py`: class `CardinalFairy`
+
+| topic | sites | file:line |
+|---|---|---|
+| `cardinal.audit.complete` | 1 | :561 |
+| `cardinal.execution.complete` | 1 | :663 |
+| `cardinal.proposal.new` | 1 | :550 |
+| `cardinal.research.complete` | 1 | :878 |
+| `cardinal.simulation.complete` | 1 | :567 |
+
 ### `code/fairies/embodiment_wiring/__init__.py`: class `EmbodimentWiring`
 
 | topic | sites | file:line |
@@ -641,17 +1148,18 @@ so everything here is also dead on the Python fallback.
 | topic | sites | file:line |
 |---|---|---|
 | `blueprint.contract` | 1 | :3193 |
-| `cns.submit_work` | 1 | :3145 |
-| `directory` | 2 | :1874, :3225 |
-| `tracer.relationship` | 1 | :2947 |
-| `worker.complete` | 1 | :3093 |
-| `worker.failed` | 1 | :3101 |
+| `somatic.inject` | 1 | :2447 |
+
+### `code/fairy_template/consolidated.py`: class `PostalWrapper`
+
+| topic | sites | file:line |
+|---|---|---|
+| `tracer` | 1 | :777 |
 
 ### `code/fairy_template/consolidated.py`: class `UnifiedPostalHub`
 
 | topic | sites | file:line |
 |---|---|---|
-| `directory` | 2 | :664, :672 |
 | `tracer` | 1 | :679 |
 
 ### `code/fairy_template/postal_shim.py`: class `PostalShim`
@@ -659,7 +1167,6 @@ so everything here is also dead on the Python fallback.
 | topic | sites | file:line |
 |---|---|---|
 | `affect.stream` | 1 | :148 |
-| `directory` | 1 | :140 |
 | `tracer` | 1 | :136 |
 
 ### `code/fairy_template/shadow.py`: class `FairyShadow`
@@ -681,6 +1188,19 @@ so everything here is also dead on the Python fallback.
 | `network.presence` | 1 | :998 |
 | `network.scan.complete` | 1 | :405 |
 
+### `code/infrastructure/blueprint_watcher.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `blueprint.fairy.added` | 1 | :629 |
+| `blueprint.reload.failed` | 1 | :341 |
+| `blueprint.reload.starting` | 1 | :311 |
+| `blueprint.reload.success` | 1 | :341 |
+| `blueprint.watcher.baseline` | 1 | :534 |
+| `blueprint.watcher.boot_diff` | 1 | :554 |
+| `codex.log.failure` | 1 | :429 |
+| `codex.log.success` | 1 | :417 |
+
 ### `code/infrastructure/plane_battery.py`: class `PlaneBattery`
 
 | topic | sites | file:line |
@@ -691,8 +1211,13 @@ so everything here is also dead on the Python fallback.
 
 | topic | sites | file:line |
 |---|---|---|
-| `directory` | 1 | :129 |
 | `tracer` | 1 | :132 |
+
+### `code/postal_core/mcp.py`
+
+| topic | sites | file:line |
+|---|---|---|
+| `gui.notification` | 1 | :3562 |
 
 ### `code/postal_core/python/postal_core/akp_server.py`: class `AKPServer`
 
@@ -711,7 +1236,6 @@ so everything here is also dead on the Python fallback.
 
 | topic | sites | file:line |
 |---|---|---|
-| `directory` | 1 | :1384 |
 | `oracle` | 1 | :1396 |
 | `tracer` | 1 | :1368 |
 
@@ -737,6 +1261,7 @@ so everything here is also dead on the Python fallback.
 
 | topic | sites | file:line |
 |---|---|---|
+| `gui.open_nous_window` | 2 | :742, :781 |
 | `nous.consciousness.stream` | 1 | :1255 |
 | `system.admin.register` | 1 | :542 |
 | `system.diagnostic_request` | 1 | :1431 |
@@ -767,35 +1292,52 @@ Without that catch-all, every row below would be a dead letter.
 | `chemistry.changed` | `chemistry` (code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:332) | code/fairies/P10_Memory/SRMIntakeWatcherFairy/fairy.py:306 |
 | `chemistry.inject` | `chemistry` (code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:332) | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2949 |
 | `consciousness.awareness` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/P00_Autonomic/nervous_system/waking_sequence_fairy.py:352 |
-| `consciousness.crystallization` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P30_Cognition/cognition/continuous_reflection_pump_fairy.py:617 |
+| `consciousness.contraction` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P30_Cognition/cognition/aot_protocol.py:717 |
 | `consciousness.curiosity` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P40_Sensory/AudioCortexFairy/fairy.py:689 |
 | `consciousness.daydream` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:4407 |
 | `consciousness.dream` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:4338 |
+| `consciousness.dream_wake` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P00_Autonomic/nervous_system/dream_seed_fairy.py:790 |
 | `consciousness.fairy_thought` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairy_template/inner_mind.py:703 |
-| `consciousness.observation` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:859 |
+| `consciousness.ignition` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P50_Persona/Waking Minds/Sourpatches/newborn_core.py:2715 |
+| `consciousness.observation` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:859, code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:1587, code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:3366 ... |
+| `consciousness.orchestration` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:8192 |
 | `consciousness.pain_surfaced` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/consciousness/loop.py:1738 |
+| `consciousness.seed` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:11327 |
+| `consciousness.sleep_phase` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P00_Autonomic/nervous_system/dream_seed_fairy.py:709 |
 | `consciousness.status_request` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/waking_minds/nous_fairy.py:1367 |
 | `consciousness.tool_complete` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P40_Sensory/mcp/consciousness_mcp_integration.py:478 |
 | `consciousness.tool_gated` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P40_Sensory/mcp/consciousness_mcp_integration.py:1007 |
 | `consciousness.tool_start` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P40_Sensory/mcp/consciousness_mcp_integration.py:347 |
-| `consciousness.working_memory.store` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:4682, code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:5999, code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:4682 ... |
+| `consciousness.tracer` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/P00_Autonomic/gm_tools.py:45 |
+| `consciousness.urge` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P30_Cognition/cognition/autopilot_nudge_mixin.py:128 |
+| `consciousness.wake_complete` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P00_Autonomic/nervous_system/dream_seed_fairy.py:565 |
+| `consciousness.wake_phase` | `consciousness` (code/postal_core/examples/fairy_integration.py:151) | code/fairies/P00_Autonomic/nervous_system/dream_seed_fairy.py:489 |
+| `cortex.association.bind_concepts` | `cortex` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P40_Sensory/cortex/visual_cortex_fairy.py:1325 |
+| `cortex.association.visual_experience` | `cortex` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P40_Sensory/cortex/visual_cortex_fairy.py:1321, code/fairies/P40_Sensory/cortex/visual_cortex_fairy.py:1334 |
 | `cortex.bind_request` | `cortex` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P40_Sensory/cortex/chrome_body_bridge.py:853, code/fairies/P40_Sensory/cortex/chrome_body_bridge.py:1004 |
 | `cortex.harmonic_result` | `cortex` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:7054 |
 | `cortex.multimodal_bind` | `cortex` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P40_Sensory/AudioCortexFairy/fairy.py:979, code/fairies/P40_Sensory/VisualCortexFairy/fairy.py:1112 |
 | `cortex.multimodal_percept` | `cortex` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:7094 |
 | `cortex.recovery.node_loss` | `cortex` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P00_Autonomic/nervous_system/dream_seed_fairy.py:1649 |
+| `directory.list_alive` | `directory` (code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:3089, code/fairy_template/consolidated.py:3527) | code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:2496, code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:3793, code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:2071 |
+| `directory.lookup` | `directory` (code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:3089, code/fairy_template/consolidated.py:3527) | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1349 |
 | `drives.pain.crisis` | `drives` (code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:548, code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/fairies/P40_Sensory/perceptual_gate_fairy.py:253) | code/fairies/P30_Cognition/pain_drive_bridge.py:386 |
+| `fairy.activity` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:1968, code/fairies/P00_Autonomic/nervous_system/iodine_tracer.py:155, code/fairy_template/consolidated.py:2386 ... |
 | `fairy.approved` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:9791 |
-| `fairy.autobiography` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:2940, code/fairy_template/consolidated.py:3378 |
+| `fairy.autobiography` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:2940, code/fairy_template/consolidated.py:3378, code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:1876 ... |
 | `fairy.census.request` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P40_Sensory/mcp/gm_tools_mcp.py:572 |
+| `fairy.command` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P00_Autonomic/nervous_system/hardware/memory_pressure_fairy.py:1983 |
 | `fairy.directive.evolved` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:3036, code/fairies/P00_Autonomic/organ_template/DirectiveEvolver.py:206, code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:3036 |
 | `fairy.intent` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P30_Cognition/KnowledgeDigestionFairy/digestion_gui.py:809 |
+| `fairy.presence` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P40_Sensory/forum/fairy_communication.py:228 |
 | `fairy.rejected` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:9811 |
+| `fairy.report` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:6335, code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:6335 |
 | `fairy.restart` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P20_Somatic/SomaticMindFairy/mixins/cardinal.py:948 |
 | `fairy.resurrect` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/directory/fairy.py:1003 |
-| `fairy.sleep` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/directory/fairy.py:907 |
+| `fairy.sleep` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/directory/fairy.py:907, code/fairies/P00_Autonomic/postal.py:143 |
+| `fairy.stimulus` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:519 |
 | `fairy.stopped` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/postal_core/examples/fairy_integration.py:74 |
-| `fairy.wake` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/directory/fairy.py:927 |
+| `fairy.wake` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/directory/fairy.py:927, code/fairies/P00_Autonomic/postal.py:120 |
 | `fairy.wiring.correction` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:9840 |
 | `fairy.wiring.issue` | `fairy` (code/postal_core/examples/fairy_integration.py:149) | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:7699 |
 | `goal.feeling.completed` | `goal` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403) | code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:1684 |
@@ -812,15 +1354,21 @@ Without that catch-all, every row below would be a dead letter.
 | `memory.retrieve` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/postal_core/examples/fairy_integration.py:197, code/postal_core/examples/fairy_integration.py:200 |
 | `memory.retrieved` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/postal_core/examples/fairy_integration.py:129 |
 | `memory.semantic.relation` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/fairies/P50_Persona/EgoLearnerFairy/fairy.py:1099 |
+| `memory.srm_intake` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/fairies/P40_Sensory/scanner/scanner_fairy.py:98 |
 | `memory.status_request` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/waking_minds/nous_fairy.py:1391 |
 | `memory.stream` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/portal_plane_interior.py:131, code/P00_Autonomic/nervous_system/shared_postal_hub.py:337, code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.1.0.py:292 ... |
-| `memory.working.promote` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/fairies/P30_Cognition/integration/cortex_engine.py:1694, code/fairies/P30_Cognition/integration/cortex_engine.py:1800 |
-| `memory.working.register` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:2473, code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:97, code/fairy_template/consolidated.py:2891 |
+| `memory.visual_segment` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/fairies/P40_Sensory/cortex/video_memory_fairy.py:644 |
+| `memory.working.fairy_list` | `memory` (code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403, code/postal_core/examples/fairy_integration.py:116, code/postal_core/examples/fairy_integration.py:150) | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:6011 |
+| `telemetry.autonomy` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:1596 |
 | `telemetry.heartbeat` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:3228, code/fairy_template/consolidated.py:3668 |
 | `telemetry.infra.{*}.{*}` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/infrastructure/infra_tracer.py:232 |
 | `telemetry.interference_pattern` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P30_Cognition/QuantumInterferenceFairy/fairy.py:342 |
+| `telemetry.latency` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:366 |
 | `telemetry.learning.observation` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairy_template/unified.py:400 |
+| `telemetry.presence` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:12127 |
 | `telemetry.pump_status` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P30_Cognition/cognition/continuous_reflection_pump_fairy.py:644 |
+| `telemetry.reflection` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P30_Cognition/reflection/reflection_integration.py:45 |
+| `telemetry.system` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:490 |
 | `telemetry.vision` | `telemetry` (code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:266, code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345) | code/fairies/P40_Sensory/wiring/sensory_wiring.py:270 |
 | `test.hello` | `test` (code/postal_core/examples/minimal_fairy.py:15, code/postal_core/python/postal_core/_python_fallback.py:1577) | code/postal_core/examples/minimal_fairy.py:18 |
 | `test.message.{*}` | `test` (code/postal_core/examples/minimal_fairy.py:15, code/postal_core/python/postal_core/_python_fallback.py:1577) | code/postal_core/python/postal_core/_python_fallback.py:1580 |
@@ -833,61 +1381,41 @@ Without that catch-all, every row below would be a dead letter.
 | `{*}.*` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:908 | SomaticMindFairy (SomaticMindFairy) |
 | `*.stream` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:697 | SomaticMindFairy (SomaticMindFairy) |
 | `*.stream` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:909 | SomaticMindFairy (SomaticMindFairy) |
-| `ace.broadcast.response` | code/fairies/P40_Sensory/web/akashic_foundation.py:861 |  |
-| `ace.dm.reply` | code/fairies/P40_Sensory/web/akashic_foundation.py:821 |  |
 | `ace.inbox.message` | code/fairies/P40_Sensory/web/akashic_foundation.py:767 |  |
-| `ace.presence` | code/fairies/P40_Sensory/window_sense_organ.py:532 | WindowSenseOrgan |
-| `ace.presence` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:1019 | SourpatchesFairy (SourpatchesFairy) |
-| `ace.presence` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:9699 | SourpatchesFairy (SourpatchesFairy) |
-| `ace.presence` | code/waking_minds/nous_fairy.py:485 | NousFairy (NousFairy) |
 | `ace.question` | code/fairies/P40_Sensory/web/akashic_foundation.py:789 |  |
-| `achievement.unlocked` | code/fairies/P50_Persona/EgoLearnerFairy/fairy.py:343 | EgoLearnerFairy (EgoLearnerFairy) |
+| `action.result` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2084 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `affect.chemistry` | code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:342 | CirculationPumpFairy (CirculationPumpFairy) |
 | `affect.chemistry` | code/fairies/P40_Sensory/perceptual_gate_fairy.py:247 | PerceptualGateFairy (PerceptualGateFairy) |
 | `affect.event` | code/fairies/P30_Cognition/QuantumEmulatorFairy/fairy.py:476 | QuantumEmulatorFairy (QuantumEmulatorFairy) |
 | `affect.pain.level` | code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py:293 | AkashicInferenceFairy (AkashicInferenceFairy) |
 | `affect.state.changed` | code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py:294 | AkashicInferenceFairy (AkashicInferenceFairy) |
 | `attention.pause_to_think` | code/fairies/P30_Cognition/cognition/attention_controller.py:366 | AttentionController (AttentionController) |
-| `attention.request` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:1021 | SourpatchesFairy (SourpatchesFairy) |
-| `attention.request` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:9700 | SourpatchesFairy (SourpatchesFairy) |
-| `attention.request` | code/waking_minds/nous_fairy.py:490 | NousFairy (NousFairy) |
 | `attention.resume` | code/fairies/P30_Cognition/cognition/attention_controller.py:366 | AttentionController (AttentionController) |
 | `attention.set_mode` | code/fairies/P30_Cognition/cognition/attention_controller.py:366 | AttentionController (AttentionController) |
 | `audio.harmonic` | code/fairies/P20_Somatic/HarmonicAffectBridgeFairy/fairy.py:190 | HarmonicAffectBridgeFairy (HarmonicAffectBridgeFairy) |
-| `autonomy.drive_state` | code/fairies/P20_Somatic/wiring/somatic_wiring.py:314 | SomaticWiring |
-| `autonomy.drive_state` | code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403 | AttentionControllerFairy (AttentionControllerFairy) |
 | `autonomy.drive_unsatisfied` | code/fairies/P00_Autonomic/nervous_system/salience_filter.py:195 | SalienceFilter |
-| `autonomy.drives` | code/fairies/P00_Autonomic/nervous_system/salience_filter.py:194 | SalienceFilter |
-| `autonomy.drives` | code/fairies/P20_Somatic/_embodiment_integrator.py:159 | EmbodimentIntegrator (EmbodimentIntegrator) |
-| `autonomy.drives` | code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py:1980 | SomaticEngineFairy (SomaticEngineFairy) |
-| `autonomy.drives` | code/fairies/P30_Cognition/ProbabilityOracleFairy/fairy.py:192 | ProbabilityOracleFairy (ProbabilityOracleFairy) |
-| `autonomy.drives` | code/fairies/P40_Sensory/cortex/neural_mesh_fairy.py:310 | NeuralMeshFairy (NeuralMeshFairy) |
+| `autonomy.drive_unsatisfied` | code/fairies/P30_Cognition/cognition/smart_goal_coordinator.py:755 | SmartGoalCoordinator |
 | `autonomy.goal_created` | code/fairies/P30_Cognition/goal_scheduler/goal_scheduler_fairy.py:969 | GoalSchedulerFairy (GoalSchedulerFairy) |
-| `autonomy.goal_suggestion` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:309 | DynamicThinkingOrchestrator |
-| `autonomy.goal_suggestion` | code/fairies/P30_Cognition/goal_scheduler/goal_scheduler_fairy.py:1059 | GoalSchedulerFairy (GoalSchedulerFairy) |
 | `autonomy.habit_query_result` | code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:634 | AutonomyFairy (AutonomyFairy) |
+| `autonomy.ignition` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:2945 | AutonomyFairy (AutonomyFairy) |
 | `autonomy.pain` | code/fairies/P20_Somatic/_embodiment_integrator.py:154 | EmbodimentIntegrator (EmbodimentIntegrator) |
 | `autonomy.permission.executed` | code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:578 | AutonomyFairy (AutonomyFairy) |
 | `autonomy.state` | code/fairies/P40_Sensory/cortex/neural_mesh_fairy.py:309 | NeuralMeshFairy (NeuralMeshFairy) |
 | `autonomy.wanting.published` | code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403 | AttentionControllerFairy (AttentionControllerFairy) |
 | `autopilot.action.request` | code/fairies/P40_Sensory/wiring/sensory_wiring.py:320 | SensoryWiring |
+| `autopilot.behaviors` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:1990 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
+| `autopilot.execution` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2151 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `autopilot.habit_query_result` | code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:1037 | AutopilotFairy (AutopilotFairy) |
-| `autopilot.nudge` | code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:917 | AutopilotFairy (AutopilotFairy) |
-| `autopilot.nudge` | code/fairies/P30_Cognition/cognition/autopilot_nudge_mixin.py:49 | AutopilotNudgeMixin |
 | `autopilot.suggestion` | code/fairies/P30_Cognition/goal_scheduler/goal_scheduler_fairy.py:1021 | GoalSchedulerFairy (GoalSchedulerFairy) |
 | `blueprint.*` | code/fairies/P00_Autonomic/SomaticMind/somatic_mind.py:746 | SomaticMind (SomaticMind) |
 | `blueprint.*` | code/fairies/P20_Somatic/SomaticMindFairy/mixins/cardinal.py:361 | CardinalMixin |
 | `body.budget` | code/fairies/P00_Autonomic/reflex/brainstem_reflex_fairy.py:628 | BrainstemReflexFairy (BrainstemReflexFairy) |
-| `boot.command` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:826 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `boot.enter_full_mode` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:827 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `boot.phase.complete` | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:1146 | MyFairy (MyFairy) |
-| `boot.phase.complete` | code/fairy_template/consolidated.py:1454 | MyFairy (MyFairy) |
 | `cardinal.teach_request` | code/fairies/P30_Cognition/CardinalFairy/fairy.py:373 | CardinalFairyV3 (CardinalFairy) |
 | `chat.create_forum_thread` | code/fairies/P40_Sensory/ChatSenseFairy/fairy.py:185 | ChatSenseFairy (ChatSenseFairy) |
 | `chat.get_forum_boards` | code/fairies/P40_Sensory/ChatSenseFairy/fairy.py:185 | ChatSenseFairy (ChatSenseFairy) |
 | `chat.get_forum_threads` | code/fairies/P40_Sensory/ChatSenseFairy/fairy.py:185 | ChatSenseFairy (ChatSenseFairy) |
 | `chat.get_registered` | code/fairies/P40_Sensory/ChatSenseFairy/fairy.py:185 | ChatSenseFairy (ChatSenseFairy) |
-| `chat.message` | code/waking_minds/nous_fairy.py:342 | NousFairy (NousFairy) |
 | `chat.register_fairy` | code/fairies/P40_Sensory/ChatSenseFairy/fairy.py:185 | ChatSenseFairy (ChatSenseFairy) |
 | `chat.reply_to_thread` | code/fairies/P40_Sensory/ChatSenseFairy/fairy.py:185 | ChatSenseFairy (ChatSenseFairy) |
 | `chat.respond_to_broadcast` | code/fairies/P40_Sensory/ChatSenseFairy/fairy.py:185 | ChatSenseFairy (ChatSenseFairy) |
@@ -900,8 +1428,6 @@ Without that catch-all, every row below would be a dead letter.
 | `chat.user_input` | code/fairies/P30_Cognition/cognition/multi_mind_drift_integration.py:91 |  |
 | `chat.user_input` | code/fairies/P40_Sensory/conversation_sense_organ.py:551 |  |
 | `chat_organ.register` | code/fairies/P40_Sensory/chat_sensory_organ.py:164 | ChatSensoryOrgan |
-| `chemistry.field` | code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:331 | CirculationPumpFairy (CirculationPumpFairy) |
-| `chemistry.field` | code/fairies/P40_Sensory/perceptual_gate_fairy.py:247 | PerceptualGateFairy (PerceptualGateFairy) |
 | `chemistry.state` | code/fairies/P00_Autonomic/reflex/brainstem_reflex_fairy.py:614 | BrainstemReflexFairy (BrainstemReflexFairy) |
 | `chemistry.state` | code/fairies/P20_Somatic/integration/emotion_color_mapper.py:439 |  |
 | `citizen.list` | code/fairies/P00_Autonomic/CitizenRegistryFairy/fairy.py:187 | CitizenRegistryFairy (CitizenRegistryFairy) |
@@ -912,38 +1438,17 @@ Without that catch-all, every row below would be a dead letter.
 | `citizen.status` | code/fairies/P00_Autonomic/CitizenRegistryFairy/fairy.py:187 | CitizenRegistryFairy (CitizenRegistryFairy) |
 | `citizen.unregister` | code/fairies/P00_Autonomic/CitizenRegistryFairy/fairy.py:187 | CitizenRegistryFairy (CitizenRegistryFairy) |
 | `claude.response_start` | code/fairies/P30_Cognition/cognition/drift_detection_patch.py:99 |  |
-| `claude.thought` | code/fairies/P20_Somatic/affect_bus/thought_chemistry_bridge.py:252 | ThoughtChemistryBridge |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claude.thought` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `claudefairy.blocked` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
 | `claudefairy.chat` | code/fairies/P00_Autonomic/circulation/circadian_pacemaker_fairy.py:414 | CircadianPacemakerFairy (CircadianPacemakerFairy) |
+| `claudefairy.chat` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:979 | AutonomyFairy (AutonomyFairy) |
 | `claudefairy.chat` | code/fairies/P40_Sensory/conversation_sense_organ.py:548 |  |
 | `claudefairy.chemistry` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
 | `claudefairy.composed` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:741 | ActionChainFairy (ActionChainFairy) |
 | `claudefairy.composed` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:766 | ActionChainFairy (ActionChainFairy) |
-| `claudefairy.feeling` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:741 | ActionChainFairy (ActionChainFairy) |
-| `claudefairy.feeling` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:766 | ActionChainFairy (ActionChainFairy) |
-| `claudefairy.feeling` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
-| `claudefairy.input` | code/fairies/P00_Autonomic/circulation/circadian_pacemaker_fairy.py:414 | CircadianPacemakerFairy (CircadianPacemakerFairy) |
-| `claudefairy.input` | code/fairies/P40_Sensory/conversation_sense_organ.py:549 |  |
+| `claudefairy.converse` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2152 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `claudefairy.intent` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
 | `claudefairy.intent.visibility` | code/fairies/P40_Sensory/window_sense_organ.py:528 | WindowSenseOrgan |
-| `claudefairy.nudge` | code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:339 | AttentionControllerFairy (AttentionControllerFairy) |
-| `claudefairy.nudge` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
-| `claudefairy.speak` | code/fairies/P30_Cognition/cognition/drift_detection_patch.py:100 |  |
-| `claudefairy.speak` | code/fairies/P30_Cognition/cognition/interest_scheduler_fairy.py:837 | InterestSchedulerFairy (InterestSchedulerFairy) |
-| `claudefairy.speak` | code/fairies/P30_Cognition/cognition/mind_scheduler.py:561 |  |
-| `claudefairy.speak` | code/fairies/P40_Sensory/conversation_sense_organ.py:566 |  |
+| `claudefairy.speech` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:952 | AutonomyFairy (AutonomyFairy) |
 | `claudefairy.speech` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
 | `claudefairy.speech` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `claudefairy.speech` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
@@ -957,29 +1462,15 @@ Without that catch-all, every row below would be a dead letter.
 | `claudefairy.speech` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `claudefairy.speech` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `claudefairy.speech` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
+| `claudefairy.speech` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:1983 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
+| `claudefairy.state` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:951 | AutonomyFairy (AutonomyFairy) |
 | `claudefairy.state` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
 | `claudefairy.stream` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
-| `claudefairy.thought` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:310 | DynamicThinkingOrchestrator |
-| `claudefairy.thought` | code/fairies/P30_Cognition/cognition/interest_scheduler_fairy.py:837 | InterestSchedulerFairy (InterestSchedulerFairy) |
-| `claudefairy.thought` | code/fairies/P30_Cognition/cognition/mind_scheduler.py:564 |  |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `claudefairy.tool_result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `claudefairy.want_to_speak` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
 | `claudefairy.want_to_speak` | code/fairies/P40_Sensory/window_sense_organ.py:529 | WindowSenseOrgan |
 | `claudefairy.window_state` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:741 | ActionChainFairy (ActionChainFairy) |
 | `claudefairy.window_state` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:766 | ActionChainFairy (ActionChainFairy) |
 | `claudefairy.window_state` | code/fairies/P30_Cognition/cognition/intent_to_goal_fairy.py:123 | IntentToGoalFairy (IntentToGoalFairy) |
-| `cns.fairy.health` | code/fairies/P00_Autonomic/CentralNervousFairy/fairy.py:217 | CentralNervousFairyV3 (CentralNervousFairy) |
 | `code.executed` | code/fairies/P30_Cognition/cognition/drift_detection_patch.py:92 |  |
 | `codex.add_pattern` | code/fairies/P10_Memory/AkashicCodexFairy/fairy.py:146 | AkashicCodexFairy (AkashicCodexFairy) |
 | `codex.compile` | code/fairies/P10_Memory/AkashicCodexFairy/fairy.py:146 | AkashicCodexFairy (AkashicCodexFairy) |
@@ -992,20 +1483,13 @@ Without that catch-all, every row below would be a dead letter.
 | `codex.record_pattern` | code/fairies/P10_Memory/AkashicCodexFairy/fairy.py:146 | AkashicCodexFairy (AkashicCodexFairy) |
 | `codex.status` | code/fairies/P10_Memory/AkashicCodexFairy/fairy.py:146 | AkashicCodexFairy (AkashicCodexFairy) |
 | `cognition.assess_depth` | code/fairies/P30_Cognition/HybridCognitionFairy/fairy.py:146 | HybridCognitionFairy (HybridCognitionFairy) |
-| `cognition.autonomy` | code/fairies/P30_Cognition/goal_scheduler/goal_scheduler_fairy.py:989 | GoalSchedulerFairy (GoalSchedulerFairy) |
+| `cognition.autopilot` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:945 | AutonomyFairy (AutonomyFairy) |
 | `cognition.bind_request` | code/fairies/P30_Cognition/integration/manifold_constrained_cortex_fairy.py:1052 | ManifoldConstrainedCortexFairy (ManifoldConstrainedCortexFairy) |
-| `cognition.cortex` | code/fairies/P40_Sensory/cortex/neural_mesh_fairy.py:282 | NeuralMeshFairy (NeuralMeshFairy) |
-| `cognition.goal` | code/fairies/P30_Cognition/HybridCognitionFairy/fairy.py:146 | HybridCognitionFairy (HybridCognitionFairy) |
-| `cognition.goals` | code/fairies/P30_Cognition/cognition/interest_scheduler_fairy.py:798 | InterestSchedulerFairy (InterestSchedulerFairy) |
 | `cognition.inference.complete` | code/fairies/P00_Autonomic/postal_bridge/satellite_postal_client.py:111 | SatellitePostalClient |
 | `cognition.llm_enhance` | code/fairies/P30_Cognition/HybridCognitionFairy/fairy.py:146 | HybridCognitionFairy (HybridCognitionFairy) |
 | `cognition.local_only` | code/fairies/P30_Cognition/HybridCognitionFairy/fairy.py:146 | HybridCognitionFairy (HybridCognitionFairy) |
-| `cognition.mhc` | code/fairies/P30_Cognition/integration/manifold_constrained_cortex_fairy.py:1057 | ManifoldConstrainedCortexFairy (ManifoldConstrainedCortexFairy) |
 | `cognition.mhc.*` | code/fairies/P30_Cognition/integration/manifold_constrained_cortex_fairy.py:1058 | ManifoldConstrainedCortexFairy (ManifoldConstrainedCortexFairy) |
-| `cognition.mhc.spread` | code/fairies/P30_Cognition/QuantumEmulatorFairy/fairy.py:478 | QuantumEmulatorFairy (QuantumEmulatorFairy) |
-| `cognition.pattern_learned` | code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:961 | AutopilotFairy (AutopilotFairy) |
 | `cognition.status` | code/fairies/P30_Cognition/HybridCognitionFairy/fairy.py:146 | HybridCognitionFairy (HybridCognitionFairy) |
-| `cognition.think` | code/fairies/P30_Cognition/HybridCognitionFairy/fairy.py:146 | HybridCognitionFairy (HybridCognitionFairy) |
 | `cognition.unconscious.task` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1837 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `cognition.unconscious.task` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `cognition.unconscious.task` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
@@ -1022,28 +1506,8 @@ Without that catch-all, every row below would be a dead letter.
 | `conscience.check` | code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:322 | EmbodimentFairy (EmbodimentFairy) |
 | `conscience.check` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:1218 | SomaticMindFairy (SomaticMindFairy) |
 | `consciousness.*` | code/fairies/P00_Autonomic/SomaticMind/somatic_mind.py:746 | SomaticMind (SomaticMind) |
-| `consciousness.action_impulse` | code/fairies/P20_Somatic/BioelectricMeshFairy/fairy.py:307 | BioelectricMeshFairy (BioelectricMeshFairy) |
-| `consciousness.action_impulse` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:3922 | SourpatchesFairy (SourpatchesFairy) |
-| `consciousness.energy` | code/fairies/P40_Sensory/ITCortexFairy/fairy.py:322 | ITCortexFairyV1 (ITCortexFairy) |
-| `consciousness.fairy_collision` | code/fairies/P00_Autonomic/ConsciousnessLoopFairy/fairy.py:212 | ConsciousnessLoopFairy (ConsciousnessLoopFairy) |
-| `consciousness.insight` | code/fairies/P30_Cognition/goal_scheduler/goal_scheduler_fairy.py:1079 | GoalSchedulerFairy (GoalSchedulerFairy) |
-| `consciousness.mode` | code/fairies/P30_Cognition/cognition/continuous_reflection_pump_fairy.py:284 | ContinuousReflectionPumpFairy (ContinuousReflectionPumpFairy) |
 | `consciousness.mode.switch` | code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py:297 | AkashicInferenceFairy (AkashicInferenceFairy) |
-| `consciousness.mode_shift` | code/fairies/P30_Cognition/cognition/continuous_reflection_pump_fairy.py:289 | ContinuousReflectionPumpFairy (ContinuousReflectionPumpFairy) |
-| `consciousness.needs_context` | code/fairies/P10_Memory/SRMRecallFairy/fairy.py:275 | SRMRecallFairy (SRMRecallFairy) |
-| `consciousness.reflection` | code/fairies/P10_Memory/SRMIngestFairy/fairy.py:333 | SRMIngestFairy (SRMIngestFairy) |
-| `consciousness.reflective_stream` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
-| `consciousness.stall` | code/waking_minds/nous_fairy.py:530 | NousFairy (NousFairy) |
-| `consciousness.tick` | code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:270 | AkashicLibrarianFairy (AkashicLibrarianFairy) |
-| `consciousness.tick.AutonomyFairy` | code/fairies/P00_Autonomic/consciousness_heartbeat_wiring.py:254 |  |
-| `consciousness.tick.ConsciousnessLoopFairy` | code/fairies/P00_Autonomic/consciousness_heartbeat_wiring.py:175 |  |
-| `consciousness.tick.UnconsciousMindFairy` | code/fairies/P00_Autonomic/consciousness_heartbeat_wiring.py:293 |  |
-| `consciousness.tick.WorkingMemoryHubFairy` | code/fairies/P00_Autonomic/consciousness_heartbeat_wiring.py:213 |  |
-| `consciousness.to_ingest` | code/fairies/P00_Autonomic/nervous_system/crossed_signal_handlers.py:192 |  |
-| `consciousness.to_ingest` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
-| `consciousness.to_recall` | code/fairies/P00_Autonomic/nervous_system/crossed_signal_handlers.py:40 |  |
-| `consciousness.to_recall` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
-| `consciousness.working_stream` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
+| `consciousness.surfacing.sourpatches` | code/fairies/P30_Cognition/cognition/thought_chain_engine.py:2613 |  |
 | `conversation.get_feeling` | code/fairies/P40_Sensory/ConversationSenseFairy/fairy.py:137 | ConversationSenseFairy (ConversationSenseFairy) |
 | `conversation.message_received` | code/fairies/P40_Sensory/ConversationSenseFairy/fairy.py:137 | ConversationSenseFairy (ConversationSenseFairy) |
 | `conversation.message_sent` | code/fairies/P40_Sensory/ConversationSenseFairy/fairy.py:137 | ConversationSenseFairy (ConversationSenseFairy) |
@@ -1059,16 +1523,14 @@ Without that catch-all, every row below would be a dead letter.
 | `cortex.harmonic_bind` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:7021 | AssociationCortexFairy (AssociationCortexFairy) |
 | `cortex.harmonic_query` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:7018 | AssociationCortexFairy (AssociationCortexFairy) |
 | `cortex.query_actions` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4419 | AssociationCortexFairy (AssociationCortexFairy) |
-| `council.broadcast` | code/fairies/P30_Cognition/integration/cognition_team.py:457 | CognitionTeam |
-| `council.verdict` | code/fairies/P30_Cognition/InnerNarratorFairy/fairy.py:663 | InnerNarratorFairy (InnerNarratorFairy) |
-| `council.verdict` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:315 | DynamicThinkingOrchestrator |
-| `decision.execute` | code/consciousness/loop.py:2108 | ConsciousnessLoop |
-| `decision.execute` | code/fairies/P50_Persona/motor/motor_cortex_fairy.py:219 | MotorCortexFairy |
 | `diary.*` | code/fairies/P00_Autonomic/SomaticMind/somatic_mind.py:746 | SomaticMind (SomaticMind) |
 | `diary.*` | code/fairies/P20_Somatic/SomaticMindFairy/mixins/cardinal.py:361 | CardinalMixin |
 | `directory.*` | code/fairies/P00_Autonomic/DirectoryFairy/_old_fractured/fairy_old.py:291 | DirectoryFairy (DirectoryFairy) |
 | `directory.*` | code/fairies/P00_Autonomic/DirectoryFairy/fairy.py:655 | DirectoryFairy (DirectoryFairy) |
+| `directory.census` | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:1025 | MyFairy (MyFairy) |
+| `directory.census` | code/fairy_template/consolidated.py:1338 | MyFairy (MyFairy) |
 | `directory.register` | code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:269 | AkashicLibrarianFairy (AkashicLibrarianFairy) |
+| `directory.registered` | code/fairies/P00_Autonomic/nervous_system/wiring_map.py:519 | LiveWiringScanner |
 | `drive.intensified` | code/fairies/P50_Persona/Waking Minds/Sourpatches/observer_loop.py:237 | ObserverLoop |
 | `drives.get_state` | code/fairies/P30_Cognition/PainDriveFairy/fairy.py:237 | PainDriveFairy (PainDriveFairy) |
 | `drives.get_urgent` | code/fairies/P30_Cognition/PainDriveFairy/fairy.py:237 | PainDriveFairy (PainDriveFairy) |
@@ -1081,14 +1543,16 @@ Without that catch-all, every row below would be a dead letter.
 | `drives.register` | code/fairies/P30_Cognition/PainDriveFairy/fairy.py:237 | PainDriveFairy (PainDriveFairy) |
 | `drives.relief` | code/fairies/P30_Cognition/PainDriveFairy/fairy.py:237 | PainDriveFairy (PainDriveFairy) |
 | `drives.status` | code/fairies/P30_Cognition/PainDriveFairy/fairy.py:237 | PainDriveFairy (PainDriveFairy) |
+| `education.complete_step` | code/fairies/P30_Cognition/cognition/claudefairy_education.py:836 |  |
+| `education.start_learning` | code/fairies/P30_Cognition/cognition/claudefairy_education.py:835 |  |
 | `embodiment.chemistry.request` | code/fairies/P20_Somatic/wiring/somatic_wiring.py:304 | SomaticWiring |
 | `embodiment.enrichment.status` | code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:445 | EmbodimentFairy (EmbodimentFairy) |
 | `embodiment.enrichment.toggle` | code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:440 | EmbodimentFairy (EmbodimentFairy) |
 | `embodiment.get_components` | code/fairies/P20_Somatic/EmbodimentIntegratorFairy/fairy.py:139 | EmbodimentIntegratorFairy (EmbodimentIntegratorFairy) |
 | `embodiment.habit_query_result` | code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:428 | EmbodimentFairy (EmbodimentFairy) |
-| `embodiment.motor.feedback` | code/fairies/P40_Sensory/sensory_integration.py:118 | SensoryIntegration |
 | `embodiment.rewire` | code/fairies/P20_Somatic/EmbodimentIntegratorFairy/fairy.py:139 | EmbodimentIntegratorFairy (EmbodimentIntegratorFairy) |
 | `embodiment.start` | code/fairies/P20_Somatic/EmbodimentIntegratorFairy/fairy.py:139 | EmbodimentIntegratorFairy (EmbodimentIntegratorFairy) |
+| `embodiment.state` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:1991 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `embodiment.status` | code/fairies/P20_Somatic/EmbodimentIntegratorFairy/fairy.py:139 | EmbodimentIntegratorFairy (EmbodimentIntegratorFairy) |
 | `embodiment.stop` | code/fairies/P20_Somatic/EmbodimentIntegratorFairy/fairy.py:139 | EmbodimentIntegratorFairy (EmbodimentIntegratorFairy) |
 | `energy.paradox_pulse` | code/fairies/P40_Sensory/ITCortexFairy/fairy.py:322 | ITCortexFairyV1 (ITCortexFairy) |
@@ -1100,26 +1564,9 @@ Without that catch-all, every row below would be a dead letter.
 | `equilibrium.spawn_agent` | code/fairies/P00_Autonomic/EquilibriumFairy/fairy.py:185 | EquilibriumFairy (EquilibriumFairy) |
 | `fairy.*` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:694 | SomaticMindFairy (SomaticMindFairy) |
 | `fairy.*` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:906 | SomaticMindFairy (SomaticMindFairy) |
-| `fairy.boot` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
-| `fairy.broadcast` | code/fairies/P40_Sensory/chat_sensory_organ.py:175 | ChatSensoryOrgan |
-| `fairy.card` | code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:268 | AkashicLibrarianFairy (AkashicLibrarianFairy) |
-| `fairy.failed` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:659 | SomaticMindFairy (SomaticMindFairy) |
-| `fairy.failed` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:879 | SomaticMindFairy (SomaticMindFairy) |
-| `fairy.health` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
 | `fairy.health.alert` | code/waking_minds/nous_fairy.py:535 | NousFairy (NousFairy) |
-| `fairy.idle` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:498 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `fairy.ping` | code/fairies/P40_Sensory/senses/attention_sense.py:197 | AttentionSense |
-| `fairy.reflection` | code/fairies/P30_Cognition/cognition/thought_chain_sequencer_fairy.py:329 | ThoughtChainSequencerFairy (ThoughtChainSequencerFairy) |
-| `fairy.speech` | code/fairies/P30_Cognition/cognition/interest_scheduler_fairy.py:837 | InterestSchedulerFairy (InterestSchedulerFairy) |
-| `fairy.status` | code/fairies/P10_Memory/AkashicLibrarianFairy/fairy.py:267 | AkashicLibrarianFairy (AkashicLibrarianFairy) |
-| `fairy.status` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
-| `fairy.status` | code/fairies/P40_Sensory/TelemetryVisionFairy/fairy.py:146 | TelemetryVisionFairyV3 (TelemetryVisionFairy) |
-| `fairy.stuck` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:499 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `file.created` | code/fairies/P30_Cognition/cognition/drift_detection_patch.py:90 |  |
 | `fleet.generate` | code/fairies/P00_Autonomic/nervous_system/hardware/gpu_fleet_fairy.py:193 | GPUFleetFairy (GPUFleetFairy) |
-| `forum.notify.{*}` | code/fairies/P40_Sensory/forum/forum_mixin.py:63 | ForumMixin |
-| `forum.post.new` | code/fairies/P40_Sensory/forum/forum_engine.py:74 | ForumEngine |
-| `forum.thread.new` | code/fairies/P40_Sensory/forum/forum_engine.py:73 | ForumEngine |
 | `founders.ingest.all` | code/fairies/P10_Memory/FoundersIngestFairy/fairy.py:121 | FoundersIngestFairy (FoundersIngestFairy) |
 | `founders.ingest.request` | code/fairies/P10_Memory/FoundersIngestFairy/fairy.py:120 | FoundersIngestFairy (FoundersIngestFairy) |
 | `gdrive.scrape.request` | code/fairies/P10_Memory/GDriveScraperFairy/fairy.py:125 | GDriveScraperFairy (GDriveScraperFairy) |
@@ -1141,43 +1588,15 @@ Without that catch-all, every row below would be a dead letter.
 | `gm.world_status` | code/fairies/P00_Autonomic/gm_handler.py:147 |  |
 | `gm.world_status` | code/server.py:7927 |  |
 | `goal.abandoned` | code/fairies/P00_Autonomic/circulation/circadian_pacemaker_fairy.py:414 | CircadianPacemakerFairy (CircadianPacemakerFairy) |
-| `goal.created` | code/fairies/P00_Autonomic/circulation/circadian_pacemaker_fairy.py:414 | CircadianPacemakerFairy (CircadianPacemakerFairy) |
-| `goal.created` | code/fairies/P00_Autonomic/nervous_system/salience_filter.py:190 | SalienceFilter |
-| `goal.created` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:308 | DynamicThinkingOrchestrator |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.created` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `goal.failed` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:4074 | SourpatchesFairy (SourpatchesFairy) |
+| `goal.abandoned` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:991 | AutonomyFairy (AutonomyFairy) |
+| `goal.active` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:1989 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `goal.feeling.*` | code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:301 | EmbodimentFairy (EmbodimentFairy) |
 | `goal.feeling.*` | code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:384 | CirculationPumpFairy (CirculationPumpFairy) |
 | `goal.feeling.*` | code/fairies/P50_Persona/EgoLearnerFairy/fairy.py:350 | EgoLearnerFairy (EgoLearnerFairy) |
-| `goal.nudge` | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:1592 | MyFairy (MyFairy) |
-| `goal.nudge` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:713 | ActionChainFairy (ActionChainFairy) |
-| `goal.nudge` | code/fairy_template/consolidated.py:1977 | MyFairy (MyFairy) |
 | `goal.scheduled` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:769 | SomaticMindFairy (SomaticMindFairy) |
-| `goal.scheduler.nudge` | code/fairies/P30_Cognition/goal_scheduler/goal_scheduler_fairy.py:1024 | GoalSchedulerFairy (GoalSchedulerFairy) |
+| `goal.scheduled` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2149 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `goal.search_request` | code/fairies/P30_Cognition/QuantumSearchFairy/fairy.py:392 | QuantumSearchFairy (QuantumSearchFairy) |
+| `goal_scheduler.nudge` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:2946 | AutonomyFairy (AutonomyFairy) |
 | `goal_scheduler.nudge` | code/fairies/P30_Cognition/cognition/autopilot_nudge_mixin.py:50 | AutopilotNudgeMixin |
 | `goal_scheduler.nudge` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1838 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `goal_scheduler.nudge` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1938 | UnconsciousMindFairy (UnconsciousMindFairy) |
@@ -1187,33 +1606,15 @@ Without that catch-all, every row below would be a dead letter.
 | `gpu_worker.heartbeat` | code/fairies/P00_Autonomic/nervous_system/hardware/gpu_fleet_fairy.py:197 | GPUFleetFairy (GPUFleetFairy) |
 | `gui.fairy_window_closed` | code/fairies/P40_Sensory/conversation_sense_organ.py:576 |  |
 | `gui.fairy_window_opened` | code/fairies/P40_Sensory/conversation_sense_organ.py:575 |  |
-| `gui.user_message` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:741 | ActionChainFairy (ActionChainFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:766 | ActionChainFairy (ActionChainFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4504 | AssociationCortexFairy (AssociationCortexFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4550 | AssociationCortexFairy (AssociationCortexFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/drift_detection_patch.py:95 |  |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/multi_mind_drift_integration.py:90 |  |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `gui.user_message` | code/fairies/P40_Sensory/conversation_sense_organ.py:550 |  |
 | `guild.{*}.response.{*}` | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:4598 | MyOrganFairy (my_organ) |
 | `guild.{*}.response.{*}` | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:4598 | MyOrganFairy (my_organ) |
 | `guild.inference.response.p20_chain` | code/fairies/P20_Somatic/SomaticMindFairy/thought_chains.py:681 | ThoughtChainEngine |
 | `guild.inference.response.sour_reflection` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:3274 | SourpatchesFairy (SourpatchesFairy) |
 | `guild.inference.response.sour_thought` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:2438 | SourpatchesFairy (SourpatchesFairy) |
+| `guild.inference.response.thought_chain` | code/fairies/P30_Cognition/cognition/thought_chain_engine.py:1724 | ThoughtChainEngine |
 | `guild.sourpatches_farm.response.p20_chain` | code/fairies/P20_Somatic/SomaticMindFairy/thought_chains.py:824 | ThoughtChainEngine |
+| `guild.sourpatches_farm.response.thought_chain` | code/fairies/P30_Cognition/cognition/thought_chain_engine.py:1874 | ThoughtChainEngine |
 | `hardware.energy.injection` | code/fairies/P00_Autonomic/TokenBucketFairy/fairy.py:682 | TokenBucketFairy (TokenBucketFairy) |
-| `hardware.gpu.felt` | code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:416 | CirculationPumpFairy (CirculationPumpFairy) |
 | `hardware.request` | code/hardware/fairy.py:88 | HardwareFairy (HardwareFairy) |
 | `harmonic.perspectives` | code/fairies/P30_Cognition/HarmonicCortexFairy/fairy.py:367 | HarmonicCortexFairy (HarmonicCortexFairy) |
 | `harmonic.query` | code/fairies/P30_Cognition/HarmonicCortexFairy/fairy.py:362 | HarmonicCortexFairy (HarmonicCortexFairy) |
@@ -1245,12 +1646,11 @@ Without that catch-all, every row below would be a dead letter.
 | `ingest.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:117 |  |
 | `ingest.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:124 |  |
 | `inner_narrator.reply.{*}` | code/fairies/P30_Cognition/InnerNarratorFairy/fairy.py:2382 | InnerNarratorFairy (InnerNarratorFairy) |
-| `inner_vision.state` | code/fairies/P40_Sensory/perceptual_gate_fairy.py:273 | PerceptualGateFairy (PerceptualGateFairy) |
 | `interest.detected` | code/P30_Cognition/cognition/dynamic_thinking_orchestrator.py:162 | DynamicThinkingOrchestrator |
 | `interest.detected` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:301 | DynamicThinkingOrchestrator |
-| `interest.unfinished` | code/fairies/P30_Cognition/cognition/interest_scheduler_fairy.py:809 | InterestSchedulerFairy (InterestSchedulerFairy) |
 | `knowledge.new` | code/fairies/P10_Memory/SRMIngestFairy/fairy.py:276 | SRMIngestFairy (SRMIngestFairy) |
 | `language.analyze_request` | code/fairies/P30_Cognition/LanguageFairy/fairy.py:301 | LanguageFairy (LanguageFairy) |
+| `learning.experiment_request` | code/fairies/P30_Cognition/cognition/failure_factory.py:913 |  |
 | `learning.voice_identity` | code/fairies/P40_Sensory/AudioCortexFairy/fairy.py:334 | AudioCortexFairyV3 (AudioCortexFairy) |
 | `llm.call.complete` | code/fairies/P00_Autonomic/TokenBucketFairy/fairy.py:632 | TokenBucketFairy (TokenBucketFairy) |
 | `mcp.status_request` | code/postal_core/python/postal_core/mcp/bridge.py:96 | MCPBridgeFairy (MCPBridgeFairy) |
@@ -1270,18 +1670,9 @@ Without that catch-all, every row below would be a dead letter.
 | `memory.engine.query` | code/fairies/P10_Memory/MemoryEngineFairy/fairy.py:154 | MemoryEngineFairy (MemoryEngineFairy) |
 | `memory.engine.status` | code/fairies/P10_Memory/MemoryEngineFairy/fairy.py:154 | MemoryEngineFairy (MemoryEngineFairy) |
 | `memory.engine.store` | code/fairies/P10_Memory/MemoryEngineFairy/fairy.py:154 | MemoryEngineFairy (MemoryEngineFairy) |
-| `memory.ingest.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:117 |  |
-| `memory.ingest.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:124 |  |
-| `memory.ingest.complete` | code/fairies/P10_Memory/TemporalContextManagerFairy/fairy.py:325 | TemporalContextManagerFairy (TemporalContextManagerFairy) |
+| `memory.formation` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:930 | AutonomyFairy (AutonomyFairy) |
 | `memory.media.request` | code/fairies/P10_Memory/MediaIngestFairy/fairy.py:249 | MediaIngestFairy (MediaIngestFairy) |
 | `memory.recall.response` | code/fairies/P50_Persona/Waking Minds/Sourpatches/newborn_core.py:3805 | MemoryClusterInterface |
-| `memory.recall.result` | code/P30_Cognition/cognition/logic_fairy.py:244 | LogicFairy (LogicFairy) |
-| `memory.recall.result` | code/P30_Cognition/cognition/paradox_cognition_fairy.py:262 | ParadoxCognitionFairy (ParadoxCognitionFairy) |
-| `memory.recall.result` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:117 |  |
-| `memory.recall.result` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:124 |  |
-| `memory.recall.result` | code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py:302 | AkashicInferenceFairy (AkashicInferenceFairy) |
-| `memory.recall.result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1831 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `memory.recall.result` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
 | `memory.tensor.decay` | code/fairies/P10_Memory/TensorFabricFairy/fairy.py:140 | TensorFabricFairy (TensorFabricFairy) |
 | `memory.tensor.query` | code/fairies/P10_Memory/TensorFabricFairy/fairy.py:140 | TensorFabricFairy (TensorFabricFairy) |
 | `memory.tensor.read` | code/fairies/P10_Memory/TensorFabricFairy/fairy.py:140 | TensorFabricFairy (TensorFabricFairy) |
@@ -1289,30 +1680,14 @@ Without that catch-all, every row below would be a dead letter.
 | `memory.tensor.status` | code/fairies/P10_Memory/TensorFabricFairy/fairy.py:140 | TensorFabricFairy (TensorFabricFairy) |
 | `memory.tensor.write` | code/fairies/P10_Memory/TensorFabricFairy/fairy.py:140 | TensorFabricFairy (TensorFabricFairy) |
 | `memory.working.*` | code/P30_Cognition/cognition/dynamic_thinking_orchestrator.py:173 | DynamicThinkingOrchestrator |
-| `memory.working.tracer` | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:1581 | MyFairy (MyFairy) |
-| `memory.working.tracer` | code/fairies/P10_Memory/triple_helix_srm_memory/working_memory_integration.py:62 | WorkingMemoryRecallMixin |
-| `memory.working.tracer` | code/fairies/P10_Memory/triple_helix_srm_memory/working_memory_integration.py:221 | WorkingMemoryIngestMixin |
-| `memory.working.tracer` | code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403 | AttentionControllerFairy (AttentionControllerFairy) |
-| `memory.working.tracer` | code/fairies/P30_Cognition/InnerNarratorFairy/fairy.py:639 | InnerNarratorFairy (InnerNarratorFairy) |
-| `memory.working.tracer` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1833 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `memory.working.tracer` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1937 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `memory.working.tracer` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
-| `memory.working.tracer` | code/fairy_template/consolidated.py:1966 | MyFairy (MyFairy) |
+| `memory.working.tracer_update` | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:2504 | MyFairy (MyFairy) |
 | `memory.working.tracer_update` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1832 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `memory.working.tracer_update` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1958 | UnconsciousMindFairy (UnconsciousMindFairy) |
+| `memory.working.tracer_update` | code/fairy_template/consolidated.py:2922 | MyFairy (MyFairy) |
 | `memory.working.updated` | code/fairies/P10_Memory/triple_helix_srm_memory/working_memory_integration.py:63 | WorkingMemoryRecallMixin |
 | `mind.status.request` | code/fairies/P30_Cognition/cognition/mind_scheduler_monitor.py:436 |  |
 | `mind.switched` | code/fairies/P10_Memory/SRMRecallFairy/fairy.py:280 | SRMRecallFairy (SRMRecallFairy) |
-| `motor.action` | code/fairies/P40_Sensory/cortex/sensorimotor_feedback_fairy.py:488 | SensorimotorFeedbackFairy (SensorimotorFeedbackFairy) |
 | `motor.intention.speak` | code/fairies/P50_Persona/motor/motor_cortex_fairy.py:227 | MotorCortexFairy |
-| `motor.key_press` | code/fairies/P40_Sensory/cortex/sensorimotor_feedback_fairy.py:489 | SensorimotorFeedbackFairy (SensorimotorFeedbackFairy) |
-| `motor.mouse_click` | code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py:1882 | SomaticEngineFairy (SomaticEngineFairy) |
-| `motor.mouse_click` | code/fairies/P40_Sensory/cortex/sensorimotor_feedback_fairy.py:490 | SensorimotorFeedbackFairy (SensorimotorFeedbackFairy) |
-| `motor.mouse_move` | code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py:1883 | SomaticEngineFairy (SomaticEngineFairy) |
-| `motor.mouse_move` | code/fairies/P40_Sensory/cortex/sensorimotor_feedback_fairy.py:491 | SensorimotorFeedbackFairy (SensorimotorFeedbackFairy) |
-| `motor.request` | code/fairies/P40_Sensory/cortex/motor_cortex_fairy.py:1543 | MotorCortexFairy (MotorCortexFairy) |
-| `motor.response` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:741 | ActionChainFairy (ActionChainFairy) |
-| `motor.response` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:766 | ActionChainFairy (ActionChainFairy) |
 | `narrator.voice.speak` | code/fairies/P50_Persona/motor/tts_voice.py:638 |  |
 | `network.request` | code/hardware/network_explorer_fairy.py:299 | NetworkExplorerFairy (NetworkExplorerFairy) |
 | `nous.reasoning` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
@@ -1338,32 +1713,28 @@ Without that catch-all, every row below would be a dead letter.
 | `packets.teleport_code` | code/fairies/P00_Autonomic/MemoryPacketFairy/fairy.py:158 | MemoryPacketFairy (MemoryPacketFairy) |
 | `page.read.request` | code/fairies/P40_Sensory/cortex/motor_cortex_fairy.py:1563 | MotorCortexFairy (MotorCortexFairy) |
 | `pain.drives` | code/fairies/P00_Autonomic/reflex/brainstem_reflex_fairy.py:621 | BrainstemReflexFairy (BrainstemReflexFairy) |
+| `pattern.feedback` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2085 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `postal.*` | code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345 | TelemetryVisionFairy (TelemetryVisionFairy) |
 | `postal.traffic` | code/fairies/P40_Sensory/TelemetryVisionFairy/fairy.py:148 | TelemetryVisionFairyV3 (TelemetryVisionFairy) |
 | `postal.tunnel.client_connected` | code/fairies/P00_Autonomic/MCPGuardianFairy/fairy.py:158 | MCPGuardianFairy (MCPGuardianFairy) |
 | `postal.tunnel.client_disconnected` | code/fairies/P00_Autonomic/MCPGuardianFairy/fairy.py:159 | MCPGuardianFairy (MCPGuardianFairy) |
 | `recall.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:117 |  |
 | `recall.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:124 |  |
+| `reflection.crystallized` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2195 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
+| `reflex.action_intent` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:1017 | AutonomyFairy (AutonomyFairy) |
 | `reflex.mode_change` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:722 | SomaticMindFairy (SomaticMindFairy) |
 | `reflex.mode_change` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:721 | ActionChainFairy (ActionChainFairy) |
+| `reflex.mode_change` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:1016 | AutonomyFairy (AutonomyFairy) |
 | `satellite.status.request` | code/fairies/P00_Autonomic/SatelliteBridgeFairy/fairy.py:179 | SatelliteBridgeFairy (SatelliteBridgeFairy) |
 | `satellite.status.request` | code/fairies/P00_Autonomic/nervous_system/hardware/satellite_bridge_fairy.py:152 | SatelliteBridgeFairy (SatelliteBridgeFairy) |
 | `satellite.task.submit` | code/fairies/P00_Autonomic/SatelliteBridgeFairy/fairy.py:172 | SatelliteBridgeFairy (SatelliteBridgeFairy) |
 | `satellite.task.submit` | code/fairies/P00_Autonomic/nervous_system/hardware/satellite_bridge_fairy.py:145 | SatelliteBridgeFairy (SatelliteBridgeFairy) |
+| `scheduler.nudge` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2188 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `sensory.audio.chunk` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4623 | AssociationCortexFairy (AssociationCortexFairy) |
-| `sensory.input.event` | code/fairies/P40_Sensory/VisualCortexFairy/fairy.py:1883 | VisualCortexFairyV2 (VisualCortexFairy) |
-| `sensory.visual.action_feedback` | code/fairies/P40_Sensory/sensory_integration.py:117 | SensoryIntegration |
-| `sensory.visual.observation` | code/consciousness/loop.py:2265 | ConsciousnessLoop |
-| `sensory.visual.observation` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4625 | AssociationCortexFairy (AssociationCortexFairy) |
 | `sensory.window.*` | code/fairies/P40_Sensory/sensory_integration.py:116 | SensoryIntegration |
-| `sensory.window.feeling` | code/fairies/P40_Sensory/perceptual_gate_fairy.py:265 | PerceptualGateFairy (PerceptualGateFairy) |
 | `service.discover` | code/fairies/P40_Sensory/chat_sensory_organ.py:167 | ChatSensoryOrgan |
 | `shadow.*` | code/fairies/P10_Memory/ForensicScribeFairy/fairy.py:208 | ForensicScribeFairy (ForensicScribeFairy) |
 | `situation.trigger` | code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:909 | AutopilotFairy (AutopilotFairy) |
-| `skill.level_up` | code/fairies/P50_Persona/EgoLearnerFairy/fairy.py:336 | EgoLearnerFairy (EgoLearnerFairy) |
-| `skill.level_up` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:4075 | SourpatchesFairy (SourpatchesFairy) |
-| `skill.used` | code/fairies/P30_Cognition/CardinalFairy/fairy.py:371 | CardinalFairyV3 (CardinalFairy) |
-| `skill.used` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:4076 | SourpatchesFairy (SourpatchesFairy) |
 | `somatic.affect.changed` | code/fairies/P00_Autonomic/SatelliteBridgeFairy/fairy.py:207 | SatelliteBridgeFairy (SatelliteBridgeFairy) |
 | `somatic.body.changed` | code/fairies/P00_Autonomic/SatelliteBridgeFairy/fairy.py:207 | SatelliteBridgeFairy (SatelliteBridgeFairy) |
 | `somatic.body_scan` | code/fairies/P00_Autonomic/TokenBucketFairy/fairy.py:647 | TokenBucketFairy (TokenBucketFairy) |
@@ -1377,49 +1748,17 @@ Without that catch-all, every row below would be a dead letter.
 | `somatic.chemistry.updated` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:741 | ActionChainFairy (ActionChainFairy) |
 | `somatic.chemistry.updated` | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:766 | ActionChainFairy (ActionChainFairy) |
 | `somatic.chemistry_shift` | code/fairies/P50_Persona/Waking Minds/Sourpatches/observer_loop.py:233 | ObserverLoop |
-| `somatic.engine` | code/fairies/P50_Persona/avatar/somatic_avatar_fairy.py:188 | SomaticAvatarFairy (SomaticAvatarFairy) |
+| `somatic.coherence` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:996 | AutonomyFairy (AutonomyFairy) |
 | `somatic.heart.query` | code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:321 | CirculationPumpFairy (CirculationPumpFairy) |
-| `somatic.pulse` | code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:398 | EmbodimentFairy (EmbodimentFairy) |
-| `somatic.pulse` | code/fairies/P00_Autonomic/circulation/circadian_pacemaker_fairy.py:371 | CircadianPacemakerFairy (CircadianPacemakerFairy) |
-| `somatic.pulse` | code/fairies/P00_Autonomic/circulation/temporal_dispatcher_fairy.py:209 | TemporalDispatcherFairy (TemporalDispatcherFairy) |
-| `somatic.pulse` | code/fairies/P00_Autonomic/circulation/time_sense_fairy.py:208 | TimeSenseFairy (TimeSenseFairy) |
-| `somatic.pulse` | code/fairies/P00_Autonomic/consciousness_heartbeat_wiring.py:130 |  |
-| `somatic.pulse` | code/fairies/P10_Memory/SRMIngestFairy/fairy.py:298 | SRMIngestFairy (SRMIngestFairy) |
-| `somatic.pulse` | code/fairies/P10_Memory/librarian/blueprint_diary_hub.py:525 | BlueprintDiaryHubFairy (BlueprintDiaryHubFairy) |
-| `somatic.pulse` | code/fairies/P10_Memory/librarian/memory_librarian_fairy.py:676 | SRMMemoryLibrarianFairy (SRMMemoryLibrarianFairy) |
-| `somatic.pulse` | code/fairies/P20_Somatic/affect_bus/affect_bridge_fairy.py:334 | AffectBridgeFairy (AffectBridgeFairy) |
-| `somatic.pulse` | code/fairies/P20_Somatic/circulation/heartbeat_sync.py:126 | HeartbeatSyncMixin |
-| `somatic.pulse` | code/fairies/P20_Somatic/integration/somatic_integration.py:81 | SomaticIntegration |
-| `somatic.pulse` | code/fairies/P20_Somatic/somatic_anchor/somatic_anchor_fairy.py:280 | SomaticAnchorFairy (SomaticAnchorFairy) |
-| `somatic.pulse` | code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py:1804 | SomaticEngineFairy (SomaticEngineFairy) |
-| `somatic.pulse` | code/fairies/P20_Somatic/wiring/somatic_wiring.py:241 | SomaticWiring |
-| `somatic.pulse` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:3139 | AssociationCortexFairy (AssociationCortexFairy) |
-| `somatic.pulse` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:6242 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `somatic.pulse` | code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345 | TelemetryVisionFairy (TelemetryVisionFairy) |
-| `somatic.pulse` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:794 | SourpatchesFairy (SourpatchesFairy) |
-| `somatic.pulse` | code/infrastructure/spellchain/pool.py:151 | SpellPool |
-| `somatic.pulse` | code/waking_minds/nous_fairy.py:424 | NousFairy (NousFairy) |
-| `somatic.setpoint` | code/fairies/P20_Somatic/circulation/circulation_pump_fairy.py:346 | CirculationPumpFairy (CirculationPumpFairy) |
-| `somatic.telemetry` | code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py:1979 | SomaticEngineFairy (SomaticEngineFairy) |
 | `somatic.thermal` | code/fairies/P20_Somatic/_embodiment_integrator.py:170 | EmbodimentIntegrator (EmbodimentIntegrator) |
+| `sourpatches.inner_thought` | code/fairies/P30_Cognition/cognition/thought_chain_engine.py:2612 |  |
 | `sourpatches.insight` | code/fairies/P40_Sensory/gui/sourpatches_fairy_window.py:304 | SourpatchesFairyWindow |
 | `sourpatches.reload_patterns` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:995 | SourpatchesFairy (SourpatchesFairy) |
 | `sourpatches.reload_patterns` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:9695 | SourpatchesFairy (SourpatchesFairy) |
 | `sourpatches.state` | code/fairies/P40_Sensory/gui/sourpatches_fairy_window.py:307 | SourpatchesFairyWindow |
-| `sourpatches.stimulus` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:3991 | SourpatchesFairy (SourpatchesFairy) |
-| `sourpatches.stream` | code/consciousness/loop.py:2101 | ConsciousnessLoop |
-| `sourpatches.stream` | code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:1043 | AutopilotFairy (AutopilotFairy) |
-| `sourpatches.stream` | code/fairies/P40_Sensory/gui/sourpatches_fairy_window.py:301 | SourpatchesFairyWindow |
 | `speech.feedback.negative` | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4560 | AssociationCortexFairy (AssociationCortexFairy) |
-| `srm.ingest.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:117 |  |
-| `srm.ingest.complete` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:124 |  |
-| `srm.ingest.packet` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
 | `srm.ingest.result` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
 | `srm.intake.process` | code/fairies/P10_Memory/SRMIntakeWatcherFairy/fairy.py:94 | SRMIntakeWatcherFairy (SRMIntakeWatcherFairy) |
-| `srm.recall.result` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:117 |  |
-| `srm.recall.result` | code/fairies/P00_Autonomic/nervous_system/consciousness_collider_patch.py:124 |  |
-| `srm.recall.result` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1830 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `srm.recall.result` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
 | `srm.session_saved` | code/fairies/P00_Autonomic/SomaticMind/somatic_mind.py:746 | SomaticMind (SomaticMind) |
 | `sync.configure` | code/fairies/P10_Memory/MemorySyncFairy/fairy.py:135 | MemorySyncFairy (MemorySyncFairy) |
 | `sync.file` | code/fairies/P10_Memory/MemorySyncFairy/fairy.py:135 | MemorySyncFairy (MemorySyncFairy) |
@@ -1428,15 +1767,12 @@ Without that catch-all, every row below would be a dead letter.
 | `sync.start` | code/fairies/P10_Memory/MemorySyncFairy/fairy.py:135 | MemorySyncFairy (MemorySyncFairy) |
 | `sync.status` | code/fairies/P10_Memory/MemorySyncFairy/fairy.py:135 | MemorySyncFairy (MemorySyncFairy) |
 | `sync.stop` | code/fairies/P10_Memory/MemorySyncFairy/fairy.py:135 | MemorySyncFairy (MemorySyncFairy) |
-| `system.awake` | code/P00_Autonomic/nervous_system/waking_sequence_fairy.py:225 | WakingSequenceFairy (WakingSequenceFairy) |
-| `system.awake` | code/fairies/P10_Memory/triple_helix_srm_memory/memory_breathing.py:397 |  |
-| `system.awake` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:2691 |  |
 | `system.emergency_shutdown` | code/fairies/P00_Autonomic/nervous_system/graceful_shutdown_fairy.py:188 | GracefulShutdownFairy (GracefulShutdownFairy) |
 | `system.fairy_reload` | code/fairies/P00_Autonomic/gm_handler.py:152 |  |
+| `system.health` | code/fairies/P30_Cognition/cognition/smart_goal_coordinator.py:764 | SmartGoalCoordinator |
 | `system.health.*` | code/fairies/P00_Autonomic/EmbodimentFairy/fairy.py:308 | EmbodimentFairy (EmbodimentFairy) |
 | `system.health_check` | code/fairies/P00_Autonomic/DirectoryFairy/_old_fractured/fairy_old.py:295 | DirectoryFairy (DirectoryFairy) |
 | `system.health_check` | code/fairies/P00_Autonomic/DirectoryFairy/fairy.py:659 | DirectoryFairy (DirectoryFairy) |
-| `system.hot_reload.fairy` | code/fairies/P00_Autonomic/hot_reload.py:411 |  |
 | `system.hot_reload.module` | code/fairies/P00_Autonomic/hot_reload.py:410 |  |
 | `system.idle.deep` | code/fairies/P00_Autonomic/ParadoxEnergyBridge/fairy.py:328 | ParadoxEnergyBridgeFairy (ParadoxEnergyBridgeFairy) |
 | `system.issue` | code/waking_minds/nous_fairy.py:525 | NousFairy (NousFairy) |
@@ -1449,38 +1785,12 @@ Without that catch-all, every row below would be a dead letter.
 | `system.sleep_request` | code/fairies/P00_Autonomic/nervous_system/dream_seed_fairy.py:813 | DreamSeedFairy (DreamSeedFairy) |
 | `telemetry.*` | code/fairies/P10_Memory/ForensicScribeFairy/fairy.py:187 | ForensicScribeFairy (ForensicScribeFairy) |
 | `telemetry.*` | code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:345 | TelemetryVisionFairy (TelemetryVisionFairy) |
+| `telemetry.affect.*` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:930 | AutonomyFairy (AutonomyFairy) |
 | `telemetry.chemistry.*` | code/fairies/P20_Somatic/_embodiment_integrator.py:143 | EmbodimentIntegrator (EmbodimentIntegrator) |
-| `temporal.add_lesson` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `temporal.get_decay_status` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `temporal.get_lesson` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `temporal.get_lessons_for` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `temporal.get_monitoring_data` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `temporal.record_application` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `temporal.record_outcome` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `temporal.status` | code/fairies/P00_Autonomic/TemporalPacketFairy/fairy.py:155 | TemporalPacketFairy (TemporalPacketFairy) |
-| `thought.chain.completed` | code/fairies/P10_Memory/librarian/memory_librarian_fairy.py:678 | SRMMemoryLibrarianFairy (SRMMemoryLibrarianFairy) |
-| `thought.chain.completed` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:324 | DynamicThinkingOrchestrator |
-| `thought.chain.completed` | code/fairies/P30_Cognition/cognition/interest_scheduler_fairy.py:810 | InterestSchedulerFairy (InterestSchedulerFairy) |
-| `thought.chain.continued` | code/fairies/P20_Somatic/BioelectricMeshFairy/fairy.py:300 | BioelectricMeshFairy (BioelectricMeshFairy) |
-| `thought.chain.insight` | code/P30_Cognition/cognition/dynamic_thinking_orchestrator.py:170 | DynamicThinkingOrchestrator |
-| `thought.chain.insight` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:327 | DynamicThinkingOrchestrator |
+| `telemetry.chemistry.*` | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:930 | AutonomyFairy (AutonomyFairy) |
 | `token.query` | code/fairies/P00_Autonomic/TokenBucketFairy/fairy.py:625 | TokenBucketFairy (TokenBucketFairy) |
 | `token.regenerate.request` | code/fairies/P00_Autonomic/TokenBucketFairy/fairy.py:620 | TokenBucketFairy (TokenBucketFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/drift_detection_patch.py:86 |  |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/mind_scheduler.py:574 |  |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/multi_mind_drift_integration.py:88 |  |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `tool.complete` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
+| `tool.nudge` | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2186 | WorkingMemoryHubFairy (WorkingMemoryHubFairy) |
 | `tool.request` | code/fairies/P40_Sensory/cortex/unified_sensory_cortex.py:450 | UnifiedSensoryCortex (UnifiedSensoryCortex) |
 | `tracer.*` | code/fairies/P10_Memory/ForensicScribeFairy/fairy.py:192 | ForensicScribeFairy (ForensicScribeFairy) |
 | `tracer.unconscious` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:1835 | UnconsciousMindFairy (UnconsciousMindFairy) |
@@ -1493,7 +1803,6 @@ Without that catch-all, every row below would be a dead letter.
 | `umf.warning` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:669 | SomaticMindFairy (SomaticMindFairy) |
 | `umf.warning` | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:904 | SomaticMindFairy (SomaticMindFairy) |
 | `unconscious.begin_orchestration` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:829 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.boot.phase` | code/P00_Autonomic/nervous_system/waking_sequence_fairy.py:237 | WakingSequenceFairy (WakingSequenceFairy) |
 | `unconscious.chat` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `unconscious.chat` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `unconscious.chat` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
@@ -1506,50 +1815,13 @@ Without that catch-all, every row below would be a dead letter.
 | `unconscious.chat` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `unconscious.chat` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `unconscious.chat` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.fairy_audit` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.request_self_learning_report` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2770 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2773 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2776 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2780 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2784 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2788 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2791 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2794 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2796 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2799 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2802 | UnconsciousMindFairy (UnconsciousMindFairy) |
-| `unconscious.run_diagnostics` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
+| `unconscious.dream_seed` | code/fairies/P30_Cognition/cognition/smart_goal_coordinator.py:748 | SmartGoalCoordinator |
 | `visual.frame` | code/fairies/P40_Sensory/cortex/video_memory_fairy.py:640 | VideoMemoryFairy (VideoMemoryFairy) |
 | `visual.perception` | code/fairies/P40_Sensory/mcp/cortex_bridge_tools.py:551 | CortexBridge |
 | `visual.request` | code/fairies/P40_Sensory/VisualCortexFairy/fairy.py:1883 | VisualCortexFairyV2 (VisualCortexFairy) |
 | `visual.request` | code/fairies/P40_Sensory/cortex/visual_cortex_fairy.py:1133 | VisualCortexEngine (VisualCortexEngine) |
-| `visual.significant_change` | code/fairies/P50_Persona/Waking Minds/Sourpatches/tool_bridge.py:3057 |  |
 | `visual.traits.extracted` | code/fairies/P10_Memory/SeedFairy/fairy.py:261 | SeedFairy (SeedFairy) |
 | `waking.choice.made` | code/fairies/P00_Autonomic/AutonomyFairy/fairy.py:570 | AutonomyFairy (AutonomyFairy) |
-| `waking.trigger` | code/P00_Autonomic/nervous_system/waking_sequence_fairy.py:232 | WakingSequenceFairy (WakingSequenceFairy) |
 | `watchdog.error` | code/fairies/P00_Autonomic/WatchdogFairy/fairy.py:144 | WatchdogFairy (WatchdogFairy) |
 | `watchdog.heartbeat` | code/fairies/P00_Autonomic/WatchdogFairy/fairy.py:144 | WatchdogFairy (WatchdogFairy) |
 | `watchdog.reboot` | code/fairies/P00_Autonomic/WatchdogFairy/fairy.py:144 | WatchdogFairy (WatchdogFairy) |
@@ -1579,16 +1851,6 @@ Without that catch-all, every row below would be a dead letter.
 | `wiring.request` | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:2804 | UnconsciousMindFairy (UnconsciousMindFairy) |
 | `working_memory.context` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
 | `working_memory.query` | code/fairies/P10_Memory/WorkingMemoryFairy/fairy.py:269 | WorkingMemoryFairy (WorkingMemoryFairy) |
-| `working_memory.reasoning_complete` | code/fairies/P00_Autonomic/AutopilotFairy/fairy.py:1049 | AutopilotFairy (AutopilotFairy) |
-| `working_memory.reasoning_complete` | code/fairies/P00_Autonomic/circulation/habit_consultant_fairy.py:148 | HabitConsultantFairy (HabitConsultantFairy) |
-| `working_memory.tracer_added` | code/fairies/P30_Cognition/AttentionControllerFairy/fairy.py:403 | AttentionControllerFairy (AttentionControllerFairy) |
-| `working_memory.tracer_added` | code/fairies/P30_Cognition/InnerNarratorFairy/fairy.py:637 | InnerNarratorFairy (InnerNarratorFairy) |
-| `working_memory.tracer_added` | code/fairies/P30_Cognition/LanguageFairy/fairy.py:307 | LanguageFairy (LanguageFairy) |
-| `working_memory.tracer_added` | code/fairies/P30_Cognition/diagnostics/memory_flow_tracer.py:133 | MemoryFlowTracer |
-| `working_memory.tracer_added` | code/fairies/P50_Persona/SpeechCenterFairy/fairy.py:402 | SpeechCenterFairyOrgan (SpeechCenterFairy) |
-| `working_memory.tracer_decayed` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:287 | DynamicThinkingOrchestrator |
-| `working_memory.tracer_promoted` | code/fairies/P30_Cognition/cognition/dynamic_thinking_integration.py:286 | DynamicThinkingOrchestrator |
-| `wow.chat.heard` | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:3990 | SourpatchesFairy (SourpatchesFairy) |
 | `wow.chat.send` | code/.satellite/deploy_fairies/wow_bridge_fairy.py:56 | WoWBridgeFairy (WoWBridgeFairy) |
 | `wow.motor.command` | code/.satellite/deploy_fairies/wow_bridge_fairy.py:55 | WoWBridgeFairy (WoWBridgeFairy) |
 | `wow.motor.command` | code/fairies/P40_Sensory/mcp/wow_receiver.py:194 |  |
@@ -1598,7 +1860,7 @@ Without that catch-all, every row below would be a dead letter.
 Never guessed. `reason` says why: `parameter` means the topic is forwarded from a caller
 (plumbing: hubs, shims, wrappers); `instance attribute` means it is set at runtime.
 
-Counts by reason: parameter: 88, expression: 54, undefined name: 5, instance attribute: 5, loop iterable: 4, attribute: 2, pure wildcard: 2, empty class-level list (subclasses fill it): 1.
+Counts by reason: parameter: 118, expression: 69, undefined name: 10, parameter (wrapper; 2 call site(s) scanned): 6, loop iterable: 5, instance attribute: 5, attribute: 3, parameter (wrapper; 4 call site(s) scanned): 3, parameter (wrapper; 1 call site(s) scanned): 3, parameter (wrapper; 23 call site(s) scanned): 2, pure wildcard: 2, empty class-level list (subclasses fill it): 2, parameter (wrapper; 5 call site(s) scanned): 1, parameter (wrapper; 9 call site(s) scanned): 1, parameter (wrapper; 14 call site(s) scanned): 1.
 
 | side | file:line | call | topic expression | reason |
 |---|---|---|---|---|
@@ -1621,18 +1883,29 @@ Counts by reason: parameter: 88, expression: 54, undefined name: 5, instance att
 | sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.1.0.py:630 | `hub.subscribe` | `topic` | expression |
 | sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.1.0.py:668 | `hub.subscribe` | `topic` | parameter |
 | pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.1.0.py:672 | `hub.publish` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:701 | `self.route` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:710 | `self.route` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:738 | `self.route` | `topic` | parameter |
 | sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:768 | `self.subscribe` | `topic` | parameter |
 | sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:829 | `_fabric.subscribe` | `topic` | parameter |
 | pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:844 | `_fabric.publish` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:850 | `self.route` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:853 | `self.route` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:880 | `self.route` | `topic` | parameter |
 | sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:905 | `self.subscribe` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:910 | `_fabric.request` | `intent` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:1126 | `post.route` | `topic` | parameter (wrapper; 23 call site(s) scanned) |
 | sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:4122 | `self.subscribe` | `topic` | parameter |
 | pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:4127 | `self.publish` | `topic` | parameter |
 | sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0.3.0.py:5510 | `post.subscribe` | `topic` | parameter |
-| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:433 | `hub.send` | `channel` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:433 | `hub.send` | `channel` | parameter (wrapper; 4 call site(s) scanned) |
 | pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:593 | `self.send` | `topic` | parameter |
+| sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:596 | `self.receive` | `topic` | parameter |
 | pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:599 | `self.send` | `topic` | parameter |
 | pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:602 | `self.send` | `topic` | parameter |
+| pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:1401 | `post.route` | `topic` | parameter |
 | pub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:2779 | `post.send` | `topic` | parameter |
+| sub | code/P10_Memory/Akashic_Records_Physical/Organ_Templates/Organ_Template_0_1_2.py:2783 | `post.receive` | `topic` | parameter |
 | pub | code/consciousness/loop.py:664 | `postal.publish` | `topic` | undefined name |
 | pub | code/consciousness/loop.py:667 | `postal.publish` | `topic` | undefined name |
 | sub | code/core/fairy.py:186 | `postal.subscribe` | `topic` | loop iterable |
@@ -1645,39 +1918,64 @@ Counts by reason: parameter: 88, expression: 54, undefined name: 5, instance att
 | pub | code/fairies/P00_Autonomic/SatelliteBridgeFairy/fairy.py:783 | `post.publish` | `reply_to` | expression |
 | pub | code/fairies/P00_Autonomic/SatelliteBridgeFairy/fairy.py:823 | `post.publish` | `reply_to` | expression |
 | pub | code/fairies/P00_Autonomic/circulation/time_sense_fairy.py:568 | `post.publish` | `speak_topic` | expression |
+| sub | code/fairies/P00_Autonomic/nervous_system/cross_plane_wiring.py:150 | `post.subscribe` | `channel` | loop iterable |
 | pub | code/fairies/P00_Autonomic/nervous_system/hardware/gpu_fleet_fairy.py:227 | `post.publish` | `reply_topic` | expression |
 | pub | code/fairies/P00_Autonomic/nervous_system/hardware/gpu_fleet_fairy.py:358 | `post.publish` | `reply_topic` | expression |
 | pub | code/fairies/P00_Autonomic/nervous_system/hardware/satellite_bridge_fairy.py:482 | `post.publish` | `reply_to` | expression |
 | pub | code/fairies/P00_Autonomic/nervous_system/hardware/satellite_bridge_fairy.py:522 | `post.publish` | `reply_to` | expression |
+| pub | code/fairies/P00_Autonomic/nervous_system/unified_postal.py:27 | `_postal.route` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/nervous_system/unified_postal.py:32 | `_postal.subscribe` | `topic` | parameter |
 | pub | code/fairies/P00_Autonomic/nervous_system/unified_postal.py:50 | `self.send` | `topic` | parameter |
+| sub | code/fairies/P00_Autonomic/nervous_system/unified_postal.py:53 | `self.receive` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:701 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:710 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:738 | `self.route` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:768 | `self.subscribe` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:829 | `_fabric.subscribe` | `topic` | parameter |
 | pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:844 | `_fabric.publish` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:850 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:853 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:880 | `self.route` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:905 | `self.subscribe` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:910 | `_fabric.request` | `intent` | parameter |
+| pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:1126 | `post.route` | `topic` | parameter (wrapper; 23 call site(s) scanned) |
 | sub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:4122 | `self.subscribe` | `topic` | parameter |
 | pub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:4127 | `self.publish` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/organ_template/Organ_Template_0_3_0.py:5510 | `post.subscribe` | `topic` | parameter |
+| sub | code/fairies/P00_Autonomic/postal.py:224 | `_backend.subscribe` | `topic` | parameter |
+| sub | code/fairies/P00_Autonomic/postal.py:230 | `self.subscribe` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/postal_bridge/bridge_client.py:301 | `sqlite.subscribe` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/postal_bridge/bridge_client.py:324 | `self.route` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/postal_bridge/bridge_client.py:327 | `self.subscribe` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/postal_bridge/bridge_client.py:330 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/postal_bridge/bridge_client.py:333 | `self.route` | `topic` | parameter |
 | sub | code/fairies/P00_Autonomic/postal_bridge/bridge_client.py:507 | `_client.subscribe` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/postal_bridge/bridge_server.py:387 | `_postal_hub.route` | `topic` | parameter (wrapper; 2 call site(s) scanned) |
 | pub | code/fairies/P00_Autonomic/postal_bridge/bridge_server.py:389 | `_postal_hub.publish` | `topic` | parameter |
+| pub | code/fairies/P00_Autonomic/postal_bridge/http_bridge.py:249 | `postal_hub.route` | `topic` | expression |
 | sub | code/fairies/P10_Memory/BlueprintDiaryHubFairy/fairy.py:208 | `self.subscribe` | `plane` | expression |
 | pub | code/fairies/P10_Memory/BlueprintDiaryHubFairy/fairy.py:375 | `_postal.publish` | `f'{sub.plane}.{sub.channel}'` | pure wildcard |
 | pub | code/fairies/P10_Memory/WorkingMemoryFairy/fairy.py:453 | `post.publish` | `reply_topic` | expression |
+| pub | code/fairies/P10_Memory/config/config_store.py:513 | `post.route` | `key` | expression |
+| pub | code/fairies/P10_Memory/config/config_store.py:1473 | `post.route` | `key` | expression |
 | sub | code/fairies/P10_Memory/librarian/akashic_records_librarian.py:344 | `post.subscribe` | `lane` | parameter |
 | sub | code/fairies/P10_Memory/librarian/akashic_records_librarian.py:554 | `_bus.subscribe` | `topic` | parameter |
-| pub | code/fairies/P10_Memory/librarian/akashic_records_librarian.py:558 | `_bus.publish` | `topic` | parameter |
+| pub | code/fairies/P10_Memory/librarian/akashic_records_librarian.py:558 | `_bus.publish` | `topic` | parameter (wrapper; 2 call site(s) scanned) |
+| pub | code/fairies/P10_Memory/librarian/blueprint_diary_hub.py:472 | `post.route` | `sub.get('plane')` | expression |
 | sub | code/fairies/P20_Somatic/SomaticMindFairy/boot_monitor_system.py:184 | `fabric.subscribe` | `base` | expression |
 | sub | code/fairies/P20_Somatic/SomaticMindFairy/boot_monitor_system.py:186 | `fabric.subscribe` | `topic` | attribute |
 | sub | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:684 | `post.subscribe` | `THINKING_DIRECTIVE_TOPIC` | undefined name |
 | pub | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:3706 | `post.publish` | `topic` | parameter |
-| pub | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:4041 | `post.publish` | `topic` | parameter |
+| pub | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:4041 | `post.publish` | `topic` | parameter (wrapper; 2 call site(s) scanned) |
 | pub | code/fairies/P20_Somatic/SomaticMindFairy/fairy.py:7607 | `post.publish` | `reply_to` | expression |
+| pub | code/fairies/P20_Somatic/SomaticMindFairy/ollama_thinking.py:621 | `postal.route` | `args['topic']` | expression |
 | sub | code/fairies/P20_Somatic/dream/dream_fairy.py:1055 | `working_stream.subscribe` | `self._on_thought_seen` | instance attribute |
 | sub | code/fairies/P20_Somatic/dream/dream_fairy.py:1056 | `reflective_stream.subscribe` | `self._on_thought_seen` | instance attribute |
 | sub | code/fairies/P20_Somatic/integration/consciousness_hierarchy.py:398 | `post.subscribe` | `topic` | loop iterable |
 | sub | code/fairies/P20_Somatic/integration/consciousness_hierarchy.py:406 | `post.subscribe` | `topic` | loop iterable |
+| pub | code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py:2767 | `post.route` | `subscriber.lower()` | expression |
+| pub | code/fairies/P20_Somatic/somatic_engine/somatic_engine_fairy.py:2910 | `post.route` | `requester.lower()` | expression |
+| pub | code/fairies/P30_Cognition/ActionChainFairy/fairy.py:1412 | `post.route` | `topic` | attribute |
 | pub | code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py:336 | `post.publish` | `reply_topic` | expression |
 | pub | code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py:347 | `post.publish` | `reply_topic` | expression |
 | pub | code/fairies/P30_Cognition/AkashicInferenceFairy/fairy.py:419 | `post.publish` | `reply_topic` | expression |
@@ -1695,30 +1993,57 @@ Counts by reason: parameter: 88, expression: 54, undefined name: 5, instance att
 | pub | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4746 | `post.publish` | `reply_to` | expression |
 | pub | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:4811 | `post.publish` | `reply_to` | expression |
 | pub | code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py:5370 | `post.publish` | `reply_to` | expression |
+| pub | code/fairies/P30_Cognition/HarmonicCortexFairy/fairy.py:561 | `post.route` | `reply_to` | expression |
+| pub | code/fairies/P30_Cognition/HarmonicCortexFairy/fairy.py:573 | `post.route` | `reply_to` | expression |
 | pub | code/fairies/P30_Cognition/HybridCognitionFairy/fairy.py:176 | `post.publish` | `response_topic` | expression |
+| pub | code/fairies/P30_Cognition/affect/frequency_field_77.py:87 | `postal.route` | `topic` | parameter |
 | sub | code/fairies/P30_Cognition/affect/frequency_field_77.py:99 | `postal.subscribe` | `topic` | parameter |
+| pub | code/fairies/P30_Cognition/cognition/aot_protocol.py:699 | `post.route` | `topic` | parameter |
+| pub | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:3200 | `postal.route` | `topic` | undefined name |
+| pub | code/fairies/P30_Cognition/cognition/autonomy_fairy.py:3277 | `postal.route` | `topic` | undefined name |
+| pub | code/fairies/P30_Cognition/cognition/skill_system.py:53 | `postal.route` | `topic` | parameter (wrapper; 4 call site(s) scanned) |
+| pub | code/fairies/P30_Cognition/cognition/unconscious_mind_fairy.py:8296 | `post.route` | `topic` | empty class-level list (subclasses fill it) |
+| pub | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:2670 | `post.publish` | `THINKING_DIRECTIVE_TOPIC` | undefined name |
+| pub | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:3648 | `post.publish` | `THINKING_DIRECTIVE_TOPIC` | undefined name |
+| pub | code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py:3841 | `post.publish` | `THINKING_DIRECTIVE_TOPIC` | undefined name |
 | pub | code/fairies/P30_Cognition/integration/cortex_engine.py:2995 | `_post.publish` | `reply_topic` | expression |
 | pub | code/fairies/P30_Cognition/integration/cortex_engine.py:3000 | `_post.publish` | `reply_topic` | expression |
+| pub | code/fairies/P40_Sensory/forum/fairy_communication.py:189 | `post.route` | `topic` | expression |
 | sub | code/fairies/P40_Sensory/forum/forum_engine.py:211 | `store.subscribe` | `actor` | parameter |
 | sub | code/fairies/P40_Sensory/forum/forum_mixin.py:213 | `_forum_engine.subscribe` | `actor` | expression |
+| pub | code/fairies/P40_Sensory/gui/__init__.py:36 | `post.route` | `topic` | parameter (wrapper; 2 call site(s) scanned) |
 | pub | code/fairies/P40_Sensory/gui/ace_control_center.py:105 | `self.publish` | `topic` | parameter |
 | pub | code/fairies/P40_Sensory/gui/ace_control_center.py:137 | `self.publish` | `topic` | parameter |
-| pub | code/fairies/P40_Sensory/mcp/thought_tool_tracer.py:281 | `hub.publish` | `event_type` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/batch_tools.py:283 | `post.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/mcp_postal_helper.py:175 | `postal.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/postal_tunnel.py:202 | `postal_hub.route` | `topic` | expression |
+| pub | code/fairies/P40_Sensory/mcp/postal_tunnel.py:869 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/postal_tunnel.py:872 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/postal_tunnel.py:875 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/postal_tunnel.py:1078 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/postal_tunnel.py:1081 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/postal_tunnel.py:1084 | `self.route` | `topic` | parameter |
+| pub | code/fairies/P40_Sensory/mcp/thought_tool_tracer.py:281 | `hub.publish` | `event_type` | parameter (wrapper; 2 call site(s) scanned) |
 | sub | code/fairies/P40_Sensory/sensory_integration.py:99 | `_visual_cortex.subscribe` | `self._on_visual_frame` | instance attribute |
 | sub | code/fairies/P40_Sensory/sensory_integration.py:108 | `_input_monitor.subscribe` | `self._on_input_event` | instance attribute |
 | sub | code/fairies/P40_Sensory/telemetry_vision/telemetry_vision_fairy.py:766 | `eye.subscribe` | `on_vision` | undefined name |
 | sub | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:3974 | `post.subscribe` | `THINKING_DIRECTIVE_TOPIC` | undefined name |
 | pub | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:4421 | `post.publish` | `reply_topic` | expression |
 | pub | code/fairies/P50_Persona/Waking Minds/Sourpatches/sourpatches_fairy.py:4427 | `post.publish` | `reply_topic` | expression |
-| pub | code/fairies/P60_Executive/CardinalFairy/fairy.py:651 | `post.publish` | `topic` | parameter |
-| pub | code/fairy_template/consolidated.py:459 | `hub.send` | `channel` | parameter |
+| pub | code/fairies/P50_Persona/motor/motor_cortex_fairy.py:668 | `postal.route` | `topic` | expression |
+| pub | code/fairies/P50_Persona/motor/motor_cortex_fairy.py:691 | `postal.route` | `topic` | expression |
+| pub | code/fairies/P60_Executive/CardinalFairy/fairy.py:651 | `post.publish` | `topic` | parameter (wrapper; 5 call site(s) scanned) |
+| pub | code/fairy_template/consolidated.py:459 | `hub.send` | `channel` | parameter (wrapper; 4 call site(s) scanned) |
 | pub | code/fairy_template/consolidated.py:643 | `self.send` | `topic` | parameter |
+| sub | code/fairy_template/consolidated.py:646 | `self.receive` | `topic` | parameter |
 | pub | code/fairy_template/consolidated.py:649 | `self.send` | `topic` | parameter |
 | pub | code/fairy_template/consolidated.py:652 | `self.send` | `topic` | parameter |
-| pub | code/fairy_template/consolidated.py:737 | `_underlying.publish` | `topic` | parameter |
-| sub | code/fairy_template/consolidated.py:745 | `_underlying.subscribe` | `topic` | parameter |
+| pub | code/fairy_template/consolidated.py:737 | `_underlying.publish` | `topic` | parameter (wrapper; 9 call site(s) scanned) |
+| sub | code/fairy_template/consolidated.py:745 | `_underlying.subscribe` | `topic` | parameter (wrapper; 2 call site(s) scanned) |
+| pub | code/fairy_template/consolidated.py:1728 | `post.route` | `topic` | parameter |
 | pub | code/fairy_template/consolidated.py:3207 | `post.send` | `topic` | parameter |
 | pub | code/fairy_template/consolidated.py:3209 | `post.publish` | `topic` | parameter |
+| sub | code/fairy_template/consolidated.py:3215 | `post.receive` | `topic` | parameter |
 | sub | code/fairy_template/consolidated.py:3217 | `post.subscribe` | `topic` | parameter |
 | pub | code/fairy_template/postal_shim.py:48 | `_fairy.publish` | `topic` | parameter |
 | pub | code/fairy_template/postal_shim.py:50 | `fabric.publish` | `topic` | parameter |
@@ -1727,17 +2052,23 @@ Counts by reason: parameter: 88, expression: 54, undefined name: 5, instance att
 | sub | code/fairy_template/unified.py:239 | `post.subscribe` | `own_channel` | instance attribute |
 | sub | code/fairy_template/unified.py:248 | `post.subscribe` | `direct_channel` | pure wildcard |
 | sub | code/fairy_template/unified.py:256 | `post.subscribe` | `topic` | empty class-level list (subclasses fill it) |
-| pub | code/fairy_template/unified.py:329 | `post.publish` | `channel` | parameter |
+| pub | code/fairy_template/unified.py:329 | `post.publish` | `channel` | parameter (wrapper; 1 call site(s) scanned) |
+| pub | code/fairy_template/unified.py:332 | `post.route` | `channel` | parameter |
 | pub | code/hardware/fairy.py:240 | `post.publish` | `reply_to` | expression |
 | pub | code/hardware/network_explorer_fairy.py:1104 | `post.publish` | `reply_to` | expression |
 | pub | code/infrastructure/akashic_manifold.py:456 | `self.publish` | `topic` | parameter |
-| pub | code/infrastructure/blueprint_watcher.py:380 | `_fabric.publish` | `topic` | parameter |
+| pub | code/infrastructure/blueprint_watcher.py:380 | `_fabric.publish` | `topic` | parameter (wrapper; 14 call site(s) scanned) |
+| pub | code/infrastructure/blueprint_watcher.py:382 | `_fabric.route` | `topic` | parameter |
+| pub | code/portal_plane_interior.py:106 | `self.route` | `topic` | parameter |
+| pub | code/portal_plane_interior.py:126 | `self.route` | `topic` | parameter |
+| pub | code/portal_plane_interior.py:430 | `postal.route` | `topic` | expression |
+| pub | code/portal_plane_interior.py:822 | `_host_postal.route` | `topic` | expression |
 | pub | code/postal_core/akp_http_bridge.py:572 | `akp_client.publish` | `topic` | expression |
 | sub | code/postal_core/akp_http_bridge.py:580 | `akp_client.subscribe` | `topic` | expression |
 | sub | code/postal_core/examples/fairy_integration.py:48 | `postal.subscribe` | `topic` | parameter |
 | pub | code/postal_core/examples/fairy_integration.py:54 | `postal.publish` | `intent` | parameter |
-| sub | code/postal_core/python/postal_core/_python_fallback.py:1489 | `_pool_router.subscribe` | `intent` | parameter |
-| pub | code/postal_core/python/postal_core/_python_fallback.py:1520 | `router.publish` | `intent` | parameter |
+| sub | code/postal_core/python/postal_core/_python_fallback.py:1489 | `_pool_router.subscribe` | `intent` | parameter (wrapper; 1 call site(s) scanned) |
+| pub | code/postal_core/python/postal_core/_python_fallback.py:1520 | `router.publish` | `intent` | parameter (wrapper; 1 call site(s) scanned) |
 | pub | code/postal_core/python/postal_core/akp_http_bridge.py:565 | `akp_client.publish` | `topic` | expression |
 | sub | code/postal_core/python/postal_core/akp_http_bridge.py:573 | `akp_client.subscribe` | `topic` | expression |
 | sub | code/postal_core/python/postal_core/akp_server.py:765 | `_postal.subscribe` | `topic` | expression |
@@ -1750,6 +2081,7 @@ Counts by reason: parameter: 88, expression: 54, undefined name: 5, instance att
 | pub | code/postal_core/python/postal_core/tensor_fabric.py:387 | `_core.publish` | `intent` | parameter |
 | sub | code/postal_core/python/postal_core/tensor_fabric.py:1154 | `_postal.subscribe` | `topic` | parameter |
 | pub | code/postal_core/python/postal_core/tensor_fabric.py:1306 | `_postal.publish` | `intent` | parameter |
+| pub | code/postal_core/python/postal_core/tensor_fabric.py:1325 | `_shared_hub.route` | `intent` | parameter |
 | pub | code/postal_core/python/postal_core/tensor_fabric.py:1344 | `self.publish` | `intent` | parameter |
 | pub | code/postal_core/python/postal_core/tensor_fabric.py:1358 | `self.publish` | `intent` | parameter |
 | pub | code/postal_core/python/postal_core/tensor_fabric.py:1400 | `self.publish` | `topic` | parameter |
@@ -1895,70 +2227,74 @@ shows the bare `cortex` entry that line 403 subscribes in a loop. That entry is 
 
 ## Excluded and shadowed files
 
-### Shadowed copies (code/fairies/P*/X loses to code/P*/X, first on sys.path)
+### Twin copies (code/fairies/P*/X next to code/P*/X)
 
-Sites inside shadowed copies are NOT counted above. Caveat: this applies to `import P00_Autonomic.x`
-style imports. A module loaded by file path (`spec_from_file_location`) is not shadowed.
-
-**Surprise: the rule above holds only for bare imports.** Most code imports these modules as
-`fairies.P00_Autonomic...`, a different package name, which always resolves to the code/fairies/ copy.
+A bare `import P30_Cognition.x` finds code/P30_Cognition/x first (code/ is first on sys.path).
+`import fairies.P30_Cognition.x` is a different module name and always loads the code/fairies/ copy.
+Rule since W3: a copy is scanned as LIVE when any non-test file imports it by its `fairies.` name
+(or by a relative import from a non-twin sibling); only copies nobody imports that way are excluded.
+Example: code/P30_Cognition/cognition/working_memory_hub_fairy.py is a 53-line re-export of the
+code/fairies/ copy (its line 27), so the copy is the hub that runs.
 The two right-hand columns count import statements (whole code/ tree, tests included) of each form.
-Where `fairies.X` imports outnumber bare ones, the "shadowed" copy is the one most callers run.
 
-| shadowed copy | winning copy | pub/sub sites in shadowed copy | bare imports (winner) | `fairies.` imports (copy) |
-|---|---|---|---|---|
-| code/fairies/P00_Autonomic/__init__.py | code/P00_Autonomic/__init__.py | 0 | 94 | 578 |
-| code/fairies/P00_Autonomic/akashic_logging.py | code/P00_Autonomic/akashic_logging.py | 0 | 1 | 2 |
-| code/fairies/P00_Autonomic/fairy_profile.py | code/P00_Autonomic/fairy_profile.py | 0 | 2 | 12 |
-| code/fairies/P00_Autonomic/gm_tools.py | code/P00_Autonomic/gm_tools.py | 0 | 0 | 9 |
-| code/fairies/P00_Autonomic/postal.py | code/P00_Autonomic/postal.py | 2 | 0 | 5 |
-| code/fairies/P00_Autonomic/tracer_worker_system.py | code/P00_Autonomic/tracer_worker_system.py | 1 | 14 | 45 |
-| code/fairies/P00_Autonomic/nervous_system/__init__.py | code/P00_Autonomic/nervous_system/__init__.py | 0 | 61 | 248 |
-| code/fairies/P00_Autonomic/nervous_system/boot_profiler.py | code/P00_Autonomic/nervous_system/boot_profiler.py | 0 | 2 | 4 |
-| code/fairies/P00_Autonomic/nervous_system/consciousness_loop_fairy.py | code/P00_Autonomic/nervous_system/consciousness_loop_fairy.py | 0 | 2 | 16 |
-| code/fairies/P00_Autonomic/nervous_system/cross_plane_wiring.py | code/P00_Autonomic/nervous_system/cross_plane_wiring.py | 1 | 1 | 8 |
-| code/fairies/P00_Autonomic/nervous_system/mcp_postal_bridge.py | code/P00_Autonomic/nervous_system/mcp_postal_bridge.py | 0 | 0 | 9 |
-| code/fairies/P00_Autonomic/nervous_system/shared_postal_hub.py | code/P00_Autonomic/nervous_system/shared_postal_hub.py | 0 | 30 | 124 |
-| code/fairies/P00_Autonomic/nervous_system/waking_sequence_fairy.py | code/P00_Autonomic/nervous_system/waking_sequence_fairy.py | 0 | 2 | 3 |
-| code/fairies/P00_Autonomic/nervous_system/wiring_map.py | code/P00_Autonomic/nervous_system/wiring_map.py | 0 | 7 | 10 |
-| code/fairies/P00_Autonomic/nervous_system/fairy_citizens/__init__.py | code/P00_Autonomic/nervous_system/fairy_citizens/__init__.py | 0 | 0 | 6 |
-| code/fairies/P00_Autonomic/nervous_system/hardware/__init__.py | code/P00_Autonomic/nervous_system/hardware/__init__.py | 0 | 11 | 18 |
-| code/fairies/P00_Autonomic/nervous_system/hardware/cuda_fairy.py | code/P00_Autonomic/nervous_system/hardware/cuda_fairy.py | 1 | 0 | 3 |
-| code/fairies/P00_Autonomic/nervous_system/hardware/memory_pressure_fairy.py | code/P00_Autonomic/nervous_system/hardware/memory_pressure_fairy.py | 4 | 0 | 5 |
-| code/fairies/P10_Memory/__init__.py | code/P10_Memory/__init__.py | 0 | 8 | 107 |
-| code/fairies/P10_Memory/akashic_codex.py | code/P10_Memory/akashic_codex.py | 0 | 0 | 3 |
-| code/fairies/P10_Memory/media/__init__.py | code/P10_Memory/media/__init__.py | 0 | 0 | 7 |
-| code/fairies/P10_Memory/media/media_memory_fairy.py | code/P10_Memory/media/media_memory_fairy.py | 0 | 0 | 6 |
-| code/fairies/P20_Somatic/__init__.py | code/P20_Somatic/__init__.py | 0 | 5 | 230 |
-| code/fairies/P20_Somatic/circulation/__init__.py | code/P20_Somatic/circulation/__init__.py | 0 | 0 | 51 |
-| code/fairies/P20_Somatic/circulation/waking_sequence_fairy.py | code/P20_Somatic/circulation/waking_sequence_fairy.py | 0 | 0 | 4 |
-| code/fairies/P30_Cognition/__init__.py | code/P30_Cognition/__init__.py | 0 | 18 | 538 |
-| code/fairies/P30_Cognition/cognition/__init__.py | code/P30_Cognition/cognition/__init__.py | 0 | 16 | 280 |
-| code/fairies/P30_Cognition/cognition/autonomy_fairy.py | code/P30_Cognition/cognition/autonomy_fairy.py | 46 | 0 | 14 |
-| code/fairies/P30_Cognition/cognition/claudefairy_education.py | code/P30_Cognition/cognition/claudefairy_education.py | 2 | 1 | 2 |
-| code/fairies/P30_Cognition/cognition/failure_factory.py | code/P30_Cognition/cognition/failure_factory.py | 2 | 1 | 2 |
-| code/fairies/P30_Cognition/cognition/fairy_world_foundation.py | code/P30_Cognition/cognition/fairy_world_foundation.py | 0 | 8 | 12 |
-| code/fairies/P30_Cognition/cognition/irrational_logic_fairy.py | code/P30_Cognition/cognition/irrational_logic_fairy.py | 6 | 0 | 1 |
-| code/fairies/P30_Cognition/cognition/logic_fairy.py | code/P30_Cognition/cognition/logic_fairy.py | 6 | 0 | 1 |
-| code/fairies/P30_Cognition/cognition/nous_fairy.py | code/P30_Cognition/cognition/nous_fairy.py | 0 | 1 | 7 |
-| code/fairies/P30_Cognition/cognition/paradox_cognition_fairy.py | code/P30_Cognition/cognition/paradox_cognition_fairy.py | 7 | 0 | 3 |
-| code/fairies/P30_Cognition/cognition/prompt_aware_mixin.py | code/P30_Cognition/cognition/prompt_aware_mixin.py | 1 | 0 | 0 |
-| code/fairies/P30_Cognition/cognition/skill_system.py | code/P30_Cognition/cognition/skill_system.py | 0 | 0 | 23 |
-| code/fairies/P30_Cognition/cognition/smart_goal_coordinator.py | code/P30_Cognition/cognition/smart_goal_coordinator.py | 8 | 1 | 5 |
-| code/fairies/P30_Cognition/cognition/thought_chain_engine.py | code/P30_Cognition/cognition/thought_chain_engine.py | 14 | 2 | 5 |
-| code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py | code/P30_Cognition/cognition/working_memory_hub_fairy.py | 122 | 1 | 51 |
-| code/fairies/P30_Cognition/integration/__init__.py | code/P30_Cognition/integration/__init__.py | 0 | 0 | 31 |
+| code/fairies/ copy | twin | status | pub/sub sites in copy | bare imports (twin) | `fairies.` imports (copy) |
+|---|---|---|---|---|---|
+| code/fairies/P00_Autonomic/__init__.py | code/P00_Autonomic/__init__.py | live (scanned) | 0 | 94 | 578 |
+| code/fairies/P00_Autonomic/akashic_logging.py | code/P00_Autonomic/akashic_logging.py | live (scanned) | 0 | 1 | 2 |
+| code/fairies/P00_Autonomic/fairy_profile.py | code/P00_Autonomic/fairy_profile.py | live (scanned) | 0 | 2 | 12 |
+| code/fairies/P00_Autonomic/gm_tools.py | code/P00_Autonomic/gm_tools.py | live (scanned) | 1 | 0 | 9 |
+| code/fairies/P00_Autonomic/nervous_system/__init__.py | code/P00_Autonomic/nervous_system/__init__.py | live (scanned) | 0 | 61 | 248 |
+| code/fairies/P00_Autonomic/nervous_system/boot_profiler.py | code/P00_Autonomic/nervous_system/boot_profiler.py | live (scanned) | 0 | 2 | 4 |
+| code/fairies/P00_Autonomic/nervous_system/consciousness_loop_fairy.py | code/P00_Autonomic/nervous_system/consciousness_loop_fairy.py | live (scanned) | 0 | 2 | 16 |
+| code/fairies/P00_Autonomic/nervous_system/cross_plane_wiring.py | code/P00_Autonomic/nervous_system/cross_plane_wiring.py | live (scanned) | 2 | 1 | 8 |
+| code/fairies/P00_Autonomic/nervous_system/fairy_citizens/__init__.py | code/P00_Autonomic/nervous_system/fairy_citizens/__init__.py | live (scanned) | 0 | 0 | 6 |
+| code/fairies/P00_Autonomic/nervous_system/hardware/__init__.py | code/P00_Autonomic/nervous_system/hardware/__init__.py | live (scanned) | 0 | 11 | 18 |
+| code/fairies/P00_Autonomic/nervous_system/hardware/cuda_fairy.py | code/P00_Autonomic/nervous_system/hardware/cuda_fairy.py | live (scanned) | 6 | 0 | 3 |
+| code/fairies/P00_Autonomic/nervous_system/hardware/memory_pressure_fairy.py | code/P00_Autonomic/nervous_system/hardware/memory_pressure_fairy.py | live (scanned) | 4 | 0 | 5 |
+| code/fairies/P00_Autonomic/nervous_system/mcp_postal_bridge.py | code/P00_Autonomic/nervous_system/mcp_postal_bridge.py | live (scanned) | 0 | 0 | 9 |
+| code/fairies/P00_Autonomic/nervous_system/shared_postal_hub.py | code/P00_Autonomic/nervous_system/shared_postal_hub.py | live (scanned) | 0 | 30 | 124 |
+| code/fairies/P00_Autonomic/nervous_system/waking_sequence_fairy.py | code/P00_Autonomic/nervous_system/waking_sequence_fairy.py | live (scanned) | 0 | 2 | 3 |
+| code/fairies/P00_Autonomic/nervous_system/wiring_map.py | code/P00_Autonomic/nervous_system/wiring_map.py | live (scanned) | 8 | 7 | 10 |
+| code/fairies/P00_Autonomic/postal.py | code/P00_Autonomic/postal.py | live (scanned) | 14 | 0 | 5 |
+| code/fairies/P00_Autonomic/tracer_worker_system.py | code/P00_Autonomic/tracer_worker_system.py | live (scanned) | 1 | 14 | 45 |
+| code/fairies/P10_Memory/__init__.py | code/P10_Memory/__init__.py | live (scanned) | 0 | 8 | 107 |
+| code/fairies/P10_Memory/akashic_codex.py | code/P10_Memory/akashic_codex.py | live (scanned) | 0 | 0 | 3 |
+| code/fairies/P10_Memory/media/__init__.py | code/P10_Memory/media/__init__.py | live (scanned) | 0 | 0 | 7 |
+| code/fairies/P10_Memory/media/media_memory_fairy.py | code/P10_Memory/media/media_memory_fairy.py | live (scanned) | 0 | 0 | 6 |
+| code/fairies/P20_Somatic/__init__.py | code/P20_Somatic/__init__.py | live (scanned) | 0 | 5 | 230 |
+| code/fairies/P20_Somatic/circulation/__init__.py | code/P20_Somatic/circulation/__init__.py | live (scanned) | 0 | 0 | 51 |
+| code/fairies/P20_Somatic/circulation/waking_sequence_fairy.py | code/P20_Somatic/circulation/waking_sequence_fairy.py | live (scanned) | 0 | 0 | 4 |
+| code/fairies/P30_Cognition/__init__.py | code/P30_Cognition/__init__.py | live (scanned) | 0 | 18 | 538 |
+| code/fairies/P30_Cognition/cognition/__init__.py | code/P30_Cognition/cognition/__init__.py | live (scanned) | 0 | 16 | 280 |
+| code/fairies/P30_Cognition/cognition/autonomy_fairy.py | code/P30_Cognition/cognition/autonomy_fairy.py | live (scanned) | 61 | 0 | 14 |
+| code/fairies/P30_Cognition/cognition/claudefairy_education.py | code/P30_Cognition/cognition/claudefairy_education.py | live (scanned) | 10 | 1 | 2 |
+| code/fairies/P30_Cognition/cognition/failure_factory.py | code/P30_Cognition/cognition/failure_factory.py | live (scanned) | 9 | 1 | 2 |
+| code/fairies/P30_Cognition/cognition/fairy_world_foundation.py | code/P30_Cognition/cognition/fairy_world_foundation.py | live (scanned) | 0 | 8 | 12 |
+| code/fairies/P30_Cognition/cognition/irrational_logic_fairy.py | code/P30_Cognition/cognition/irrational_logic_fairy.py | live (scanned) | 17 | 0 | 1 |
+| code/fairies/P30_Cognition/cognition/logic_fairy.py | code/P30_Cognition/cognition/logic_fairy.py | live (scanned) | 18 | 0 | 1 |
+| code/fairies/P30_Cognition/cognition/nous_fairy.py | code/P30_Cognition/cognition/nous_fairy.py | live (scanned) | 0 | 1 | 7 |
+| code/fairies/P30_Cognition/cognition/paradox_cognition_fairy.py | code/P30_Cognition/cognition/paradox_cognition_fairy.py | live (scanned) | 16 | 0 | 3 |
+| code/fairies/P30_Cognition/cognition/prompt_aware_mixin.py | code/P30_Cognition/cognition/prompt_aware_mixin.py | **excluded** | 2 | 0 | 0 |
+| code/fairies/P30_Cognition/cognition/skill_system.py | code/P30_Cognition/cognition/skill_system.py | live (scanned) | 5 | 0 | 23 |
+| code/fairies/P30_Cognition/cognition/smart_goal_coordinator.py | code/P30_Cognition/cognition/smart_goal_coordinator.py | live (scanned) | 10 | 1 | 5 |
+| code/fairies/P30_Cognition/cognition/thought_chain_engine.py | code/P30_Cognition/cognition/thought_chain_engine.py | live (scanned) | 24 | 2 | 5 |
+| code/fairies/P30_Cognition/cognition/working_memory_hub_fairy.py | code/P30_Cognition/cognition/working_memory_hub_fairy.py | live (scanned) | 131 | 1 | 51 |
+| code/fairies/P30_Cognition/integration/__init__.py | code/P30_Cognition/integration/__init__.py | live (scanned) | 0 | 0 | 31 |
 
-### Sensitivity: counting the code/fairies/ copies as live too
+### Sensitivity: the pre-W3 rule (all twin copies excluded)
 
-With the 223 sites from the shadowed copies added: A = 198 (was 202), B = 465 (was 448).
+Dropping the 337 sites in the 40 reached copies gives A = 292, B = 346 (now 293, 353).
 
-* Dead letters that gain a subscriber: `cognition.habit_hint`, `council.peer_review`, `habit.responded`, `language.quality_feedback`, `quantum.coherence`, `quantum.state`, `somatic.stuck`, `somatic.weather`, `tracer.relationship`, `worker.complete`, `worker.failed`.
-* New dead letters (published only in a shadowed copy): `autonomy.pause_goals`, `autonomy.reflex_goal_hint`, `cognition.scratchpad`, `executive`, `intent.from_inference`, `somatic.chem.nudge`, `system.command`.
-* Deaf ears that gain a publisher: `cognition.pattern_learned`, `consciousness.action_impulse`, `council.broadcast`, `council.verdict`, `fairy.boot`, `fairy.broadcast`, `fairy.card`, `fairy.failed`, `fairy.health`, `fairy.idle`, `fairy.ping`, `fairy.reflection`, `fairy.speech`, `fairy.status`, `fairy.stuck`, `hardware.gpu.felt`, `working_memory.tracer_decayed`, `working_memory.tracer_promoted`.
-* New deaf ears (subscribed only in a shadowed copy): `action.result`, `autonomy.ignition`, `autonomy.relieve_pain`, `autonomy.satisfy`, `autopilot.behaviors`, `autopilot.execution`, `claudefairy.converse`, `cognition.autopilot`, `consciousness.surfacing.sourpatches`, `daydream.thought`, `education.complete_step`, `education.learning_goal`, `education.start_learning`, `embodiment.state`, `goal.active`, `goal_scheduler.new_goal`, `goals.state.update`, `guild.inference.response.thought_chain`, `guild.sourpatches_farm.response.thought_chain`, `learning.experiment_request`, `memory.formation`, `pattern.feedback`, `reflection.crystallized`, `reflex.action_intent`, `scheduler.nudge`, `skill.achievement_unlocked`, `somatic.coherence`, `sourpatches.inner_thought`, `system.health`, `telemetry.affect.*`, `thought.chain.reflection`, `thought.chain.started`, `tool.nudge`, `unconscious.dream_seed`, `unconscious.thought`.
+### Sensitivity: counting the still-excluded copies as live too
 
-### Test files excluded (100 files, 58 sites)
+With the 2 sites from the shadowed copies added: A = 293 (was 293), B = 353 (was 353).
+
+* Dead letters that gain a subscriber: none.
+* New dead letters (published only in a shadowed copy): none.
+* Deaf ears that gain a publisher: none.
+* New deaf ears (subscribed only in a shadowed copy): none.
+
+### Test files excluded (100 files, 65 sites)
 
 <details><summary>list</summary>
 
@@ -2046,7 +2382,7 @@ With the 223 sites from the shadowed copies added: A = 198 (was 202), B = 465 (w
 * code/tests/test_stress_ingest_from_ace.py
 * code/tests/test_working_cluster.py
 * code/tests/mcp/__init__.py
-* code/tests/mcp/conftest.py (1 sites)
+* code/tests/mcp/conftest.py (8 sites)
 * code/tests/mcp/test_affect_gated_tools.py
 * code/tests/mcp/test_akp_protocol.py
 * code/tests/mcp/test_akp_server.py
