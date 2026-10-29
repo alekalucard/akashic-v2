@@ -18,7 +18,8 @@ right after that write, on every shutdown path (HTTP route, reboot, Ctrl+C).
   broken by the moment's random "tracer" id, never by its age. Kept moments stay in HOLD order.
 - Atomic: temp file in the same directory, fsync, os.replace. The seed's other keys are left as they are.
 - Never creates a seed: absent / unreadable / non-object seed -> nothing is written.
-- Nothing at boot reads mind_pools["moment_hold"] yet (see docs/nous/W12/SUMMARY.md); no reader is added here.
+- The only reader is restore_into() below (its own switch, AKASHIC_MOMENT_HOLD_RESTORE): MomentBinderFairy.on_boot puts
+  the saved moments back into an EMPTY HOLD, exactly as saved, once per saved set. No consolidation is wired.
 
 Import has no side effects (stdlib only, no threads, no I/O).
 """
@@ -32,6 +33,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 SWITCH = "AKASHIC_MOMENT_HOLD_SAVE"
+RESTORE_SWITCH = "AKASHIC_MOMENT_HOLD_RESTORE"
+MARKER_KEEP = 100             # consumed-set ids kept in the marker file (one per shutdown)
 SEED_KEY = "moment_hold"
 MAX_MOMENTS = 60              # = MomentBinderFairy.EPISODIC_BUFFER_MAX: the HOLD never holds more, so nothing drops today
 MAX_BYTES = 2 * 1024 * 1024   # moments' serialized size; a moment is ~1-3 KB (text <= 900 chars, <= 22 tags)
@@ -212,3 +215,85 @@ def shutdown_hand_off(system, seed_path) -> str:
     if not switch_on():
         return "off"
     return hand_off(find_binder(system), str(seed_path))
+
+
+# ---- READER (W12b, 2026-10-29) -- OFF unless AKASHIC_MOMENT_HOLD_RESTORE=1 ------------------------------------------
+# MomentBinderFairy.on_boot -> restore_into(self, <code>/state/dream_seed.json, <code>/state/moment_hold_restored.json).
+# - Restores only into an EMPTY hold (anything already there would be interleaved/evicted = changed); else skip + log.
+# - Never more than the hold's own cap (deque maxlen); a saved set larger than the cap is skipped whole, never cut.
+# - Moments go back as saved: same dicts (JSON), same oldest-first order, appended to binder._episodic_buffer.
+# - Once per saved set: the set's id (sha256 of its saved_ts + moments) is written to a SIDECAR marker BEFORE the hold
+#   is filled. A crash after the mark loses that restore at worst; it can never double it. The seed is never written
+#   (DreamSeedFairy.on_boot re-saves dream_seed.json non-atomically at boot, dream_seed_fairy.py:327/343, so an in-place
+#   mark could be overwritten by its stale copy). Nothing is deleted.
+# - No consolidation: restored tracers are added to binder._consolidated_tracers, so the 60 s rememberer and the day-store
+#   capture (fairy.py _consolidate_episodic) skip them. They still persist to the episodic manifold when they roll off,
+#   as every HOLD moment does (fairy.py:678-693) -- they never reached it before the shutdown, so that is not a repeat.
+
+def restore_switch_on() -> bool:
+    return os.environ.get(RESTORE_SWITCH, "0") == "1"
+
+
+def _set_id(block: Dict[str, Any]) -> str:
+    import hashlib
+    raw = json.dumps({"saved_ts": block.get("saved_ts"), "moments": block.get("moments")},
+                     sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _read_marker(marker_path: str) -> Dict[str, Any]:
+    if not os.path.isfile(marker_path):
+        return {"consumed": []}
+    with open(marker_path, "r", encoding="utf-8") as f:
+        d = json.load(f)        # unreadable marker -> raises -> restore refused (cannot prove "not yet restored")
+    if not isinstance(d, dict) or not isinstance(d.get("consumed"), list):
+        raise ValueError("marker is not {'consumed': [...]}")
+    return d
+
+
+def restore_into(binder, seed_path: str, marker_path: str) -> str:
+    """Put mind_pools['moment_hold'] back into the binder's HOLD. -> one status line. Never raises."""
+    try:
+        if not restore_switch_on():
+            return "off"
+        if binder is None:
+            return "skipped: no binder"
+        if not os.path.isfile(seed_path):
+            return "skipped: no dream seed"
+        with open(seed_path, "r", encoding="utf-8") as f:
+            seed = json.load(f)
+        pools = seed.get("mind_pools") if isinstance(seed, dict) else None
+        block = pools.get(SEED_KEY) if isinstance(pools, dict) else None
+        if not isinstance(block, dict):
+            return "nothing to restore (no %s in the seed)" % SEED_KEY
+        moments = block.get("moments")
+        if not isinstance(moments, list) or not moments:
+            return "nothing to restore (no moments)"
+        if not all(isinstance(m, dict) for m in moments):
+            return "skipped: saved set has a non-moment entry (left as is)"
+        sid = _set_id(block)
+        marker = _read_marker(marker_path)
+        if any(isinstance(c, dict) and c.get("id") == sid for c in marker["consumed"]):
+            return "skipped: this saved set was already restored (%s)" % sid[:12]
+        buf = getattr(binder, "_episodic_buffer", None)
+        lock = getattr(binder, "_moment_lock", None)
+        if buf is None or lock is None:
+            return "skipped: binder has no hold"
+        with lock:
+            if len(buf) != 0:
+                return "skipped: hold already has %d moment(s) -- restore only into an empty hold" % len(buf)
+            cap = buf.maxlen
+            if cap is not None and len(moments) > cap:
+                return "skipped: %d saved > hold cap %d (never cut)" % (len(moments), cap)
+            # 1) mark consumed (atomic) -- 2) only then fill the hold
+            marker["consumed"] = (marker["consumed"] + [{
+                "id": sid, "restored_ts": time.time(), "count": len(moments),
+                "saved_ts": block.get("saved_ts"), "seed_path": os.path.abspath(seed_path)}])[-MARKER_KEEP:]
+            _atomic_write_json(marker_path, marker)
+            buf.extend(moments)
+            done = getattr(binder, "_consolidated_tracers", None)
+            if isinstance(done, set):
+                done.update(m.get("tracer") for m in moments)
+        return "restored %d moment(s) (set %s)" % (len(moments), sid[:12])
+    except Exception as e:
+        return "error: %s: %s" % (type(e).__name__, str(e)[:160])

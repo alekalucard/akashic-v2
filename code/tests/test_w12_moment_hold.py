@@ -27,6 +27,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CODE = os.path.dirname(HERE)
 MODULE_PATH = os.environ.get("W12_MODULE", os.path.join(CODE, "infrastructure", "moment_hold_save.py"))
 SERVER_PATH = os.environ.get("W12_SERVER", os.path.join(CODE, "server.py"))
+FAIRY_PATH = os.environ.get("W12_FAIRY", os.path.join(CODE, "fairies", "P30_Cognition", "MomentBinderFairy", "fairy.py"))
+RSW = "AKASHIC_MOMENT_HOLD_RESTORE"
 SW = "AKASHIC_MOMENT_HOLD_SAVE"
 
 
@@ -57,6 +59,7 @@ class FakeBinder:
     def __init__(self, moments):
         self._moment_lock = threading.RLock()
         self._episodic_buffer = deque(moments, maxlen=60)
+        self._consolidated_tracers = set()
 
 
 class Rec:
@@ -105,6 +108,7 @@ class Base(unittest.TestCase):
         self._env = mock.patch.dict(os.environ, {}, clear=False)
         self._env.start()
         os.environ.pop(SW, None)
+        os.environ.pop(RSW, None)
 
     def tearDown(self):
         self._env.stop()
@@ -279,6 +283,135 @@ class TestServerWiring(unittest.TestCase):
         self.assertIn("infrastructure.moment_hold_save", src)
         self.assertIn("shutdown_hand_off", src)
         self.assertEqual(len(nxt.orelse), 0)
+
+
+class TestRestore(Base):
+    """W12b reader: dream_seed.json mind_pools['moment_hold'] -> an EMPTY hold, exactly as saved, once per set."""
+
+    def setUp(self):
+        super().setUp()
+        self.marker = os.path.join(self.tmp, "moment_hold_restored.json")
+        os.environ[SW] = "1"
+        r = self.mod.hand_off(self.binder, self.seed_path)          # a real saved set, written by the saver
+        self.assertTrue(r.startswith("saved 60"), r)
+        os.environ.pop(SW)
+        self.seed_before = self.seed_bytes()
+
+    def fresh(self):
+        return FakeBinder([])
+
+    def test_restore_off_when_unset_or_not_1(self):
+        for v in (None, "0", "", "true", " 1", "yes"):
+            if v is None:
+                os.environ.pop(RSW, None)
+            else:
+                os.environ[RSW] = v
+            b = self.fresh()
+            self.assertEqual(self.mod.restore_into(b, self.seed_path, self.marker), "off", v)
+            self.assertEqual(len(b._episodic_buffer), 0)
+        self.assertFalse(os.path.exists(self.marker))
+        self.assertEqual(self.seed_bytes(), self.seed_before)
+
+    def test_control_restore_exact_order_once(self):
+        """CONTROL: fails on main (no reader); passes here."""
+        os.environ[RSW] = "1"
+        b = self.fresh()
+        st0 = os.stat(self.seed_path)
+        r = self.mod.restore_into(b, self.seed_path, self.marker)
+        self.assertTrue(r.startswith("restored 60"), r)
+        st1 = os.stat(self.seed_path)
+        self.assertEqual((st1.st_ino, st1.st_mtime_ns), (st0.st_ino, st0.st_mtime_ns))   # seed not rewritten at all
+        self.assertEqual(list(b._episodic_buffer), self.moments)      # every field, oldest-first, nothing merged/dropped
+        self.assertEqual(b._episodic_buffer.maxlen, 60)                # same hold structure, same cap
+        self.assertEqual(b._consolidated_tracers, {m["tracer"] for m in self.moments})   # rememberer skips them
+        self.assertEqual(self.seed_bytes(), self.seed_before)          # the seed is never written
+        # crash-restart: a second boot with a fresh, empty hold must NOT restore the same set again
+        b2 = self.fresh()
+        r2 = self.mod.restore_into(b2, self.seed_path, self.marker)
+        self.assertIn("already restored", r2)
+        self.assertEqual(len(b2._episodic_buffer), 0)
+
+    def test_only_into_empty_hold(self):
+        os.environ[RSW] = "1"
+        live = dict(self.moments[0], tracer="live000000000")
+        b = FakeBinder([live])
+        r = self.mod.restore_into(b, self.seed_path, self.marker)
+        self.assertIn("empty hold", r)
+        self.assertEqual(list(b._episodic_buffer), [live])
+        self.assertFalse(os.path.exists(self.marker))                  # not consumed: a later empty boot may restore it
+
+    def test_never_exceeds_cap(self):
+        os.environ[RSW] = "1"
+        b = self.fresh()
+        b._episodic_buffer = deque(maxlen=10)
+        r = self.mod.restore_into(b, self.seed_path, self.marker)
+        self.assertIn("hold cap", r)
+        self.assertEqual(len(b._episodic_buffer), 0)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_marker_write_fails_no_restore(self):
+        """Mark BEFORE fill: if the consumed-mark cannot be written, the hold stays empty (never a double)."""
+        os.environ[RSW] = "1"
+        b = self.fresh()
+        with mock.patch.object(self.mod, "_atomic_write_json", side_effect=OSError("disk gone")):
+            r = self.mod.restore_into(b, self.seed_path, self.marker)
+        self.assertTrue(r.startswith("error"), r)
+        self.assertEqual(len(b._episodic_buffer), 0)
+
+    def test_unreadable_marker_refuses(self):
+        os.environ[RSW] = "1"
+        with open(self.marker, "w") as f:
+            f.write("{not json")
+        b = self.fresh()
+        self.assertTrue(self.mod.restore_into(b, self.seed_path, self.marker).startswith("error"))
+        self.assertEqual(len(b._episodic_buffer), 0)
+        with open(self.marker) as f:
+            self.assertEqual(f.read(), "{not json")                      # never deleted or rewritten
+
+    def test_new_saved_set_restores_again(self):
+        os.environ[RSW] = "1"
+        self.assertTrue(self.mod.restore_into(self.fresh(), self.seed_path, self.marker).startswith("restored"))
+        os.environ[SW] = "1"                                            # next shutdown saves a different hold
+        nb = FakeBinder([dict(m) for m in self.moments[:5]])
+        self.mod.hand_off(nb, self.seed_path)
+        b = self.fresh()
+        self.assertTrue(self.mod.restore_into(b, self.seed_path, self.marker).startswith("restored 5"))
+        self.assertEqual(list(b._episodic_buffer), self.moments[:5])
+        with open(self.marker) as f:
+            self.assertEqual(len(json.load(f)["consumed"]), 2)
+
+    def test_nothing_saved_is_noop(self):
+        os.environ[RSW] = "1"
+        with open(self.seed_path, "w", encoding="utf-8") as f:
+            json.dump(SEED, f)
+        b = self.fresh()
+        self.assertTrue(self.mod.restore_into(b, self.seed_path, self.marker).startswith("nothing"))
+        self.assertFalse(os.path.exists(self.marker))
+
+
+class TestFairyWiring(unittest.TestCase):
+    """CONTROL (static, no import): MomentBinderFairy.on_boot calls restore_into, gated on
+    os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1", as the last step before `return True`."""
+
+    def test_control_on_boot_calls_restore(self):
+        with open(FAIRY_PATH, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MomentBinderFairy")
+        fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "on_boot")
+        body = fn.body
+        self.assertIsInstance(body[-1], ast.Return)
+        gate = body[-2]
+        self.assertIsInstance(gate, ast.If, "no gated block before on_boot's return")
+        t = gate.test
+        self.assertIsInstance(t.ops[0], ast.Eq)
+        self.assertEqual(t.comparators[0].value, "1")
+        self.assertTrue(ast.unparse(t.left.func).endswith("environ.get"))
+        self.assertEqual([a.value for a in t.left.args], [RSW, "0"])
+        src = ast.unparse(gate)
+        self.assertIn("infrastructure.moment_hold_save", src)
+        self.assertIn("restore_into", src)
+        self.assertNotIn("sleep_consolidate", ast.unparse(fn))
+        self.assertEqual(len(gate.orelse), 0)
 
 
 if __name__ == "__main__":

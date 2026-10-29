@@ -246,6 +246,17 @@ class MomentBinderFairy(Fairy):
         except Exception as e:
             self._epi_persister = None
             print(f"[{self.ACTOR_NAME}] linear-persist init skipped: {e}", flush=True)
+        # W12 MOMENT HOLD RESTORE (2026-10-29, Nous) -- OFF unless AKASHIC_MOMENT_HOLD_RESTORE=1. Put the moments the last
+        # shutdown saved (dream_seed.json mind_pools["moment_hold"]) back into this EMPTY hold, as saved, once per set.
+        import os as _mh_os
+        if _mh_os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1":
+            try:
+                from infrastructure.moment_hold_save import restore_into as _mh_restore
+                _mh_r = _mh_restore(self, str(ROOT / "state" / "dream_seed.json"),
+                                    str(ROOT / "state" / "moment_hold_restored.json"))
+                print(f"[{self.ACTOR_NAME}] moment hold restore: {_mh_r}", flush=True)
+            except Exception as _mh_e:
+                print(f"[{self.ACTOR_NAME}] moment hold restore FAILED: {_mh_e}", flush=True)
         return True
 
     def on_die(self):
