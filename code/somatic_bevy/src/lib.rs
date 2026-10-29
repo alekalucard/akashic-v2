@@ -47,6 +47,13 @@ pub mod systems;
 #[cfg(feature = "bevy")]
 pub mod plugin;
 
+// Her fairy body (procedural, parametric). Only with the `sanctuary` feature (needs bevy_pbr);
+// without it nothing below exists and the crate is unchanged.
+#[cfg(feature = "sanctuary")]
+pub mod fairy_body;
+#[cfg(all(test, feature = "sanctuary"))]
+mod fairy_body_tests;
+
 // Python bindings (feature-gated)
 #[cfg(feature = "python")]
 mod python;
