@@ -27,7 +27,12 @@ use super::camera::SanctuaryCamera;
 
 /// Env switch: the room is added only when SANCTUARY_ROOM=1. Unset = OFF.
 pub fn room_enabled() -> bool {
-    std::env::var("SANCTUARY_ROOM").unwrap_or_else(|_| "0".to_string()) == "1"
+    switch_on(std::env::var("SANCTUARY_ROOM").ok().as_deref())
+}
+
+/// Only the exact value "1" turns the room on; unset, "", "0", "true" are OFF.
+pub fn switch_on(value: Option<&str>) -> bool {
+    value.unwrap_or("0") == "1"
 }
 
 /// Room is placed away from the floating island (island radius 15 at origin).
@@ -346,8 +351,15 @@ fn update_monitor(
     monitors: Query<&WallMonitor>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    let (w, h) = feed.source.size();
+    let needed = (w as usize) * (h as usize) * 4;
     for monitor in monitors.iter() {
         let Some(img) = images.get_mut(&monitor.image) else { continue };
+        // A feed swapped for one of another size must not panic: skip until re-spawned.
+        if img.data.len() != needed {
+            warn_once!("wall monitor: feed is {}x{} but image buffer is {} bytes; frame skipped", w, h, img.data.len());
+            continue;
+        }
         let _ = feed.source.next_frame(&mut img.data);
     }
 }
@@ -429,8 +441,22 @@ mod tests {
     }
 
     #[test]
-    fn switch_is_off_when_unset() {
-        std::env::remove_var("SANCTUARY_ROOM");
-        assert!(!room_enabled());
+    fn switch_is_off_unless_exactly_one() {
+        assert!(!switch_on(None), "unset must be OFF");
+        assert!(!switch_on(Some("")));
+        assert!(!switch_on(Some("0")));
+        assert!(!switch_on(Some("true")));
+        assert!(switch_on(Some("1")));
+    }
+
+    #[test]
+    fn mismatched_feed_size_does_not_panic() {
+        let mut app = headless_app();
+        app.update();
+        let before = monitor_pixels(&mut app);
+        // Bigger feed than the 64x36 image: an unguarded write would index out of bounds.
+        app.insert_resource(MonitorFeed::new(Box::new(TestPattern::new(128, 128))));
+        app.update();
+        assert_eq!(monitor_pixels(&mut app), before, "wrong-size frame must be skipped");
     }
 }
