@@ -6,8 +6,10 @@ real heartbeat delivery in the last N beats, with name and plane.
 
 Data only exists when AKASHIC_LIVENESS_FROM_DELIVERY=1 (see heartbeat_registry.py):
 then the registry records, per fairy, the beat whose callback actually returned
-(_last_delivered_beat). With the switch OFF the report says so and lists only the
-fairies that cannot be delivered to at all (citizens with no callback).
+(_last_handled_beat / _last_handled_ts, written ONLY for this report). It never reads
+_last_delivered_ts: that one is blanket-stamped every beat and feeds the watchdog.
+With the switch OFF the report says so and lists only the fairies that cannot be
+delivered to at all (citizens with no callback).
 
 Nothing here writes to the registry, starts threads, or opens sockets. The registry
 persists nothing to disk and exposes no endpoint, so there are two ways to use it:
@@ -50,7 +52,8 @@ def snapshot(registry, citizens: Optional[Dict[str, Any]] = None) -> Dict[str, A
         "callbacks": cb_names,
         "planes": planes,
         "citizens": cit_planes,
-        "last_delivered_beat": dict(getattr(registry, "_last_delivered_beat", {}) or {}),
+        "last_handled_beat": dict(getattr(registry, "_last_handled_beat", {}) or {}),
+        "last_handled_ts": dict(getattr(registry, "_last_handled_ts", {}) or {}),
         "error_counts": {k: v for k, v in dict(getattr(registry, "_error_counts", {})).items() if v},
         "in_flight": sorted(getattr(registry, "_in_flight", set()) or ()),
     }
@@ -75,7 +78,7 @@ def break_room(source, n_beats: int = 10, citizens: Optional[Dict[str, Any]] = N
     cbs = set(snap.get("callbacks", []))
     cit = dict(snap.get("citizens", {}))
     planes = dict(snap.get("planes", {}))
-    last = dict(snap.get("last_delivered_beat", {}))
+    last = dict(snap.get("last_handled_beat", {}))
     errs = dict(snap.get("error_counts", {}))
     busy = set(snap.get("in_flight", []))
     napping: List[Dict[str, Any]] = []

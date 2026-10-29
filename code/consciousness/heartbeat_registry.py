@@ -102,13 +102,14 @@ class HeartbeatRegistry:
         # timestamps, giving the watchdog a TERTIARY liveness signal.
         self._last_delivered_ts: Dict[str, float] = {}  # name -> last successful delivery time
 
-        # W10 LIVENESS-FROM-DELIVERY (2026-10-29 Nous): flag-gated, DEFAULT OFF.
-        # AKASHIC_LIVENESS_FROM_DELIVERY=1 -> _last_delivered_ts is stamped ONLY when a fairy's
-        # callback actually returned (_deliver_one), not for every citizen / gated / in-flight
-        # skip. The beat of that delivery is kept in _last_delivered_beat for the break-room
-        # report (consciousness/break_room.py). OFF = both stay as before (beat dict unused).
+        # W10 BREAK-ROOM WATCH (2026-10-29 Nous): flag-gated, DEFAULT OFF. WATCH ONLY.
+        # AKASHIC_LIVENESS_FROM_DELIVERY=1 -> _deliver_one ALSO records, in two NEW dicts, when
+        # (and on which beat) a fairy's callback actually returned. Only consciousness/
+        # break_room.py reads them. _last_delivered_ts above is NOT touched (switch on or off),
+        # so the watchdog (directory/handlers/heartbeat.py) sees exactly what it always saw.
         self._liveness_from_delivery = False
-        self._last_delivered_beat: Dict[str, int] = {}   # name -> beat of last real delivery (ON only)
+        self._last_handled_ts: Dict[str, float] = {}     # name -> time callback last returned (ON only)
+        self._last_handled_beat: Dict[str, int] = {}     # name -> beat it was delivered on (ON only)
         self._liveness_beat = 0                          # latest beat seen by pulse() (ON only)
 
         # BULKHEAD (2026-07-13 Nous+Ace): cap each fairy to ONE outstanding callback so a
@@ -260,8 +261,9 @@ class HeartbeatRegistry:
 
             # FIX 2026-03-14 (Nous): Track successful delivery for watchdog liveness
             self._last_delivered_ts[name] = time.time()
-            if self._liveness_from_delivery:  # W10: remember WHICH beat really reached it
-                self._last_delivered_beat[name] = pulse_data.get("beat", self._liveness_beat)
+            if self._liveness_from_delivery:  # W10 watch-only: the callback really ran
+                self._last_handled_ts[name] = time.time()
+                self._last_handled_beat[name] = pulse_data.get("beat", self._liveness_beat)
 
             # Log unusually slow callbacks (visibility, no abandonment)
             if elapsed_ms > self.CALLBACK_SLOW_THRESHOLD_SEC * 1000.0:
@@ -308,7 +310,7 @@ class HeartbeatRegistry:
         """
         self._total_pulses += 1
         t0 = time.perf_counter()
-        # W10: read once per beat; OFF when unset.
+        # W10 watch-only: read once per beat; OFF when unset.
         _lfd = os.environ.get("AKASHIC_LIVENESS_FROM_DELIVERY", "0") == "1"
         self._liveness_from_delivery = _lfd
         if _lfd:
@@ -368,8 +370,7 @@ class HeartbeatRegistry:
         # DIAG 2026-05-10: log outer try/except fires (rate-limited).
         try:
             for _name, _obj in _cit_snapshot:
-                if not _lfd:  # W10: ON -> existence is not delivery; only _deliver_one stamps
-                    self._last_delivered_ts[_name] = _now_liveness
+                self._last_delivered_ts[_name] = _now_liveness
                 if _obj is not None:
                     try:
                         _obj._last_tick = _now_liveness
@@ -413,15 +414,13 @@ class HeartbeatRegistry:
                     divisor = max(1, int(round(divisor * _m)))
             if divisor > 1 and beat_number % divisor != 0:
                 # Skip work tick but still track liveness
-                if not _lfd:  # W10: ON -> a gated beat is not a delivery
-                    self._last_delivered_ts[name] = time.time()
+                self._last_delivered_ts[name] = time.time()
                 skipped += 1
                 continue
             # BULKHEAD (2026-07-13): skip if this fairy's previous callback is still queued/running.
             with self._in_flight_lock:
                 if name in self._in_flight:
-                    if not _lfd:  # W10: ON -> still busy with an older beat, not delivered
-                        self._last_delivered_ts[name] = time.time()  # liveness still stamped
+                    self._last_delivered_ts[name] = time.time()  # liveness still stamped
                     skipped += 1
                     continue
                 self._in_flight.add(name)
