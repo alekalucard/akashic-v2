@@ -662,4 +662,73 @@ mod tests {
             bus.shutdown();
         }
     }
+
+    // ── W14 parity table (shared with python/tests_nous/test_w14_no_double.py) ─────────────
+    /// For every row of w14_parity_table.json: subscribe exactly as _BaseTopicPostal does when USING_RUST
+    /// (pool = base topic, filter = full intent; tensor_fabric.py subscribe/publish), publish the row's letter
+    /// routed into its base pool, count REAL handler invocations per subscription, and assert the table's
+    /// "rust" column. Runs with return_to_sender off and on. Prints the measured table:
+    ///     cargo test w14_parity_table -- --nocapture
+    #[test]
+    fn w14_parity_table() {
+        let table: serde_json::Value =
+            serde_json::from_str(include_str!("../python/tests_nous/w14_parity_table.json")).unwrap();
+        let rows = table["rows"].as_array().unwrap();
+        let base = |s: &str| s.split('.').next().unwrap().to_string();
+        for rts in [false, true] {
+            let bus = bus_with_returns(rts);
+            let mut counters: Vec<Vec<Arc<AtomicUsize>>> = Vec::new();
+            let mut want_total = 0usize;
+            for row in rows {
+                let mut cs = Vec::new();
+                for (i, sub) in row["subs"].as_array().unwrap().iter().enumerate() {
+                    let sub = sub.as_str().unwrap();
+                    let c = Arc::new(AtomicUsize::new(0));
+                    let c2 = Arc::clone(&c);
+                    bus.subscribe_filtered(
+                        base(sub),
+                        move |_| {
+                            c2.fetch_add(1, Ordering::Relaxed);
+                        },
+                        format!("w14-{}-{}", row["id"].as_str().unwrap(), i),
+                        0,
+                        1,
+                        Some(sub.to_string()),
+                    );
+                    cs.push(c);
+                }
+                for n in row["rust"].as_array().unwrap() {
+                    want_total += n.as_u64().unwrap() as usize;
+                }
+                counters.push(cs);
+            }
+            thread::sleep(Duration::from_millis(50));
+            for row in rows {
+                let p = row["pub"].as_str().unwrap();
+                bus.publish_routed(&base(p), Envelope::new(p, serde_json::json!({"row": row["id"]})));
+            }
+            let total = || counters.iter().flatten().map(|c| c.load(Ordering::Relaxed)).sum::<usize>();
+            for _ in 0..300 {
+                if total() >= want_total {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            thread::sleep(Duration::from_millis(300)); // extra copies, if any, land here
+            for (row, cs) in rows.iter().zip(&counters) {
+                let got: Vec<u64> = cs.iter().map(|c| c.load(Ordering::Relaxed) as u64).collect();
+                let want: Vec<u64> = row["rust"].as_array().unwrap().iter().map(|n| n.as_u64().unwrap()).collect();
+                println!(
+                    "W14 rust rts={} {} {:?} -> {} : {:?}",
+                    rts as u8,
+                    row["id"].as_str().unwrap(),
+                    row["subs"],
+                    row["pub"].as_str().unwrap(),
+                    got
+                );
+                assert_eq!(got, want, "row {} rts={}", row["id"], rts);
+            }
+            bus.shutdown();
+        }
+    }
 }

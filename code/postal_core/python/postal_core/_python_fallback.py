@@ -838,6 +838,9 @@ class PostalCore:
         self._return_office = (_ReturnOffice()
                                if os.environ.get("AKASHIC_RETURN_TO_SENDER", "0") == "1" else None)
         self._prefix_any_depth = os.environ.get("AKASHIC_POSTAL_PREFIX_ANY_DEPTH", "0") == "1"
+        # W14: AKASHIC_POSTAL_NO_DOUBLE=1 -- a 2-level subscriber hears a 3+ segment letter ONCE
+        # (OFF when unset = byte-identical routing, including the double delivery).
+        self._no_double = os.environ.get("AKASHIC_POSTAL_NO_DOUBLE", "0") == "1"
 
         # ── POOL ROUTER (2026-04-15 Nous + Ace — POSTAL_INSIDE_PORTAL Phase 1) ──
         # Critical pool traffic (heartbeat, thought, cortex, memory, somatic, srm)
@@ -1107,7 +1110,9 @@ class PostalCore:
             if topic != intent:
                 subs.extend(self._subscribers.get(topic, []))
                 # Also check 2-level if different from both intent and base
-                if len(parts) >= 2:
+                # W14: for 3+ segments the parent block above already added this key, so
+                # with AKASHIC_POSTAL_NO_DOUBLE=1 it is skipped (2 segments: two_level == intent).
+                if len(parts) >= 2 and not self._no_double:
                     two_level = f"{parts[0]}.{parts[1]}"
                     if two_level != intent and two_level != topic:
                         subs.extend(self._subscribers.get(two_level, []))
