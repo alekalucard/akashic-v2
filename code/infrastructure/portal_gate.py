@@ -71,6 +71,176 @@ def register_gate(gate):
     print(f"[PortalGate] Registered shared gate: {type(gate).__name__}")
 
 
+# -- W9 (2026-10-29 Nous): activation decay in the ONE writer -------------------------------------------------------------------
+# WHY: the only caller of ManifoldMemory.decay_all is the portal interior's tick handler (portal_interior.py _handle_tick,
+# decay_all(0.001)). With K2 on there is no interior, so nothing in her cortex fades. This runs the same decay from the serial
+# cortex's LocalManifoldGate, driven by its maintenance thread (fairy.py _maintenance_loop).
+# SWITCH: env AKASHIC_DECAY_IN_WRITER == "1". Unset or anything else = OFF = today exactly (fairy.py does not even call in).
+# CADENCE (translated from the interior, which counts requests, not seconds): the interior decays on a "tick" command when
+#   requests_processed % interval == 0, interval = max(20, int(100 / max(2.0, tau))), tau clamped to [2, 20]. The host sends one
+#   tick every 5 beats (fairy.py on_tick, beat % 5). Every request (the tick included) bumps the counter, so whatever the other
+#   traffic, about 1 tick in `interval` lands on a multiple: the interior decays once per ~interval ticks = once per
+#   5 * interval BEATS. The writer uses exactly that, in beats (her own clock, ~1/s), with the same tau clamp.
+# NEVER TWO PLACES AT ONCE: the interior can only decay when a cortex PortalGate in THIS process is open (only its portal-io
+#   thread sends "tick"). Every PortalGate is recorded in a WeakSet at construction (no behaviour: a weak reference), and the
+#   writer pass refuses to start, and stops between chunks, while any gate running portal_interior.py is open. Any error in
+#   that check = "alive" = no writer decay. One process-wide lock makes the writer pass single-flight.
+# CHUNKED: one pass = a snapshot of the key list, decayed _WD_CHUNK keys at a time with a short sleep between chunks, in its own
+#   daemon thread, so neither the maintenance loop nor a concurrent writer waits for a whole 2M-slot pass.
+import weakref as _wd_weakref
+
+_WD_SWITCH = "AKASHIC_DECAY_IN_WRITER"
+_WD_RATE = 0.001          # portal_interior.py _handle_tick: decay_all(0.001)
+_WD_TICK_BEATS = 5        # fairy.py on_tick: the "tick" command goes every 5 beats
+_WD_CHUNK = 10000         # keys per chunk (measured: docs/nous/W9/SUMMARY.md)
+_WD_PAUSE_S = 0.01        # sleep between chunks
+_PORTAL_GATES = _wd_weakref.WeakSet()
+_WD_PASS_LOCK = threading.Lock()
+
+
+def writer_decay_on() -> bool:
+    try:
+        return os.environ.get(_WD_SWITCH, "0") == "1"
+    except Exception:
+        return False
+
+
+def interior_decay_interval(tau) -> int:
+    """The interior's decay_interval for a host tau (portal_interior.py _handle_tick, incl. its [2, 20] clamp)."""
+    try:
+        t = float(tau)
+    except Exception:
+        t = 0.0
+    cur = max(2.0, min(t, 20.0)) if t > 0 else 2.0
+    return max(20, int(100 / max(2.0, cur)))
+
+
+def writer_decay_period_beats(tau) -> int:
+    return _WD_TICK_BEATS * interior_decay_interval(tau)
+
+
+def cortex_interior_alive() -> bool:
+    """True if any portal_interior.py gate in this process is open (so the interior may decay). Any error = True."""
+    try:
+        gates = list(_PORTAL_GATES)
+        sg = _shared_gate
+        if sg is not None and not isinstance(sg, LocalManifoldGate) and sg not in gates:
+            gates.append(sg)
+        for g in gates:
+            if isinstance(g, LocalManifoldGate):
+                continue
+            script = os.path.basename(str(getattr(g, "_interior_script", "portal_interior.py") or ""))
+            if script != "portal_interior.py":
+                continue
+            if not getattr(g, "_is_open", False):
+                continue
+            if getattr(g, "_tunnels", None):
+                return True
+            proc = getattr(g, "_process", None)
+            if proc is not None and proc.poll() is None:
+                return True
+        return False
+    except Exception:
+        return True
+
+
+class WriterDecay:
+    """One per LocalManifoldGate. maybe_start() is called from the maintenance thread with the current beat and tau."""
+
+    def __init__(self, graph, chunk=None, pause_s=None, rate=None):
+        self.graph = graph
+        self.chunk = int(chunk or _WD_CHUNK)
+        self.pause_s = _WD_PAUSE_S if pause_s is None else float(pause_s)
+        self.rate = _WD_RATE if rate is None else float(rate)
+        self._last_beat = None
+        self._thread = None
+        self.passes = 0
+        self.aborted = 0
+        self.refused_interior = 0
+        self.last = {}
+
+    def maybe_start(self, beat, tau=1.0, wait=False) -> str:
+        if not writer_decay_on():
+            return "off"
+        try:
+            beat = int(beat)
+        except Exception:
+            return "bad_beat"
+        if self._last_beat is None or beat < self._last_beat:
+            self._last_beat = beat          # first sight (or a beat reset): start counting, like the interior from 0
+            return "not_due"
+        if beat - self._last_beat < writer_decay_period_beats(tau):
+            return "not_due"
+        if cortex_interior_alive():
+            self._last_beat = beat
+            self.refused_interior += 1
+            return "interior_alive"
+        if self._thread is not None and self._thread.is_alive():
+            return "running"
+        if not _WD_PASS_LOCK.acquire(blocking=False):
+            return "busy"
+        self._last_beat = beat
+        try:
+            t = threading.Thread(target=self._run_pass_locked, daemon=True, name="cortex-writer-decay")
+            self._thread = t
+            t.start()
+        except Exception:
+            _WD_PASS_LOCK.release()
+            return "error"
+        if wait:
+            t.join()
+        return "started"
+
+    def _run_pass_locked(self):
+        try:
+            self.run_pass()
+        except Exception as e:
+            print(f"[WriterDecay] pass error: {type(e).__name__}: {e}", flush=True)
+        finally:
+            _WD_PASS_LOCK.release()
+
+    def run_pass(self) -> dict:
+        """One full decay pass in chunks. Stops early if the switch goes off or an interior appears."""
+        import time as _t
+        g = self.graph
+        keys = None
+        for _ in range(3):
+            try:
+                keys = list(g._key_index.keys())
+                break
+            except RuntimeError:          # dict changed size during the copy: try again
+                _t.sleep(0.01)
+        if keys is None:
+            self.last = {"status": "no_snapshot"}
+            return self.last
+        t0 = _t.perf_counter()
+        decayed = 0
+        chunks = 0
+        max_chunk_s = 0.0
+        status = "done"
+        for i in range(0, len(keys), self.chunk):
+            if not writer_decay_on() or cortex_interior_alive():
+                status = "aborted"
+                self.aborted += 1
+                break
+            c0 = _t.perf_counter()
+            decayed += g.decay_keys(keys[i:i + self.chunk], self.rate)
+            dt = _t.perf_counter() - c0
+            chunks += 1
+            if dt > max_chunk_s:
+                max_chunk_s = dt
+            if self.pause_s > 0:
+                _t.sleep(self.pause_s)
+        self.passes += 1 if status == "done" else 0
+        self.last = {"status": status, "keys": len(keys), "decayed": decayed, "chunks": chunks,
+                     "max_chunk_ms": round(max_chunk_s * 1000.0, 2),
+                     "wall_s": round(_t.perf_counter() - t0, 3)}
+        if self.passes <= 3 or self.passes % 50 == 0 or status != "done":
+            print(f"[WriterDecay] pass #{self.passes} {status}: {decayed}/{len(keys)} nodes faded by {self.rate} "
+                  f"in {chunks} chunks, max chunk {self.last['max_chunk_ms']} ms, wall {self.last['wall_s']} s", flush=True)
+        return self.last
+
+
 
 # -- K4(2) (engines E2a / 14b, 2026-10-14 Nous) --------------------------------------------------------------------------------
 # The LocalManifoldGate's GPUSpread was built without a manifold (gpu_spread.py:110 _manifold = None), so its max-affect path
@@ -1247,6 +1417,20 @@ class LocalManifoldGate:
             "wm_count": len(self._wm_keys),
         }
 
+    def maybe_writer_decay(self, beat, tau=1.0) -> str:
+        """W9: the interior's activation decay, run by the one writer. OFF unless AKASHIC_DECAY_IN_WRITER == "1"."""
+        if not writer_decay_on():
+            return "off"
+        try:
+            wd = getattr(self, "_writer_decay", None)
+            if wd is None:
+                wd = WriterDecay(self.graph)
+                self._writer_decay = wd
+            return wd.maybe_start(beat, tau)
+        except Exception as e:
+            print(f"[WriterDecay] error: {type(e).__name__}: {e}", flush=True)
+            return "error"
+
     def send(self, request: dict, timeout: float = 10.0, caller_tag: str = "") -> Optional[Dict]:
         """Compatibility: route PortalGate.send() commands to local methods.
 
@@ -1652,6 +1836,10 @@ class PortalGate:
 
         # Find portal_interior.py
         self._interior_script = self._find_interior_script()
+        try:
+            _PORTAL_GATES.add(self)   # W9: a weak reference only, so the writer decay can see an open interior
+        except Exception:
+            pass
 
     def _find_interior_script(self) -> str:
         """Find the portal_interior.py script."""

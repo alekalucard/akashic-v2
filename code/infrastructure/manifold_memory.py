@@ -2525,6 +2525,38 @@ class ManifoldMemory:
                     if _pr > 0.0:
                         self.write_paradox_residue(slot, max(0.0, _pr - _pr * self._AFFECT_DECAY))
 
+    def decay_keys(self, keys, rate: float = 0.001) -> int:
+        """W9 (2026-10-29 Nous): decay_all's body over ONE CHUNK of keys, for the writer-side decay
+        (portal_gate.WriterDecay, switch AKASHIC_DECAY_IN_WRITER, OFF when unset). decay_all above is NOT changed; the portal
+        interior keeps calling it. Same arithmetic, same >0.01 floor, same affect-decay exemptions
+        (_AFFECT_DECAY_TRACER_EXEMPT = PERSONAL/SEEDED), same preserve_reserved write. Differences, all safety only:
+          - the slot is looked up NOW (a key evicted since the caller's snapshot is skipped, never decayed by an old slot);
+          - each node's read-modify-write holds that slot's shard lock (_node_lock, as touch_node does), so a concurrent
+            touch is not lost.
+        Fades activation only: never deletes, never touches flags/key/edges. Returns how many nodes were decayed."""
+        if self.readonly:
+            return 0
+        n = 0
+        _ki = self._key_index
+        for key in keys:
+            slot = _ki.get(key)
+            if slot is None:
+                continue
+            with self._node_lock(slot):
+                record = list(self._read_node(slot))
+                if record[5] > 0.01:  # Only decay active nodes (same floor as decay_all)
+                    record[5] = max(0.0, record[5] - rate)
+                    self._write_node(slot, *record, preserve_reserved=True)
+                    n += 1
+                    if self._AFFECT_DECAY > 0.0 and record[12] not in self._AFFECT_DECAY_TRACER_EXEMPT:
+                        _ac = self.read_affect_coupling(slot)
+                        if _ac != 1.0:
+                            self.write_affect_coupling(slot, _ac + (1.0 - _ac) * self._AFFECT_DECAY)
+                        _pr = self.read_paradox_residue(slot)
+                        if _pr > 0.0:
+                            self.write_paradox_residue(slot, max(0.0, _pr - _pr * self._AFFECT_DECAY))
+        return n
+
     @property
     def node_count(self) -> int:
         return len(self._key_index)

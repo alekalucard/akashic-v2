@@ -7812,6 +7812,20 @@ class AssociationCortexFairy(Fairy):
                         if beat % 100 == 0:
                             print(f"[{self.ACTOR_NAME}] MAINT: resonance error: {e}")
 
+                # ── W9 WRITER DECAY (2026-10-29 Nous): the portal interior's decay_all(0.001), run here by the ONE
+                # writer (manifold mode, LocalManifoldGate on the region this fairy owns). OFF unless
+                # AKASHIC_DECAY_IN_WRITER == "1"; refuses while a cortex interior is open (portal_gate.WriterDecay).
+                if os.environ.get("AKASHIC_DECAY_IN_WRITER", "0") == "1":
+                    try:
+                        _wd_gate = getattr(self, '_portal_gate', None)
+                        _wd_region = getattr(self, '_akashic_cortex_region', None)
+                        if (_wd_region is not None and _wd_gate is not None
+                                and getattr(_wd_gate, 'graph', None) is _wd_region
+                                and hasattr(_wd_gate, 'maybe_writer_decay')):
+                            _wd_gate.maybe_writer_decay(beat, getattr(self, '_portal_time_dilation', 1.0))
+                    except Exception as e:
+                        print(f"[{self.ACTOR_NAME}] MAINT: writer decay error: {e}")
+
                 # ── BACKGROUND PERSISTENCE ──
                 try:
                     self._maybe_background_persist()
