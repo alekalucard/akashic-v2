@@ -9253,6 +9253,15 @@ def shutdown_system():
     print("[Server] ── Phase 2: Dream Seed Capture ───────────────────────────────")
     _sdfix_phase("phase 2 dream seed")
     _capture_dream_seed()
+    # W12 MOMENT HOLD (2026-10-29, Nous) -- OFF unless AKASHIC_MOMENT_HOLD_SAVE=1. MomentBinderFairy's HOLD (her last <= 60
+    # moments) lives only in memory and its on_die has no caller: hand it, unchanged, to the seed written on the line above.
+    if os.environ.get("AKASHIC_MOMENT_HOLD_SAVE", "0") == "1":
+        try:
+            from infrastructure.moment_hold_save import shutdown_hand_off as _mh_hand_off
+            _mh_r = _mh_hand_off(SYSTEM, Path(__file__).parent / "state" / "dream_seed.json")
+            print(f"[Server]   - moment hold -> dream seed: {_mh_r}", flush=True)
+        except Exception as _mh_e:
+            print(f"[Server]   - moment hold -> dream seed FAILED: {_mh_e}", flush=True)
 
     # Also let DreamFairy's system_shutdown capture its own seed (if available)
     try:
