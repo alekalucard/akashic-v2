@@ -20,3 +20,21 @@
 | 16 | Line endings: 0 CR in all 3 files, branch and main | NONE | [M] grep -c $'\r' |
 
 **Verdict: NOT REFUTED** — no BLOCKER/MAJOR; switch-off path is inert. Worth fixing before turning it on: #11 (restore before subscriptions/ticks) and #12 (take the lock around `&=`).
+
+---
+
+# Round 2 — origin/nous/w12-moment-hold @ c61a504 (message said 00b4acd; c61a504 is the tip reviewed)
+
+| # | finding | severity | evidence |
+|---|---------|----------|----------|
+| R2-1 | Suite 24/24 on branch; controls fail on main (3 F + 21 E) and on saver-only 8b0eeca (2 F + 8 E) | NONE | [M] same three runs as round 1 |
+| R2-2 | OFF unchanged: `_mh_restored` is set only by restore_into, so with the switch off `getattr(...,False)` is False → else = `self._consolidated_tracers &= _live`, main's line verbatim; on_boot adds only an import + env read, no print/I/O | NONE | [C] fairy.py:775-781, moment_hold_save.py:297; test asserts orelse text |
+| R2-3 | NEW (from the #11 move): restore now runs BEFORE `_epi_persister` init (fairy.py:183 vs ~215-258). Subscriptions come next, and heartbeat ticks already run (round-1 #11), so moments are emitted while the persister is still None (manifold init / `from server import SYSTEM`). The first emit after a 60-moment restore evicts the oldest restored moment with `_evicted=None` (fairy.py:690-694): it is dropped and never written to the episodic manifold. In round 1 restore ran after the persister init, so this window did not exist | MAJOR | [C] lines cited; [I] needs ≥1 emit before persister init ends, plausible |
+| R2-4 | #12 still open: the flag is read OUTSIDE the lock. If restore lands between reading `_mh_restored` (False) and the unlocked `&= _live` (empty), its tracers are wiped. Reproduced deterministically: 0 tracers kept → next cycle remembered 5 + day-stored 55 of the restored moments (= consolidation) | MINOR | [M] /tmp/w12atk/race2.py, which runs the branch's own `_consolidate_episodic` with a fake self |
+| R2-5 | #11 placement is otherwise sound: there are no strands before the subscriptions (organ template on_boot is empty, l.4267), so `_maybe_emit_moment` returns at `active_channels < 1` (fairy.py:408) and the hold is empty at restore | NONE | [C] |
+| R2-6 | #8/#9/#10/#14 still OPEN as stated (shared-marker race restored 8/8 binders this run; deleted marker → restored again) | MINOR | [M] atk.py |
+| R2-7 | CR count 0/0/0 on all three files | NONE | [M] |
+
+Fix suggestions: R2-3: restore after the persister init (round-1 spot) and keep #11 as a safe logged skip, or init the persister before the subscriptions (changes OFF order, so gate it). R2-4: choose the branch by the switch (`os.environ.get(RESTORE,"0")=="1"`), not by the flag, so every ON-mode prune holds the lock.
+
+**Round-2 verdict: REFUTED** — R2-3 can drop restored moments (MAJOR); R2-4 leaves the #12 consolidation race open.
