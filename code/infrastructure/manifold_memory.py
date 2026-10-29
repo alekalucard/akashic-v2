@@ -2321,6 +2321,19 @@ class ManifoldMemory:
             _tfl0.add("u.new", _tfs)
         return slot
 
+    # W6: what counts as "her self" for AKASHIC_PROTECT_EGO. Union of the markers the
+    # code itself declares: region field == REGION_EGO ("identity, relationships,
+    # habits, autobiography", :431) and tracer PERSONAL ("Sourpatches' own memories")
+    # or SEEDED ("Core identity seeds") -- the same pair already exempted from affect
+    # decay as "identity" (_AFFECT_DECAY_TRACER_EXEMPT). Both fields are MUTABLE on a
+    # touch (region :2236, tracer :2246), so this is best-effort, not ownership.
+    _EGO_TRACERS = frozenset({TRACE_PERSONAL, TRACE_SEEDED})
+
+    @classmethod
+    def _is_ego_record(cls, record) -> bool:
+        """True when a v2 node record carries an ego marker (region or tracer)."""
+        return record[11] == REGION_EGO or record[12] in cls._EGO_TRACERS
+
     def _evict_coldest_node(self) -> Optional[int]:
         """Find and evict the node with lowest activation.
 
@@ -2329,15 +2342,35 @@ class ManifoldMemory:
         """
         min_activation = float('inf')
         min_slot = None
+        # W6 PROTECT-EGO guard (OFF unless AKASHIC_PROTECT_EGO=1). See _is_ego_record.
+        # It only SKIPS candidates; it never adds a deletion and never changes how
+        # often this runs. If every candidate is protected, nothing is deleted and the
+        # caller (upsert_node) refuses the NEW node with -1 -- counted and logged here.
+        _protect_ego = os.environ.get("AKASHIC_PROTECT_EGO", "0") == "1"
+        _ego_skipped = 0
 
         for slot in range(self._node_count):
             record = self._read_node(slot)
             flags = record[9]
             if flags == FLAG_DELETED or flags == FLAG_FROZEN:
                 continue
+            if _protect_ego and self._is_ego_record(record):
+                _ego_skipped += 1
+                continue
             if record[5] < min_activation:  # activation
                 min_activation = record[5]
                 min_slot = slot
+
+        if _protect_ego:
+            self._ego_protected_last = _ego_skipped
+            if min_slot is None and _ego_skipped:
+                self._ego_refusals = getattr(self, "_ego_refusals", 0) + 1
+                _n = self._ego_refusals
+                if _n in (1, 10, 100) or _n % 1000 == 0:
+                    _mlog("[ManifoldMemory] PROTECT_EGO: cortex full and all %d live "
+                          "candidates are ego -- NOTHING deleted, new node REFUSED "
+                          "(refusals=%d). Grow the cortex offline (tools/grow_cortex.py)."
+                          % (_ego_skipped, _n))
 
         if min_slot is not None:
             # Mark deleted

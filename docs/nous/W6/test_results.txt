@@ -1,0 +1,34 @@
+CONTROL (origin/main + existing expand_manifold_v2.py)         FAIL  ran=11 failing=10
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestGrow.test_after_grow_new_node_evicts_nothing
+      - TestGrow.test_companions_rebuilt_for_new_capacity
+      - TestGrow.test_grow_preserves_every_node_and_index
+      - TestGrow.test_refuses_while_another_process_has_it_mapped
+      - TestGrow.test_refuses_without_switch_and_when_shrinking
+      - TestProtectEgo.test_all_protected_deletes_nothing_and_refuses
+      - TestProtectEgo.test_ego_region_node_survives
+      - TestProtectEgo.test_personal_and_seeded_tracer_survive
+FIX (this branch)                                              PASS  ran=11 failing=0
+M1 grow: companions (.csr/.keys) not moved aside               FAIL  ran=11 failing=1
+      - TestGrow.test_companions_rebuilt_for_new_capacity
+M2 grow: string arena grown too, sidecar tags not remapped     FAIL  ran=11 failing=4
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestGrow.test_after_grow_new_node_evicts_nothing
+      - TestGrow.test_grow_preserves_every_node_and_index
+M3 grow: header keeps the OLD string/edge offsets              FAIL  ran=11 failing=4
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestGrow.test_after_grow_new_node_evicts_nothing
+      - TestGrow.test_grow_preserves_every_node_and_index
+M4 grow: crashed run leaves its temp file behind               FAIL  ran=11 failing=1
+      - TestCrash.test_crash_at_every_step_raise
+M5 guard: region only, PERSONAL/SEEDED tracer not protected    FAIL  ran=11 failing=1
+      - TestProtectEgo.test_personal_and_seeded_tracer_survive
+M6 guard: all-protected falls back to deleting anyway          FAIL  ran=11 failing=1
+      - TestProtectEgo.test_all_protected_deletes_nothing_and_refuses
+M7 guard: switch ON when unset                                 FAIL  ran=11 failing=1
+      - TestProtectEgo.test_off_by_default_matches_original
+
+EXPECTED: control FAIL, fix PASS, every mutant FAIL -> MET
