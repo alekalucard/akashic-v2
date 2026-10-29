@@ -41,6 +41,12 @@ sys.path.insert(0, str(ROOT / "fairies"))
 
 from fairies.P00_Autonomic.organ_template import MyFairy as Fairy
 
+# W12b MOMENT HOLD RESTORE (2026-10-29, Nous) -- OFF unless AKASHIC_MOMENT_HOLD_RESTORE=1 (read once, at import).
+# ON: on_boot restores the moments the last shutdown saved, and the hold's append + the reviewed-tracer prune run under
+# _moment_lock so a restore can never interleave with them. OFF: every line below runs exactly as before.
+_MH_RESTORE_ON = __import__("os").environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1"
+_MH_NO_LOCK = __import__("contextlib").nullcontext
+
 
 
 # ── TEMPLATE FILLER 2026-09-02 (Nous + Ace) ──────────────────────────────────
@@ -180,18 +186,6 @@ class MomentBinderFairy(Fairy):
             super().on_boot()
         except Exception as e:
             print(f"[{self.ACTOR_NAME}] super().on_boot error: {e}", flush=True)
-        # W12 MOMENT HOLD RESTORE (2026-10-29, Nous) -- OFF unless AKASHIC_MOMENT_HOLD_RESTORE=1. Put the moments the last
-        # shutdown saved (dream_seed.json mind_pools["moment_hold"]) back into this EMPTY hold, as saved, once per set. Runs BEFORE the subscriptions below: with no strand
-        # yet, _maybe_emit_moment binds nothing (active_channels < 1), so the hold is still empty here.
-        import os as _mh_os
-        if _mh_os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1":
-            try:
-                from infrastructure.moment_hold_save import restore_into as _mh_restore
-                _mh_r = _mh_restore(self, str(ROOT / "state" / "dream_seed.json"),
-                                    str(ROOT / "state" / "moment_hold_restored.json"))
-                print(f"[{self.ACTOR_NAME}] moment hold restore: {_mh_r}", flush=True)
-            except Exception as _mh_e:
-                print(f"[{self.ACTOR_NAME}] moment hold restore FAILED: {_mh_e}", flush=True)
         try:
             self.post.subscribe("somatic.organs", self._on_somatic)
             self.post.subscribe("sensory.visual.frame", self._on_visual)
@@ -258,6 +252,17 @@ class MomentBinderFairy(Fairy):
         except Exception as e:
             self._epi_persister = None
             print(f"[{self.ACTOR_NAME}] linear-persist init skipped: {e}", flush=True)
+        # W12b: put the moments the last shutdown saved (dream_seed.json mind_pools["moment_hold"]) back into this hold,
+        # as saved, once per set. AFTER the persister init: a restored moment that later rolls off is persisted like
+        # any other; with no persister the restore is skipped (restore_into), so no restored moment is ever dropped.
+        if _MH_RESTORE_ON:
+            try:
+                from infrastructure.moment_hold_save import restore_into as _mh_restore
+                _mh_r = _mh_restore(self, str(ROOT / "state" / "dream_seed.json"),
+                                    str(ROOT / "state" / "moment_hold_restored.json"))
+                print(f"[{self.ACTOR_NAME}] moment hold restore: {_mh_r}", flush=True)
+            except Exception as _mh_e:
+                print(f"[{self.ACTOR_NAME}] moment hold restore FAILED: {_mh_e}", flush=True)
         return True
 
     def on_die(self):
@@ -688,15 +693,16 @@ class MomentBinderFairy(Fairy):
                 # per-mind episodic manifold = the lossless lived thread. Persist runs
                 # off the (single) tick thread, outside any lock; never blocks binding.
                 _evicted = None
-                if (self._epi_persister is not None
-                        and len(self._episodic_buffer) >= self.EPISODIC_BUFFER_MAX):
-                    _evicted = self._episodic_buffer[0]
-                self._episodic_buffer.append({
-                    "ts": now, "input_text": input_text, "feeling": feeling,
-                    "channels": active_channels, "vision": vision_tags,
-                    "audio": audio_tags, "significance": _sig, "tracer": tracer_id,
-                    "sources": _sources,
-                })
+                with (self._moment_lock if _MH_RESTORE_ON else _MH_NO_LOCK()):   # W12b: OFF = no lock, as before
+                    if (self._epi_persister is not None
+                            and len(self._episodic_buffer) >= self.EPISODIC_BUFFER_MAX):
+                        _evicted = self._episodic_buffer[0]
+                    self._episodic_buffer.append({
+                        "ts": now, "input_text": input_text, "feeling": feeling,
+                        "channels": active_channels, "vision": vision_tags,
+                        "audio": audio_tags, "significance": _sig, "tracer": tracer_id,
+                        "sources": _sources,
+                    })
                 if _evicted is not None:
                     try:
                         self._epi_persister.persist(self._moment_for_persist(_evicted))
@@ -772,9 +778,9 @@ class MomentBinderFairy(Fairy):
             window = [m for m in self._episodic_buffer
                       if m.get("tracer") not in self._consolidated_tracers]
         # Prune dedup to tracers still in the rolling buffer (bounds it ≤ buffer size)
-        if getattr(self, "_mh_restored", False):
-            # W12b (set only by a moment-hold restore, AKASHIC_MOMENT_HOLD_RESTORE=1): prune under the lock against the
-            # CURRENT hold, so a restore landing between the snapshot above and this line keeps its tracers reviewed.
+        if _MH_RESTORE_ON:
+            # W12b (AKASHIC_MOMENT_HOLD_RESTORE=1): prune under the lock against the CURRENT hold, so a restore landing
+            # between the snapshot above and this line keeps its tracers reviewed. OFF: the original line below.
             with self._moment_lock:
                 self._consolidated_tracers &= {m.get("tracer") for m in self._episodic_buffer}
         else:

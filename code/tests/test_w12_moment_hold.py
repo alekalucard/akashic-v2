@@ -60,6 +60,7 @@ class FakeBinder:
         self._moment_lock = threading.RLock()
         self._episodic_buffer = deque(moments, maxlen=60)
         self._consolidated_tracers = set()
+        self._epi_persister = object()        # the episodic persister is up (on_boot initialised it)
 
 
 class Rec:
@@ -324,7 +325,6 @@ class TestRestore(Base):
         self.assertEqual(list(b._episodic_buffer), self.moments)      # every field, oldest-first, nothing merged/dropped
         self.assertEqual(b._episodic_buffer.maxlen, 60)                # same hold structure, same cap
         self.assertEqual(b._consolidated_tracers, {m["tracer"] for m in self.moments})   # rememberer skips them
-        self.assertIs(b._mh_restored, True)
         self.assertEqual(self.seed_bytes(), self.seed_before)          # the seed is never written
         # crash-restart: a second boot with a fresh, empty hold must NOT restore the same set again
         b2 = self.fresh()
@@ -390,9 +390,71 @@ class TestRestore(Base):
         self.assertFalse(os.path.exists(self.marker))
 
 
+    def test_no_persister_no_restore(self):
+        """R2-3: with no episodic persister a restored moment that rolls off would be dropped unpersisted
+        (fairy.py append site): the restore must skip and leave the set unconsumed."""
+        os.environ[RSW] = "1"
+        b = self.fresh()
+        b._epi_persister = None
+        r = self.mod.restore_into(b, self.seed_path, self.marker)
+        self.assertIn("no episodic persister", r)
+        self.assertEqual(len(b._episodic_buffer), 0)
+        self.assertFalse(os.path.exists(self.marker))
+        b2 = self.fresh()                                               # a later boot with the persister up restores it
+        self.assertTrue(self.mod.restore_into(b2, self.seed_path, self.marker).startswith("restored 60"))
+
+    def test_one_saved_set_into_one_binder_only(self):
+        """R2-6: many binders racing on one marker -> exactly one gets the set."""
+        os.environ[RSW] = "1"
+        binders = [self.fresh() for _ in range(8)]
+        gate = threading.Barrier(len(binders))
+        out = [None] * len(binders)
+
+        def go(i):
+            gate.wait()
+            out[i] = self.mod.restore_into(binders[i], self.seed_path, self.marker)
+
+        th = [threading.Thread(target=go, args=(i,)) for i in range(len(binders))]
+        for x in th:
+            x.start()
+        for x in th:
+            x.join()
+        self.assertEqual(sum(1 for b in binders if len(b._episodic_buffer)), 1, out)
+        self.assertEqual(sum(1 for r in out if r.startswith("restored")), 1, out)
+        with open(self.marker) as f:
+            self.assertEqual(len(json.load(f)["consumed"]), 1)
+
+
+def _fairy_tree():
+    with open(FAIRY_PATH, "r", encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MomentBinderFairy")
+    return tree, {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
+
+
 class TestFairyWiring(unittest.TestCase):
-    """CONTROL (static, no import): MomentBinderFairy.on_boot calls restore_into, gated on
-    os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1", before it subscribes to any strand."""
+    """CONTROL (static, no import): the switch is read once as _MH_RESTORE_ON = os.environ.get(RSW, "0") == "1";
+    on_boot restores AFTER the episodic persister init; the hold's append and the reviewed-tracer prune take
+    _moment_lock only when the switch is ON (OFF = the original lines)."""
+
+    def test_switch_constant(self):
+        tree, _ = _fairy_tree()
+        a = [n for n in tree.body if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == "_MH_RESTORE_ON"]
+        self.assertEqual(len(a), 1)
+        v = a[0].value
+        self.assertIsInstance(v.ops[0], ast.Eq)
+        self.assertEqual(v.comparators[0].value, "1")
+        self.assertTrue(ast.unparse(v.left.func).endswith("environ.get"))
+        self.assertEqual([x.value for x in v.left.args], [RSW, "0"])
+
+    def test_append_locked_only_when_on(self):
+        _, fns = _fairy_tree()
+        withs = [n for n in ast.walk(fns["_maybe_emit_moment"]) if isinstance(n, ast.With)
+                 and "_episodic_buffer.append" in ast.unparse(n)]
+        self.assertEqual(len(withs), 1)
+        self.assertEqual(ast.unparse(withs[0].items[0].context_expr),
+                         "self._moment_lock if _MH_RESTORE_ON else _MH_NO_LOCK()")
+        self.assertIn("_evicted = self._episodic_buffer[0]", ast.unparse(withs[0]))
 
     def test_prune_under_lock_only_after_restore(self):
         with open(FAIRY_PATH, "r", encoding="utf-8") as f:
@@ -400,7 +462,7 @@ class TestFairyWiring(unittest.TestCase):
         tree = ast.parse(src)
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MomentBinderFairy")
         fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "_consolidate_episodic")
-        ifs = [n for n in fn.body if isinstance(n, ast.If) and "_mh_restored" in ast.unparse(n.test)]
+        ifs = [n for n in fn.body if isinstance(n, ast.If) and ast.unparse(n.test) == "_MH_RESTORE_ON"]
         self.assertEqual(len(ifs), 1)
         on, off = ifs[0].body, ifs[0].orelse
         self.assertEqual([ast.unparse(x) for x in off], ["self._consolidated_tracers &= _live"])   # OFF: as on main
@@ -414,15 +476,12 @@ class TestFairyWiring(unittest.TestCase):
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MomentBinderFairy")
         fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "on_boot")
         body = fn.body
-        # right after super().on_boot() (body[0]) and its import, BEFORE the subscriptions (no strand -> empty hold)
-        gate = body[2]
-        self.assertIsInstance(gate, ast.If, "no gated restore block right after super().on_boot()")
-        self.assertIn("subscribe", ast.unparse(body[3]))
-        t = gate.test
-        self.assertIsInstance(t.ops[0], ast.Eq)
-        self.assertEqual(t.comparators[0].value, "1")
-        self.assertTrue(ast.unparse(t.left.func).endswith("environ.get"))
-        self.assertEqual([a.value for a in t.left.args], [RSW, "0"])
+        # the last step before `return True`, AFTER the episodic persister init (R2-3)
+        self.assertIsInstance(body[-1], ast.Return)
+        gate = body[-2]
+        self.assertIsInstance(gate, ast.If, "no gated restore block before on_boot's return")
+        self.assertIn("EpisodicPersister", ast.unparse(body[-3]))
+        self.assertEqual(ast.unparse(gate.test), "_MH_RESTORE_ON")
         src = ast.unparse(gate)
         self.assertIn("infrastructure.moment_hold_save", src)
         self.assertIn("restore_into", src)

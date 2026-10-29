@@ -230,6 +230,10 @@ def shutdown_hand_off(system, seed_path) -> str:
 #   capture (fairy.py _consolidate_episodic) skip them. They still persist to the episodic manifold when they roll off,
 #   as every HOLD moment does (fairy.py:678-693) -- they never reached it before the shutdown, so that is not a repeat.
 
+import threading as _threading
+_RESTORE_LOCK = _threading.Lock()   # one restore at a time in this process: a saved set goes into ONE binder only
+
+
 def restore_switch_on() -> bool:
     return os.environ.get(RESTORE_SWITCH, "0") == "1"
 
@@ -272,6 +276,15 @@ def restore_into(binder, seed_path: str, marker_path: str) -> str:
         if not all(isinstance(m, dict) for m in moments):
             return "skipped: saved set has a non-moment entry (left as is)"
         sid = _set_id(block)
+        with _RESTORE_LOCK:
+            return _restore_locked(binder, block, moments, sid, seed_path, marker_path)
+    except Exception as e:
+        return "error: %s: %s" % (type(e).__name__, str(e)[:160])
+
+
+def _restore_locked(binder, block, moments, sid, seed_path, marker_path) -> str:
+    """Under _RESTORE_LOCK: check the marker, then (under the binder's lock) mark first and fill second."""
+    try:
         marker = _read_marker(marker_path)
         if any(isinstance(c, dict) and c.get("id") == sid for c in marker["consumed"]):
             return "skipped: this saved set was already restored (%s)" % sid[:12]
@@ -279,6 +292,10 @@ def restore_into(binder, seed_path: str, marker_path: str) -> str:
         lock = getattr(binder, "_moment_lock", None)
         if buf is None or lock is None:
             return "skipped: binder has no hold"
+        if getattr(binder, "_epi_persister", None) is None:
+            # without the episodic persister a moment that rolls off the hold is dropped unpersisted (fairy.py append
+            # site): restoring now could lose a restored moment, so leave the set unconsumed for a later boot
+            return "skipped: no episodic persister (restored moments could roll off unpersisted)"
         with lock:
             if len(buf) != 0:
                 return "skipped: hold already has %d moment(s) -- restore only into an empty hold" % len(buf)
@@ -294,7 +311,6 @@ def restore_into(binder, seed_path: str, marker_path: str) -> str:
             done = getattr(binder, "_consolidated_tracers", None)
             if isinstance(done, set):
                 done.update(m.get("tracer") for m in moments)
-            binder._mh_restored = True   # tells _consolidate_episodic to prune under the lock (fairy.py)
         return "restored %d moment(s) (set %s)" % (len(moments), sid[:12])
     except Exception as e:
         return "error: %s: %s" % (type(e).__name__, str(e)[:160])
