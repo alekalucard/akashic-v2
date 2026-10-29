@@ -178,9 +178,12 @@ class TestW9(_Base):
         os.environ[SW] = "1"
 
         class Store:
-            filepath = os.path.join(self.d, "x")
-        g = pg.LocalManifoldGate(Store())
-        self.assertEqual(g.maybe_writer_decay(10 ** 6, 1.0), "unsupported")
+            __slots__ = ("filepath",)                    # refuses setattr, like a foreign store might
+        st = Store()
+        st.filepath = os.path.join(self.d, "x")
+        g = pg.LocalManifoldGate(st)
+        for b in (0, 250, 10 ** 6):
+            self.assertEqual(g.maybe_writer_decay(b, 1.0), "unsupported")
 
     def test_closed_manifold_stops_pass(self):
         m = _mk(self.d)

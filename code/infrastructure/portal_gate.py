@@ -1432,6 +1432,12 @@ class LocalManifoldGate:
         """W9: the interior's activation decay, run by the one writer. OFF unless AKASHIC_DECAY_IN_WRITER == "1"."""
         if not writer_decay_on():
             return "off"
+        if not (hasattr(self.graph, "decay_keys") and hasattr(self.graph, "_key_index")):
+            if not getattr(self, "_w9_said_unsupported", False):
+                self._w9_said_unsupported = True
+                print(f"[WriterDecay] graph {type(self.graph).__name__} has no decay_keys/_key_index: writer decay "
+                      f"unsupported, not run", flush=True)
+            return "unsupported"
         try:
             # one WriterDecay per GRAPH (not per gate): a second gate on the same manifold shares its cadence and its pass
             with _WD_MAKE_LOCK:
