@@ -35,3 +35,28 @@ python3 code/tests/w15_mutants.py                 # control + author mutants
 python3 docs/nous/W15/review_mutants.py           # reviewer mutants R1-R6
 AKASHIC_EDGE_SLOT_FIX=1 python3 -W ignore docs/nous/W15/review_probe.py code/infrastructure/manifold_memory.py
 ```
+
+---
+
+# Round 2 — `nous/w15-edge-slot` @ 9f77eb5
+
+Author changed tests, the mutant runner and SUMMARY.md only. `git diff a7eaaa6 9f77eb5 -- code/infrastructure/` is empty [M], so the round-1 verdicts on the code (#1-#5, #9) still apply. Branch merged into `nous/w15-review` so that the reviewer scripts run against the new tests.
+
+| # | Finding / claim attacked | Severity | file:line | Tag | Evidence | Verdict |
+|---|---|---|---|---|---|---|
+| R2-1 | `manifold_memory.py` unchanged since round 1 | — | — | [M] | empty diff a7eaaa6..9f77eb5 on `code/infrastructure/` | UPHELD |
+| R2-2 | Branch suite passes | — | test_w15_edge_slot.py | [M] | `Ran 10 tests … OK`; both new tests are collected (`TestNodeEvictOn.test_on_node_evict_deletes_own_edges_both_orientations`, `TestSwitchOffIdentical.test_off_zero_dict`) | UPHELD |
+| R2-3 | Control vs main still fails | — | w15_mutants.py | [M] | CONTROL(main) rc=1, the same 4 fails as round 1. The new orientation test **passes on main**, which is expected: main has no guard and deletes every listed slot. It is a guard-regression test, not a control. | UPHELD |
+| R2-4 | #6 closed: orientation gap | was MEDIUM | test_w15_edge_slot.py:310-327 | [M] | Author M9 fails the new test. My R4 (keep only the `_er[0]==min_slot` clause) now fails it. I also added **R7** (keep only the `_er[1]==min_slot` clause): it fails too. Node 10 is the larger endpoint of 9-10 and the smaller of 10-11, so the test covers both orders. | REFUTED (gap closed) |
+| R2-5 | #13 closed: `"0"` on dict path | was INFO | test_w15_edge_slot.py:379-380 | [M] | `test_off_zero_dict` passes on the branch (byte-identical to main) | REFUTED (gap closed) |
+| R2-6 | Switch default on the node-evict line | — | manifold_memory.py:2360 | [M] | Author M10 and my R1 (default `"1"`) fail `test_off_unset_csr`. R2 (`True`) fails both `off_*_csr` tests. Note: the default-ON mutants are caught only on the CSR path, because the dict adjacency is never stale and the guard is a no-op there [I]. That is acceptable: on the dict path ON and OFF behave identically. | UPHELD |
+| R2-7 | Mutant table reproduces | — | w15_mutants.py | [M] | M1 2, M2 2, M3 3, M4 2 (now also fails the orientation test, because its free-list count assert catches it), M5 3, M6 survives, M7 1, M8 1, M9 1, M10 1. Matches SUMMARY.md. | UPHELD |
+| R2-8 | Surviving mutants | INFO | manifold_memory.py:2744-2749, 2364 | [M][I] | M6 (`clear()`), R5 (`pop()`) and R6 (redundant `min_slot in _er[:2]`) still survive. All are equivalent single-threaded, as in round 1 (#7). | UPHELD (not a gap) |
+| R2-9 | New claim in SUMMARY: portal lottery never prunes on v2 files | LOW (pre-existing) | portal_interior.py:3438-3441 | [C] | `node_a, node_b, weight, rel_type, flags = record` unpacks a 7-field v2 record (`_read_edge` docstring, manifold_memory.py:2560-2564) → ValueError → `continue`. So the CSR lottery never reaches `_delete_edge`. This **refines round-1 #9**: that caller is not merely safe, it is dead on v2. Not W15 scope. | UPHELD (author's claim holds; separate ticket) |
+| R2-10 | Still open from round 1 | — | — | — | #10 stale-CSR alias in `link()`/`get_neighbors`, #11 stale `.csr` reuse at constant count, #12 free-list thread safety. All pre-existing and recorded as OPEN in SUMMARY.md. | OPEN (unchanged) |
+
+## Round 2 bottom line
+
+Both test gaps from round 1 are closed and the code is unchanged. I found nothing new to refute in W15. What remains open is pre-existing on main and outside this change: #10, #11, #12, and R2-9.
+
+Reproduce: same four commands as round 1. `review_mutants.py` now also runs R7.

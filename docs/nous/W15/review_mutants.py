@@ -11,6 +11,8 @@ M={
                        "                            (_er[0] == min_slot and _er[1] == neighbor_id)):")],
  "R5_link_fix_pop_once":[("                    while slot in self._free_edge_slots:\n                        self._free_edge_slots.remove(slot)",
                           "                    self._free_edge_slots.pop()")],
+ "R7_other_orientation_only":[("                            (_er[0] == min_slot and _er[1] == neighbor_id) or\n                            (_er[1] == min_slot and _er[0] == neighbor_id)):",
+                       "                            (_er[1] == min_slot and _er[0] == neighbor_id)):")],
  "R6_endpoint_any":[("                    if _er[4] == FLAG_DELETED or not (","                    if _er[4] == FLAG_DELETED or min_slot not in _er[:2] or not (")],
 }
 tmp=tempfile.mkdtemp(prefix="w15r_")
