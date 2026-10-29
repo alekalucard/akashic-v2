@@ -8,11 +8,13 @@
 //! TopicBus holds no ReturnOffice and publish_routed() runs exactly as before.
 //! Same rules as the Python fallback (_python_fallback.py `_ReturnOffice`):
 //!   * every undeliverable letter: messages_returned += 1 and a ring entry (sender, intent, t, reason)
-//!   * sender = payload["source"], else payload["_sender"], else Envelope.source
+//!   * sender = payload["_sender"], else payload["source"], else Envelope.source ("source" is often
+//!     a label; tensor_fabric._stamp_sender puts the publisher's name in "_sender")
 //!   * the returned letter goes to "postal.returned.<sender>" carrying the original payload
 //!   * a returned letter that is itself undeliverable is counted, never returned again
-//!   * delivery is rate-bounded per intent (AKASHIC_RETURN_RATE per second, floor RETURN_RATE_FLOOR);
-//!     counting and the ring are never rate-bounded.
+//!   * delivery is rate-bounded per intent (AKASHIC_RETURN_RATE per second, floor RETURN_RATE_FLOOR)
+//!     and in total (AKASHIC_RETURN_GLOBAL_RATE per second, floor RETURN_GLOBAL_FLOOR); counting and
+//!     the ring are never rate-bounded.
 
 use parking_lot::Mutex;
 use serde::Serialize;
@@ -26,6 +28,9 @@ pub const RETURN_POOL: &str = "postal";
 pub const RETURN_RATE_FLOOR: u32 = 1;
 pub const RETURN_RATE_DEFAULT: u32 = 10;
 pub const RETURN_RING_DEFAULT: usize = 256;
+pub const RETURN_GLOBAL_FLOOR: u32 = 10;
+pub const RETURN_GLOBAL_DEFAULT: u32 = 100;
+pub const RETURN_WINDOW_MAX: usize = 4096;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ReturnRecord {
@@ -47,7 +52,9 @@ struct Counters {
 pub struct ReturnOffice {
     ring_size: usize,
     rate: u32,
+    global_rate: u32,
     ring: Mutex<VecDeque<ReturnRecord>>,
+    /// per-intent (window_second, sent) plus the all-intents window under key "" (never an intent)
     window: Mutex<HashMap<String, (u64, u32)>>,
     counters: Mutex<Counters>,
 }
@@ -61,7 +68,7 @@ fn now_ms() -> u64 {
 
 /// Who sent this letter. Payload keys first: the pyo3 publish() has no sender argument.
 pub fn sender_of(env: &Envelope) -> String {
-    for key in ["source", "_sender"] {
+    for key in ["_sender", "source"] {
         if let Some(s) = env.payload.get(key).and_then(|v| v.as_str()) {
             if !s.is_empty() {
                 return s.to_string();
@@ -78,10 +85,11 @@ pub fn is_return(env: &Envelope) -> bool {
 }
 
 impl ReturnOffice {
-    pub fn new(ring_size: usize, rate_per_intent: u32) -> Self {
+    pub fn new(ring_size: usize, rate_per_intent: u32, global_rate: u32) -> Self {
         Self {
             ring_size: ring_size.max(1),
             rate: rate_per_intent.max(RETURN_RATE_FLOOR),
+            global_rate: global_rate.max(RETURN_GLOBAL_FLOOR),
             ring: Mutex::new(VecDeque::new()),
             window: Mutex::new(HashMap::new()),
             counters: Mutex::new(Counters::default()),
@@ -116,15 +124,17 @@ impl ReturnOffice {
     pub fn may_send(&self, intent: &str, now_s: u64) -> bool {
         let ok = {
             let mut w = self.window.lock();
-            if w.len() > 4096 && !w.contains_key(intent) {
+            if w.len() > RETURN_WINDOW_MAX && !w.contains_key(intent) {
                 w.clear(); // bound the table itself
             }
+            let g = *w.get("").filter(|g| g.0 == now_s).unwrap_or(&(now_s, 0));
             let e = w.entry(intent.to_string()).or_insert((now_s, 0));
             if e.0 != now_s {
                 *e = (now_s, 0);
             }
-            if e.1 < self.rate {
+            if e.1 < self.rate && g.1 < self.global_rate {
                 e.1 += 1;
+                w.insert(String::new(), (now_s, g.1 + 1));
                 true
             } else {
                 false
@@ -175,6 +185,7 @@ impl ReturnOffice {
             "returns_no_sender": c.no_sender,
             "return_undeliverable": c.undeliverable,
             "rate_per_intent": self.rate,
+            "global_rate": self.global_rate,
             "ring": ring,
         })
     }
@@ -188,7 +199,7 @@ mod tests {
     #[test]
     fn rate_floor_still_flows() {
         // a configured rate of 0 is clamped to the floor: one return per intent per second flows
-        let o = ReturnOffice::new(8, 0);
+        let o = ReturnOffice::new(8, 0, 100);
         assert!(o.may_send("a.b", 100));
         assert!(!o.may_send("a.b", 100));
         assert!(o.may_send("c.d", 100)); // another intent is not starved by a flood on a.b
@@ -197,7 +208,7 @@ mod tests {
 
     #[test]
     fn return_of_a_return_is_counted_not_returned() {
-        let o = ReturnOffice::new(8, 10);
+        let o = ReturnOffice::new(8, 10, 100);
         let env = Envelope::new("postal.returned.X", json!({"_returned": true, "sender": "X"}));
         assert!(o.process(&env).is_none());
         let s = o.snapshot();
@@ -206,8 +217,34 @@ mod tests {
     }
 
     #[test]
+    fn global_cap_has_a_floor_and_still_flows() {
+        // a configured global rate of 0 is clamped to the floor: RETURN_GLOBAL_FLOOR returns per second
+        let o = ReturnOffice::new(8, 10, 0);
+        let sent = (0..100).filter(|i| o.may_send(&format!("unique.{}", i), 7)).count();
+        assert_eq!(sent, RETURN_GLOBAL_FLOOR as usize);
+        assert!(o.may_send("unique.next_second", 8)); // the next second flows again
+    }
+
+    #[test]
+    fn rate_table_is_bounded() {
+        let o = ReturnOffice::new(8, 10, 1_000_000);
+        for i in 0..(RETURN_WINDOW_MAX + 500) {
+            o.may_send(&format!("u.{}", i), 7);
+        }
+        assert!(o.window.lock().len() <= RETURN_WINDOW_MAX + 2);
+    }
+
+    #[test]
+    fn sender_prefers_underscore_sender_over_source_label() {
+        let env = Envelope::new("a.b", json!({"source": "brainstem_withdrawal", "_sender": "BrainstemReflexFairy"}));
+        assert_eq!(sender_of(&env), "BrainstemReflexFairy");
+        let env = Envelope::new("a.b", json!({"source": "OnlySource"}));
+        assert_eq!(sender_of(&env), "OnlySource");
+    }
+
+    #[test]
     fn ring_is_bounded() {
-        let o = ReturnOffice::new(3, 10);
+        let o = ReturnOffice::new(3, 10, 100);
         for i in 0..10 {
             o.note("S", &format!("t.{}", i), "no_subscriber");
         }

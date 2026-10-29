@@ -4,12 +4,15 @@ Synthetic only: in-process PostalCore instances, no server, no fairy, no files o
 The module under test is loaded FROM A PATH so the same suite runs against the original file,
 the fix, and mutants (see run_w2_matrix.py):
     W2_FALLBACK=<path to _python_fallback.py>   (default: the file in this repo)
-    W2_ORIGINAL=<path to the pre-W2 file>        (needed by the byte-identical test)
+    W2_ORIGINAL=<path to the pre-W2 file>        (needed by the byte-identical tests)
+    W2_TENSOR_FABRIC=<path to tensor_fabric.py>  (default: the file in this repo; read with ast only,
+                                                   its import starts a probe thread)
 
 Import check: _python_fallback.py's top level is stdlib imports + three module-level assignments
 (no threads, sockets, files). Constructing PostalCore starts the PostalFarm tick thread and one worker
 pool per topic; every test shuts its instances down.
 """
+import ast
 import importlib.util
 import os
 import sys
@@ -19,11 +22,12 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 PKG_ROOT = os.path.dirname(HERE)                                   # code/postal_core/python
 DEFAULT_FALLBACK = os.path.join(PKG_ROOT, "postal_core", "_python_fallback.py")
+DEFAULT_TF = os.path.join(PKG_ROOT, "postal_core", "tensor_fabric.py")
 if PKG_ROOT not in sys.path:
     sys.path.insert(0, PKG_ROOT)                                   # for postal_core.postal_farm
 
 SWITCHES = ("AKASHIC_RETURN_TO_SENDER", "AKASHIC_POSTAL_PREFIX_ANY_DEPTH",
-            "AKASHIC_RETURN_RATE", "AKASHIC_RETURN_RING")
+            "AKASHIC_RETURN_RATE", "AKASHIC_RETURN_RING", "AKASHIC_RETURN_GLOBAL_RATE")
 
 
 def load(path, name):
@@ -119,6 +123,160 @@ class TestSwitchOffByteIdentical(unittest.TestCase):
             self.assertNotIn("messages_returned", pc.metrics())
         finally:
             pc.shutdown()
+
+
+def enqueue_order(mod):
+    """Every (pool, handler_id, intent) enqueue of the fixed scenario, in order. Synchronous on the
+    publishing thread, so deterministic (deliveries themselves run on pool workers)."""
+    seq = []
+    cls = mod._WorkerPool
+    real = cls.enqueue_no_signal
+
+    def spy(self, envelope, handler_id):
+        seq.append((self.topic, handler_id, envelope.intent))
+        return real(self, envelope, handler_id)
+
+    cls.enqueue_no_signal = spy
+    pc = make(mod)
+    try:
+        # several subscribers per intent, so any reordering of the fan-out is visible
+        for name in ("first", "second", "third"):
+            pc.subscribe("omega.x", lambda e: None, name=name)
+        pc.subscribe("omega", lambda e: None, name="base")
+        pc.subscribe("omega.x.y", lambda e: None, name="deep")
+        for intent in ("omega.x", "omega.x.y", "omega.z", "omega.x.y.z"):
+            pc.publish(intent, {"_sender": "S"})
+        run_scenario(mod)
+    finally:
+        cls.enqueue_no_signal = real
+        pc.shutdown()
+    return seq
+
+
+class TestSwitchOffOrder(unittest.TestCase):
+    """REVIEW_W2 F5: switch OFF keeps the exact fan-out ORDER, not only the same set."""
+
+    def test_off_enqueue_order_matches_original(self):
+        orig_path = os.environ.get("W2_ORIGINAL")
+        if not orig_path:
+            self.skipTest("W2_ORIGINAL not set (run via run_w2_matrix.py)")
+        orig = load(orig_path, "w2_fallback_original_order")
+        with Env():
+            a, b = enqueue_order(orig), enqueue_order(FB)
+        self.assertTrue(a)
+        self.assertEqual(a, b)
+
+
+class TestSwitchParsing(unittest.TestCase):
+    """REVIEW_W2 F4: only the exact string "1" turns a switch on."""
+
+    def test_only_exact_1(self):
+        for v in ("", "0", " 1", "1 ", "true", "TRUE", "yes", "on"):
+            pc = make(AKASHIC_RETURN_TO_SENDER=v, AKASHIC_POSTAL_PREFIX_ANY_DEPTH=v)
+            try:
+                self.assertEqual(pc.returns(), {"enabled": False}, repr(v))
+                self.assertFalse(pc._prefix_any_depth, repr(v))
+            finally:
+                pc.shutdown()
+        pc = make(AKASHIC_RETURN_TO_SENDER="1", AKASHIC_POSTAL_PREFIX_ANY_DEPTH="1")
+        try:
+            self.assertTrue(pc.returns()["enabled"])
+            self.assertTrue(pc._prefix_any_depth)
+        finally:
+            pc.shutdown()
+
+
+class TestSenderPrecedence(unittest.TestCase):
+    """REVIEW_W2 F2: "_sender" (a fairy name) beats "source" (often a label)."""
+
+    def test_underscore_sender_wins(self):
+        self.assertEqual(FB.return_sender_of({"source": "brainstem_withdrawal",
+                                              "_sender": "BrainstemReflexFairy"}), "BrainstemReflexFairy")
+        self.assertEqual(FB.return_sender_of({"source": "OnlySource"}), "OnlySource")
+        self.assertEqual(FB.return_sender_of({}, "EnvSource"), "EnvSource")
+
+    def test_return_goes_to_underscore_sender(self):
+        pc = make(AKASHIC_RETURN_TO_SENDER="1")
+        back = []
+        try:
+            pc.subscribe("postal.returned.BrainstemReflexFairy", back.append, name="mb")
+            pc.publish("somatic.chemistry.none", {"source": "brainstem_withdrawal",
+                                                  "_sender": "BrainstemReflexFairy"})
+            self.assertTrue(wait_for(lambda: len(back) == 1))
+        finally:
+            pc.shutdown()
+
+
+class TestGlobalCap(unittest.TestCase):
+    """REVIEW_W2 F6: a global per-second cap with a floor; the per-intent table stays bounded."""
+
+    def test_global_floor_still_flows(self):
+        off = FB._ReturnOffice(ring_size=8, rate_per_intent=10, global_rate=0)
+        self.assertEqual(off.global_rate, FB.RETURN_GLOBAL_FLOOR)
+        sent = sum(off.may_send("unique.%d" % i, now=50.0) for i in range(100))
+        self.assertEqual(sent, FB.RETURN_GLOBAL_FLOOR)
+        self.assertTrue(off.may_send("unique.next", now=51.0))
+
+    def test_unique_intent_flood_is_capped(self):
+        pc = make(AKASHIC_RETURN_TO_SENDER="1", AKASHIC_RETURN_GLOBAL_RATE="20")
+        try:
+            for i in range(2000):
+                pc.publish("flood.%d" % i, {"_sender": "Flooder"})
+            r = pc.returns()
+            self.assertEqual(r["messages_returned"], 2000)
+            self.assertGreaterEqual(r["returns_delivered"], 20)      # floor/cap reached, flowing
+            self.assertLessEqual(r["returns_delivered"], 60)         # <= 20/s over a <=3 s run
+        finally:
+            pc.shutdown()
+
+    def test_rate_table_is_bounded(self):
+        off = FB._ReturnOffice(ring_size=8, rate_per_intent=10, global_rate=10 ** 9)
+        for i in range(FB.RETURN_WINDOW_MAX + 500):
+            off.may_send("u.%d" % i, now=7.0)
+        self.assertLessEqual(len(off._window), FB.RETURN_WINDOW_MAX + 1)
+
+
+def tf_stamp(path=None):
+    """tensor_fabric._stamp_sender, extracted with ast (importing tensor_fabric has side effects)."""
+    src = open(path or os.environ.get("W2_TENSOR_FABRIC", DEFAULT_TF), encoding="utf-8").read()
+    tree = ast.parse(src)
+    keep = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name == "_stamp_sender") or
+            (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "_STAMP_SENDER" for t in n.targets))]
+    if len(keep) != 2:
+        return None, tree
+    ns = {"os": os}
+    exec(compile(ast.Module(keep, []), "tensor_fabric_extract", "exec"), ns)
+    return ns, tree
+
+
+class TestTensorFabricStamp(unittest.TestCase):
+    """REVIEW_W2 F2 root cause: TensorFabric.publish(source=) must reach the router as "_sender"."""
+
+    def test_stamp_helper(self):
+        with Env():
+            ns, _ = tf_stamp()
+        self.assertIsNotNone(ns, "_stamp_sender / _STAMP_SENDER missing in tensor_fabric.py")
+        self.assertFalse(ns["_STAMP_SENDER"])                       # OFF when unset
+        st = ns["_stamp_sender"]
+        self.assertEqual(st({"source": "label"}, "Fairy", on=False), {"source": "label"})
+        self.assertEqual(st({"source": "label"}, "Fairy", on=True), {"source": "label", "_sender": "Fairy"})
+        self.assertEqual(st({"_sender": "Kept"}, "Fairy", on=True), {"_sender": "Kept"})
+        self.assertEqual(st({}, "", on=True), {})
+        for v in (" 1", "true", "0", ""):
+            with Env(AKASHIC_RETURN_TO_SENDER=v):
+                self.assertFalse(tf_stamp()[0]["_STAMP_SENDER"], repr(v))
+        with Env(AKASHIC_RETURN_TO_SENDER="1"):
+            self.assertTrue(tf_stamp()[0]["_STAMP_SENDER"])
+
+    def test_publish_calls_stamp_after_source(self):
+        _, tree = tf_stamp()
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "TensorFabric")
+        pub = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "publish")
+        body = ast.unparse(pub)
+        i_src = body.find("payload['source'] = source")
+        i_stamp = body.find("payload = _stamp_sender(payload, source)")
+        i_send = body.find("self._postal.publish(")
+        self.assertTrue(0 <= i_src < i_stamp < i_send, (i_src, i_stamp, i_send))
 
 
 class TestReturnToSender(unittest.TestCase):

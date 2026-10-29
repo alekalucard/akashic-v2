@@ -998,6 +998,23 @@ def _make_postal_core():
         return PostalCore()
 
 
+# W2 RETURN TO SENDER (2026-10-29, Nous): the router returns an undeliverable letter to
+# payload["_sender"], else payload["source"]. publish(source=...) below only fills "source" when the
+# payload has none, and many payloads use "source" as a label ("brainstem_withdrawal"), so the real
+# sender was lost. With AKASHIC_RETURN_TO_SENDER=1 the caller's name also goes into "_sender" (never
+# overwriting one). OFF when unset = payload exactly as before. Read once per process.
+_STAMP_SENDER = os.environ.get("AKASHIC_RETURN_TO_SENDER", "0") == "1"
+
+
+def _stamp_sender(payload, source, on=None):
+    """Put the publishing fairy's name in payload["_sender"] when the switch is on. Pure."""
+    if not (_STAMP_SENDER if on is None else on):
+        return payload
+    if source and isinstance(payload, dict) and "_sender" not in payload:
+        payload["_sender"] = source
+    return payload
+
+
 class TensorFabric:
     """
     4D Tensor Parallel Fabric.
@@ -1275,6 +1292,7 @@ class TensorFabric:
         # Ensure source is in payload for attribution
         if source and "source" not in payload:
             payload["source"] = source
+        payload = _stamp_sender(payload, source)
 
         # DEBUG: Log memory.recall.request publishes to trace pipeline
         if "memory.recall" in intent:

@@ -17,7 +17,10 @@ use crate::backpressure::BackpressurePolicy;
 use crate::envelope::Envelope;
 use crate::metrics::{MetricsSnapshot, PostalMetrics};
 use crate::priority::Priority;
-use crate::return_office::{ReturnOffice, RETURN_POOL, RETURN_RATE_DEFAULT, RETURN_RATE_FLOOR, RETURN_RING_DEFAULT};
+use crate::return_office::{
+    ReturnOffice, RETURN_GLOBAL_DEFAULT, RETURN_GLOBAL_FLOOR, RETURN_POOL, RETURN_RATE_DEFAULT, RETURN_RATE_FLOOR,
+    RETURN_RING_DEFAULT,
+};
 use crate::worker::{cpu_pressure, WorkerPool, WorkerPoolConfig};
 
 /// Configuration for the TopicBus.
@@ -41,6 +44,8 @@ pub struct TopicBusConfig {
     pub return_ring: usize,
     /// Returned letters re-published per intent per second (floor 1). Default: AKASHIC_RETURN_RATE or 10.
     pub return_rate_per_intent: u32,
+    /// Returned letters re-published per second in total (floor 10). Default: AKASHIC_RETURN_GLOBAL_RATE or 100.
+    pub return_global_rate: u32,
 }
 
 fn env_flag(name: &str) -> bool {
@@ -68,6 +73,7 @@ impl Default for TopicBusConfig {
             return_to_sender: env_flag("AKASHIC_RETURN_TO_SENDER"),
             return_ring: env_num("AKASHIC_RETURN_RING", RETURN_RING_DEFAULT),
             return_rate_per_intent: env_num("AKASHIC_RETURN_RATE", RETURN_RATE_DEFAULT).max(RETURN_RATE_FLOOR),
+            return_global_rate: env_num("AKASHIC_RETURN_GLOBAL_RATE", RETURN_GLOBAL_DEFAULT).max(RETURN_GLOBAL_FLOOR),
         }
     }
 }
@@ -150,7 +156,11 @@ impl TopicBus {
     /// Create a new TopicBus with custom configuration.
     pub fn with_config(config: TopicBusConfig) -> Self {
         let returns = if config.return_to_sender {
-            Some(Arc::new(ReturnOffice::new(config.return_ring, config.return_rate_per_intent)))
+            Some(Arc::new(ReturnOffice::new(
+                config.return_ring,
+                config.return_rate_per_intent,
+                config.return_global_rate,
+            )))
         } else {
             None
         };
@@ -546,6 +556,24 @@ mod tests {
 
     fn letter(intent: &str, sender: &str) -> Envelope {
         Envelope::new(intent, serde_json::json!({"source": sender, "x": 1}))
+    }
+
+    #[test]
+    fn w2_switch_default_is_off_and_only_exact_1_is_on() {
+        // REVIEW_W2 F3: the default must be OFF when the variable is unset. Uses its own variable names
+        // for the parsing cases so it cannot race other tests; only this test touches the real one.
+        std::env::remove_var("AKASHIC_RETURN_TO_SENDER");
+        assert!(!TopicBusConfig::default().return_to_sender);
+        for (i, v) in ["", "0", " 1", "1 ", "true", "TRUE", "yes", "on"].iter().enumerate() {
+            let name = format!("W2_TEST_FLAG_{}", i);
+            std::env::set_var(&name, v);
+            assert!(!env_flag(&name), "{:?} must be OFF", v);
+            std::env::remove_var(&name);
+        }
+        std::env::set_var("W2_TEST_FLAG_ON", "1");
+        assert!(env_flag("W2_TEST_FLAG_ON"));
+        std::env::remove_var("W2_TEST_FLAG_ON");
+        assert!(!env_flag("W2_TEST_FLAG_UNSET_NEVER_SET"));
     }
 
     #[test]

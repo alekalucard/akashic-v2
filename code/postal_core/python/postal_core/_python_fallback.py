@@ -716,15 +716,20 @@ class _WorkerPool:
 # SWITCH: AKASHIC_RETURN_TO_SENDER=1 (OFF when unset = byte-identical to before; read once per
 # PostalCore). The Rust TopicBus (src/topic_bus.rs ReturnOffice) implements the same rules.
 #   * every undeliverable letter: messages_returned += 1 and a ring entry (sender, intent, t, reason)
-#   * the sender is payload["source"] (TensorFabric.publish source=), else payload["_sender"]
-#     (FairyPostalWrapper), else Envelope.source. publish() itself takes no sender argument.
+#   * the sender is payload["_sender"] (FairyPostalWrapper; TensorFabric.publish(source=) via
+#     tensor_fabric._stamp_sender), else payload["source"], else Envelope.source. publish() itself
+#     takes no sender argument. "_sender" wins: "source" is often a label ("brainstem_withdrawal").
 #   * the returned letter is published to "postal.returned.<sender>" with the original payload
 #   * a returned letter that is itself undeliverable is counted (return_undeliverable), never returned
-#   * delivery is rate-bounded per intent (AKASHIC_RETURN_RATE per second, floor RETURN_RATE_FLOOR);
-#     counting and the ring are never rate-bounded.
+#   * delivery is rate-bounded per intent (AKASHIC_RETURN_RATE per second, floor RETURN_RATE_FLOOR)
+#     and in total (AKASHIC_RETURN_GLOBAL_RATE per second, floor RETURN_GLOBAL_FLOOR); counting and
+#     the ring are never rate-bounded.
 RETURN_PREFIX = "postal.returned."
 RETURN_RATE_FLOOR = 1          # returns per intent per second that always flow, whatever the setting
 RETURN_RATE_DEFAULT = 10
+RETURN_GLOBAL_FLOOR = 10       # returns per second in total that always flow, whatever the setting
+RETURN_GLOBAL_DEFAULT = 100
+RETURN_WINDOW_MAX = 4096       # per-intent rate table is cleared beyond this many intents
 RETURN_RING_DEFAULT = 256
 
 
@@ -738,7 +743,7 @@ def _env_int(name: str, default: int, floor: int) -> int:
 def return_sender_of(payload, source: str = "") -> str:
     """Who sent this letter. Payload keys first: publish() has no sender argument."""
     if isinstance(payload, dict):
-        for _k in ("source", "_sender"):
+        for _k in ("_sender", "source"):
             _v = payload.get(_k)
             if isinstance(_v, str) and _v:
                 return _v
@@ -748,10 +753,14 @@ def return_sender_of(payload, source: str = "") -> str:
 class _ReturnOffice:
     """Counts, remembers and rate-bounds returned letters. Delivery is done by the caller."""
 
-    def __init__(self, ring_size: int = None, rate_per_intent: int = None):
+    def __init__(self, ring_size: int = None, rate_per_intent: int = None, global_rate: int = None):
         self.ring_size = ring_size or _env_int("AKASHIC_RETURN_RING", RETURN_RING_DEFAULT, 1)
         self.rate = max(RETURN_RATE_FLOOR, rate_per_intent if rate_per_intent is not None
                         else _env_int("AKASHIC_RETURN_RATE", RETURN_RATE_DEFAULT, RETURN_RATE_FLOOR))
+        self.global_rate = max(RETURN_GLOBAL_FLOOR, global_rate if global_rate is not None
+                               else _env_int("AKASHIC_RETURN_GLOBAL_RATE", RETURN_GLOBAL_DEFAULT,
+                                             RETURN_GLOBAL_FLOOR))
+        self._global = [0, 0]          # [window_second, sent_in_window] across all intents
         self._lock = threading.Lock()
         self._ring = deque(maxlen=self.ring_size)
         self._window: Dict[str, List[int]] = {}   # intent -> [window_second, sent_in_window]
@@ -776,11 +785,14 @@ class _ReturnOffice:
         with self._lock:
             w = self._window.get(intent)
             if w is None or w[0] != sec:
-                if len(self._window) > 4096:       # bound the table itself
+                if len(self._window) > RETURN_WINDOW_MAX:   # bound the table itself
                     self._window.clear()
                 w = self._window[intent] = [sec, 0]
-            if w[1] < self.rate:
+            if self._global[0] != sec:
+                self._global = [sec, 0]
+            if w[1] < self.rate and self._global[1] < self.global_rate:
                 w[1] += 1
+                self._global[1] += 1
                 self.delivered_back += 1
                 return True
             self.suppressed += 1
@@ -795,6 +807,7 @@ class _ReturnOffice:
                 "returns_no_sender": self.no_sender,
                 "return_undeliverable": self.undeliverable,
                 "rate_per_intent": self.rate,
+                "global_rate": self.global_rate,
                 "ring": list(self._ring),
             }
 

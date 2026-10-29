@@ -1,5 +1,34 @@
 # W2 SUMMARY: return to sender (branch `nous/w2-return-to-sender`)
 
+## Fix round after REVIEW_W2 (10-29; review branch `nous/w2-return-to-sender-review`, verdict ACCEPT WITH FIXES)
+
+| review finding | fix | proof [M] |
+|---|---|---|
+| F1 CRLF→LF rewrite of `_python_fallback.py` | whole file back to CRLF (1734/1734 lines) | `git diff --stat` = `--ignore-cr-at-eol` = +149 −1 vs main |
+| F2 `source` is often a label (`brainstem_reflex_fairy.py:1603`) | routers read `_sender` first (`_python_fallback.py:746`, `return_office.rs:71`); `tensor_fabric._stamp_sender` (`tensor_fabric.py:1006-1015`, called `:1295`) also puts `publish(source=)` into `_sender`, never overwriting one, only with `AKASHIC_RETURN_TO_SENDER=1` | M7, R7, M11, M12 fail |
+| F3 Rust switch default untested | `w2_switch_default_is_off_and_only_exact_1_is_on` (`topic_bus.rs:562`) | R4 ON-when-unset, R5 `trim()` fail |
+| F4 Python parsing untested | `TestSwitchParsing`: `"", "0", " 1", "1 ", "true", "TRUE", "yes", "on"` all OFF | M6 fails |
+| F5 order not covered | `TestSwitchOffOrder`: exact enqueue sequence equals the git original (3 exact + base + deep subscribers) | M10 reversed fan-out fails |
+| F6 no global cap | `AKASHIC_RETURN_GLOBAL_RATE` (default 100/s, floor 10/s) in both routers (`_python_fallback.py:793`, `return_office.rs:135`); per-intent table bound tested | M8, M9, R6 fail |
+| F7 Rust cost understated | re-measured, below | |
+
+Tests now [M]: Python 21 — CONTROL (main's `_python_fallback.py` + `tensor_fabric.py`) FAIL 18/21, FIX 21/21, mutants M1–M12 all FAIL
+(`run_w2_matrix.py`). Rust: 30 pass + the same 2 pre-existing failures as main; mutants R1–R7 all fail their W2 tests; `cargo check` 8 warnings (= main).
+`test_off_matches_original` / `TestSwitchOffOrder` compare the fix with main, so on main itself they are identity checks by design (they catch OFF-path mutants, e.g. M10).
+
+Cost per publish, re-measured [M]: Python no subscriber 5.5 → 7.2 µs, subscribed ~38 → ~40 µs (unchanged code path; run-to-run noise ±2 µs).
+Rust release no subscriber OFF 209–362 / ON 426–527 ns here (+150–220 ns); the reviewer measured about +300 ns on its runs.
+
+Still not built: the one-line `postal.returned.<ACTOR_NAME>` subscribe in the organ template (needs Ace's permission). Until then returns are counted as `return_undeliverable`.
+
+## CHECK THESE 3 (fix round)
+1. `tensor_fabric.py:1295`: `_stamp_sender` runs after the existing `source` fill and before `self._postal.publish`; OFF when unset.
+2. `_python_fallback.py:783-800`: per-intent AND global window must both have room; counting and the ring are outside the bound.
+3. `git diff origin/main -- code/postal_core/python/postal_core/_python_fallback.py` shows only W2 lines (no line-ending noise).
+
+---
+## Original W2 report (kept; superseded above where it differs)
+
 Tags: [C] read in code, [M] measured here, [I] inference.
 
 ## Switches (both OFF when unset, read once per router instance)
