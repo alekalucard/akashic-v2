@@ -81,11 +81,12 @@ class TestW9(_Base):
         m.upsert_node("habit", activation=0.5)
         g = self.gate(m)
         os.environ[SW] = "1"
-        r0 = g.maybe_writer_decay(100, 1.0)
-        r1 = g.maybe_writer_decay(100 + 250, 1.0)
-        g._writer_decay._thread.join(10)
-        self.assertEqual((r0, r1), ("not_due", "started"))
-        self.assertAlmostEqual(_act(m, "habit"), 0.499, places=5)
+        # on main the gate has no such method: the call is a no-op and the habit must still fade -> assertion fails
+        call = getattr(g, "maybe_writer_decay", lambda beat, tau: "absent")
+        for b in range(0, 1000, 10):                    # the maintenance loop, ~every 10 beats (~10 s apart in real life)
+            if call(b, 1.0) == "started":
+                g._writer_decay._thread.join(10)        # a real pass finishes long before the next 10 s cycle
+        self.assertAlmostEqual(_act(m, "habit"), 0.5 - 0.001 * 3, places=5)   # 1000 beats / 250 = passes at 250,500,750
 
     # ---- switch default ----
     def test_off_when_unset(self):
@@ -149,6 +150,56 @@ class TestW9(_Base):
         self.assertAlmostEqual(ac["me"], 2.0, places=5)
         self.assertAlmostEqual(ac["seed"], 2.0, places=5)
         self.assertAlmostEqual(ac["book"], 1.5, places=5)
+
+    def test_writes_only_activation_not_a_stale_record(self):
+        """A concurrent upsert/link that changed count/degree/flags between decay's read and write must not be undone."""
+        m = _mk(self.d)
+        m.upsert_node("habit", activation=0.5, count=3)
+        os.environ[SW] = "1"
+        s = m._key_index["habit"]
+        real_read = m._read_node
+
+        def stale_read(slot):
+            r = list(real_read(slot))
+            r[6] = 999                      # a stale/other count value the decay must never write back
+            r[9] = mmem.FLAG_DELETED        # and a flag it must never write back
+            return tuple(r)
+        m._read_node = stale_read
+        try:
+            self.assertEqual(m.decay_keys(["habit"], 0.001), 1)
+        finally:
+            m._read_node = real_read
+        r = m._read_node(s)
+        self.assertNotEqual(r[6], 999)
+        self.assertEqual(r[9], mmem.FLAG_ACTIVE)
+        self.assertAlmostEqual(r[5], 0.499, places=5)
+
+    def test_unsupported_graph(self):
+        os.environ[SW] = "1"
+
+        class Store:
+            filepath = os.path.join(self.d, "x")
+        g = pg.LocalManifoldGate(Store())
+        self.assertEqual(g.maybe_writer_decay(10 ** 6, 1.0), "unsupported")
+
+    def test_closed_manifold_stops_pass(self):
+        m = _mk(self.d)
+        for i in range(50):
+            m.upsert_node("k%d" % i, activation=0.5)
+        os.environ[SW] = "1"
+        wd = pg.WriterDecay(m, chunk=10, pause_s=0)
+        real = m.decay_keys
+        calls = []
+
+        def spy(keys, rate):
+            calls.append(1)
+            n = real(keys, rate)
+            if len(calls) == 1:
+                m.close()                               # shutdown closes the manifold mid-pass
+            return n
+        m.decay_keys = spy
+        out = wd.run_pass()
+        self.assertEqual((out["status"], out["decayed"]), ("aborted", 10))
 
     # ---- fades only, never deletes ----
     def test_never_deletes(self):

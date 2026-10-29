@@ -29,8 +29,8 @@ MUTANTS = {
                                           '            if getattr(g, "_tunnels", None):\n                return True\n',
                                           ''),
     "M3_no_mid_pass_recheck": ("code/infrastructure/portal_gate.py",
-                               "if not writer_decay_on() or cortex_interior_alive():",
-                               "if not writer_decay_on():"),
+                               "if not writer_decay_on() or cortex_interior_alive() or",
+                               "if not writer_decay_on() or"),
     "M4_exemption_dropped": ("code/infrastructure/manifold_memory.py",
                              "                    if self._AFFECT_DECAY > 0.0 and record[12] not in self._AFFECT_DECAY_TRACER_EXEMPT:\n"
                              "                        _ac = self.read_affect_coupling(slot)\n"
@@ -57,6 +57,12 @@ MUTANTS = {
     "M8_writer_decay_per_gate": ("code/infrastructure/portal_gate.py",
                                  'wd = getattr(self.graph, "_w9_writer_decay", None)',
                                  'wd = getattr(self, "_w9_writer_decay", None)'),
+    "M9_whole_record_write": ("code/infrastructure/manifold_memory.py",
+                              "                    self._mm[_o:_o + 4] = self._W9_F32.pack(max(0.0, record[5] - rate))",
+                              "                    _r = list(record); _r[5] = max(0.0, record[5] - rate)\n"
+                              "                    self._write_node(slot, *_r, preserve_reserved=True)"),
+    "M10_no_closed_check": ("code/infrastructure/portal_gate.py",
+                            ' or getattr(getattr(g, "_mm", None), "closed", True):', ':'),
     "M7_fairy_hook_ungated": ("code/fairies/P30_Cognition/AssociationCortexFairy/fairy.py",
                               'if os.environ.get("AKASHIC_DECAY_IN_WRITER", "0") == "1":',
                               'if os.environ.get("AKASHIC_DECAY_IN_WRITER", "0") != "0":'),

@@ -2525,6 +2525,9 @@ class ManifoldMemory:
                     if _pr > 0.0:
                         self.write_paradox_residue(slot, max(0.0, _pr - _pr * self._AFFECT_DECAY))
 
+    _W9_ACT_OFFSET = 12               # activation float in NODE_STRUCT '<IHHHHf...': 4 + 2*4 bytes in
+    _W9_F32 = struct.Struct('<f')
+
     def decay_keys(self, keys, rate: float = 0.001) -> int:
         """W9 (2026-10-29 Nous): decay_all's body over ONE CHUNK of keys, for the writer-side decay
         (portal_gate.WriterDecay, switch AKASHIC_DECAY_IN_WRITER, OFF when unset). decay_all above is NOT changed; the portal
@@ -2533,20 +2536,24 @@ class ManifoldMemory:
           - the slot is looked up NOW (a key evicted since the caller's snapshot is skipped, never decayed by an old slot);
           - each node's read-modify-write holds that slot's shard lock (_node_lock, as touch_node does), so a concurrent
             touch is not lost.
+          - only the 4-byte activation float is written (NODE_STRUCT offset 12), not the whole record, so a concurrent
+            upsert/evict/link that does not take the shard lock cannot have its count/degree/flags overwritten by a stale
+            copy (decay_all rewrites all 48 bytes; the value written for activation is the same float32).
         Fades activation only: never deletes, never touches flags/key/edges. Returns how many nodes were decayed."""
         if self.readonly:
             return 0
         n = 0
         _ki = self._key_index
+        _act_off = self._W9_ACT_OFFSET
         for key in keys:
             slot = _ki.get(key)
             if slot is None:
                 continue
             with self._node_lock(slot):
-                record = list(self._read_node(slot))
+                record = self._read_node(slot)
                 if record[5] > 0.01:  # Only decay active nodes (same floor as decay_all)
-                    record[5] = max(0.0, record[5] - rate)
-                    self._write_node(slot, *record, preserve_reserved=True)
+                    _o = self._node_offset(slot) + _act_off
+                    self._mm[_o:_o + 4] = self._W9_F32.pack(max(0.0, record[5] - rate))
                     n += 1
                     if self._AFFECT_DECAY > 0.0 and record[12] not in self._AFFECT_DECAY_TRACER_EXEMPT:
                         _ac = self.read_affect_coupling(slot)

@@ -159,10 +159,17 @@ class WriterDecay:
         self.aborted = 0
         self.refused_interior = 0
         self.last = {}
+        self._said_unsupported = False
 
     def maybe_start(self, beat, tau=1.0, wait=False) -> str:
         if not writer_decay_on():
             return "off"
+        if not (hasattr(self.graph, "decay_keys") and hasattr(self.graph, "_key_index")):
+            if not self._said_unsupported:
+                self._said_unsupported = True
+                print(f"[WriterDecay] graph {type(self.graph).__name__} has no decay_keys/_key_index: writer decay "
+                      f"unsupported, not run", flush=True)
+            return "unsupported"
         try:
             beat = int(beat)
         except Exception:
@@ -175,6 +182,9 @@ class WriterDecay:
         if cortex_interior_alive():
             self._last_beat = beat
             self.refused_interior += 1
+            if self.refused_interior == 1 or self.refused_interior % 100 == 0:
+                print(f"[WriterDecay] refused x{self.refused_interior}: a portal_interior.py gate is open in this process "
+                      f"(the interior decays; the writer stays off)", flush=True)
             return "interior_alive"
         if self._thread is not None and self._thread.is_alive():
             return "running"
@@ -220,8 +230,8 @@ class WriterDecay:
         max_chunk_s = 0.0
         status = "done"
         for i in range(0, len(keys), self.chunk):
-            if not writer_decay_on() or cortex_interior_alive():
-                status = "aborted"
+            if not writer_decay_on() or cortex_interior_alive() or getattr(getattr(g, "_mm", None), "closed", True):
+                status = "aborted"          # switch off, an interior opened, or the manifold was closed (shutdown)
                 self.aborted += 1
                 break
             c0 = _t.perf_counter()
