@@ -5698,7 +5698,7 @@ def boot_system() -> bool:
             "NousFairy": ("waking_minds.nous_fairy", "NousFairy"),
             "SourpatchesFairy": ("waking_minds.sourpatches_fairy", "SourpatchesFairy"),
             # Removed 2026-02-23: ThoughtChainEngine and BootObserver are utility classes, not fairies
-            "DreamSeedsFairy": ("fairies.P00_Autonomic.nervous_system.dream_seed_fairy", "DreamSeedFairy"),
+            "DreamSeedFairy": ("fairies.P00_Autonomic.nervous_system.dream_seed_fairy", "DreamSeedFairy"),
             # Added 2026-02-19: Fairies with code in non-standard locations
             "CircadianRhythmFairy": ("fairies.P00_Autonomic.CircadianRhythmFairy.fairy", "FAIRY_CLASS"),
             "NetworkExplorerFairy": ("fairies.P00_Autonomic.NetworkExplorerFairy.fairy", "FAIRY_CLASS"),

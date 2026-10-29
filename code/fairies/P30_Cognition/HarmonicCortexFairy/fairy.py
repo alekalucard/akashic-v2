@@ -359,12 +359,12 @@ class HarmonicCortexFairy(MyOrganFairy):
         if hasattr(self, 'post') and self.post:
             try:
                 # Subscribe to harmonic queries
-                self.post.fabric.subscribe(
+                self.post.subscribe(
                     "harmonic.query",
                     self._on_query,
                     name=f"{self.ACTOR_NAME}_query"
                 )
-                self.post.fabric.subscribe(
+                self.post.subscribe(
                     "harmonic.perspectives",
                     self._on_perspectives,
                     name=f"{self.ACTOR_NAME}_perspectives"
@@ -375,7 +375,7 @@ class HarmonicCortexFairy(MyOrganFairy):
                 # We receive affect state from the loop (substrate privilege)
                 # We do NOT send to ace.inbox (that's Sourpatches' privilege)
                 # ═══════════════════════════════════════════════════════════════════
-                self.post.fabric.subscribe(
+                self.post.subscribe(
                     "affect.changed",
                     self._on_affect_changed,
                     name=f"{self.ACTOR_NAME}_affect"
@@ -392,17 +392,17 @@ class HarmonicCortexFairy(MyOrganFairy):
                 # Minimal first-pass: receive + log + ack-publish. Full harmonic
                 # feature extraction comes in Item 7-full (post-music_theory.py library).
                 # ═══════════════════════════════════════════════════════════════════
-                self.post.fabric.subscribe(
+                self.post.subscribe(
                     "sensory.audio.frame",
                     self._on_audio_frame,
                     name=f"{self.ACTOR_NAME}_audio_frame"
                 )
-                self.post.fabric.subscribe(
+                self.post.subscribe(
                     "sensory.audio.observation",
                     self._on_audio_observation,
                     name=f"{self.ACTOR_NAME}_audio_observation"
                 )
-                self.post.fabric.subscribe(
+                self.post.subscribe(
                     "sensory.audio.speech",
                     self._on_audio_speech,
                     name=f"{self.ACTOR_NAME}_audio_speech"
@@ -831,7 +831,7 @@ class HarmonicCortexFairy(MyOrganFairy):
 
         try:
             # Contribute to the affect loop (substrate channel, not ace.inbox)
-            self.post.fabric.publish("cognition.harmonic.affect", {
+            self.post.publish("cognition.harmonic.affect", {
                 "source": self.ACTOR_NAME,
                 "concept": concept,
                 "mode": mode.value,

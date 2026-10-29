@@ -1007,7 +1007,7 @@ class GoBootOrchestrator:
                     continue
 
                 # Skip excluded classes (shadows, mocks, organ templates)
-                if fairy.name in _BOOT_EXCLUDE_NAMES or fairy.name.endswith(_BOOT_EXCLUDE_SUFFIXES):
+                if fairy.name in _BOOT_EXCLUDE_NAMES or fairy.name.lower().endswith(tuple(x.lower() for x in _BOOT_EXCLUDE_SUFFIXES)):
                     skipped_unbootable += 1
                     continue
 

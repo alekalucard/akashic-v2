@@ -126,7 +126,7 @@ DOMAIN_SPECS: Dict[str, Dict[str, List[str]]] = {
         "deferred": [
             "NousFairy",                    # Reasoning trace capture
             "MemoryConsolidatorFairy",      # Long-term consolidation
-            "DreamSeedsFairy",              # Dream seed generation
+            "DreamSeedFairy",              # Dream seed generation
         ]
     },
 
@@ -291,7 +291,7 @@ def _get_fairy_description(fairy_name: str) -> str:
         "EmotionalAlgebraFairy": "Affective state calculus",
         "NousFairy": "Reasoning trace capture and teaching",
         "MemoryConsolidatorFairy": "Long-term memory consolidation",
-        "DreamSeedsFairy": "Dream seed generation",
+        "DreamSeedFairy": "Dream seed generation",
 
         # Autopilot domain
         "MotorCortexFairy": "Motor output coordination",
