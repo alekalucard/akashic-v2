@@ -215,6 +215,7 @@ class TestGrow(Base):
             self.skipTest("no in-use detection on this OS")
         p, keys = build(self.d)
         h0 = sha(p)
+        reached, step0 = [], G._step
         holder = subprocess.Popen(
             [sys.executable, "-I", "-c",
              "import mmap,sys,time\nf=open(sys.argv[1],'rb')\n"
@@ -224,10 +225,15 @@ class TestGrow(Base):
         try:
             self.assertEqual(holder.stdout.readline().strip(), b"ready")
             os.environ["AKASHIC_CORTEX_GROW"] = "1"
+            G._step = lambda name: (reached.append(name), step0(name))
             with self.assertRaises(G.GrowRefused) as cm:
                 G.grow(p, NEW_CAP, apply=True, quiet_s=0)
             self.assertIn("IN USE", str(cm.exception))
+            # refused at the FIRST scan, before anything is copied (not only by the pre-swap backstop)
+            self.assertIn("shut her down first", str(cm.exception))
+            self.assertNotIn("tmp_create", reached)
         finally:
+            G._step = step0
             os.environ.pop("AKASHIC_CORTEX_GROW", None)
             holder.kill()
             holder.wait()
@@ -300,6 +306,236 @@ class TestCrash(Base):
         for step in G.STEPS:
             with self.subTest(step=step):
                 self._one(step, "exit")
+
+
+HOLDER_PY_MMAP = ("import mmap,sys,time\nf=open(sys.argv[1],'rb')\n"
+                  "m=mmap.mmap(f.fileno(),0,access=mmap.ACCESS_READ)\nf.close()\n"
+                  "print('ready',flush=True)\ntime.sleep(60)")
+# A mapping with NO open fd: CPython's mmap keeps a dup'd fd, so map through libc and
+# close the fd; only /proc/<pid>/maps can see this holder.
+HOLDER_MAPS_ONLY = ("import ctypes,os,sys,time\nlibc=ctypes.CDLL(None,use_errno=True)\n"
+                    "libc.mmap.restype=ctypes.c_void_p\n"
+                    "libc.mmap.argtypes=[ctypes.c_void_p,ctypes.c_size_t,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_long]\n"
+                    "fd=os.open(sys.argv[1],os.O_RDONLY)\na=libc.mmap(None,4096,1,1,fd,0)\n"
+                    "assert a not in (None,ctypes.c_void_p(-1).value)\nos.close(fd)\n"
+                    "print('ready',flush=True)\ntime.sleep(60)")
+
+
+class TestSafetyChecks(Base):
+    """Fix round after REVIEW_W6 (F1, F2, F3): each test kills a mutant that survived."""
+
+    def setUp(self):
+        super().setUp()
+        self.assertIsNotNone(G, "tools/grow_cortex.py missing")
+        self._saved = {n: getattr(G, n) for n in ("_step", "_proc_scan", "_win_exclusive",
+                                                  "_psutil_scan", "_proc_hidden")
+                       if hasattr(G, n)}
+        self._holders = []
+
+    def tearDown(self):
+        for n, v in self._saved.items():
+            setattr(G, n, v)
+        for h in self._holders:
+            h.kill()
+            h.wait()
+        os.environ.pop("AKASHIC_CORTEX_GROW", None)
+        super().tearDown()
+
+    def _hook(self, at, fn):
+        orig = self._saved["_step"]
+
+        def step(name):
+            if name == at:
+                fn()
+            orig(name)
+        G._step = step
+
+    def _holder(self, code, p):
+        h = subprocess.Popen([sys.executable, "-I", "-c", code, p], stdout=subprocess.PIPE)
+        self._holders.append(h)
+        self.assertEqual(h.stdout.readline().strip(), b"ready")
+        return h
+
+    def _poke(self, p, keep_mtime=False):
+        """Change one byte inside a node record (same size)."""
+        st = os.stat(p)
+        with open(p, "r+b") as f:
+            f.seek(G.HEADER_SIZE + 64 * 3 + 8)
+            b = f.read(1)
+            f.seek(G.HEADER_SIZE + 64 * 3 + 8)
+            f.write(bytes([b[0] ^ 0xFF]))
+        if keep_mtime:
+            os.utime(p, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+    def _untouched_tree(self, p, h_live, h_csr):
+        self.assertEqual(sha(p), h_live, "live file changed")
+        self.assertEqual(sha(p + ".csr"), h_csr, ".csr not back in place")
+        self.assertFalse(os.path.exists(p + ".grow.tmp"), "temp left behind")
+        self.assertFalse(os.path.exists(p + ".grow.lock"), "lock left behind")
+        left = [f for f in os.listdir(self.d) if ".pre_grow." in f]
+        self.assertEqual(left, [], "backup link / moved companions left behind: %s" % left)
+        with open(p, "rb") as f:
+            self.assertEqual(G.HEADER_STRUCT.unpack(f.read(48))[7], CAP)   # node_capacity
+
+    def test_verify_failure_refuses(self):                       # kills R2
+        p, keys = build(self.d)
+        h0 = sha(p)
+
+        def corrupt():
+            with open(p + ".grow.tmp", "r+b") as f:
+                f.seek(G.HEADER_SIZE + 64 * 10 + 4)
+                f.write(b"\xEE")
+        self._hook("verify", corrupt)
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn("verification FAILED", str(cm.exception))
+        self.assertEqual(sha(p), h0)
+        self.assertFalse(os.path.exists(p + ".grow.tmp"))
+
+    def test_source_changed_after_verify_refuses_before_touching_companions(self):  # kills R6
+        p, keys = build(self.d)
+        h_csr = sha(p + ".csr")
+        self._hook("recheck_source", lambda: self._poke(p))
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn("source changed while copying", str(cm.exception))
+        h_live = sha(p)                                         # our poke, not a swap
+        self._untouched_tree(p, h_live, h_csr)
+
+    def test_content_change_with_same_mtime_refused_right_before_swap(self):  # F2: hash
+        p, keys = build(self.d)
+        h_csr = sha(p + ".csr")
+        self._hook("move_companions", lambda: self._poke(p, keep_mtime=True))
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn("SHA-256", str(cm.exception))
+        self._untouched_tree(p, sha(p), h_csr)
+
+    def test_holder_that_maps_after_first_scan_refused_before_swap(self):  # F2: rescan
+        if not os.path.isdir("/proc/self/fd") and os.name != "nt":
+            self.skipTest("no in-use detection on this OS")
+        p, keys = build(self.d)
+        h0, h_csr = sha(p), sha(p + ".csr")
+        self._hook("move_companions", lambda: self._holder(HOLDER_PY_MMAP, p))
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn("IN USE right before the swap", str(cm.exception))
+        self._untouched_tree(p, h0, h_csr)
+
+    def test_maps_only_holder_detected(self):                    # kills R10
+        if not os.path.isdir("/proc/self/fd"):
+            self.skipTest("Linux /proc only")
+        p, keys = build(self.d)
+        h0 = sha(p)
+        h = self._holder(HOLDER_MAPS_ONLY, p)
+        ino = os.stat(p).st_ino
+        fds = os.listdir("/proc/%d/fd" % h.pid)
+        self.assertFalse(any(os.stat("/proc/%d/fd/%s" % (h.pid, x)).st_ino == ino for x in fds
+                             if os.path.exists("/proc/%d/fd/%s" % (h.pid, x))),
+                         "holder still has an fd: the test would not exercise the maps scan")
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn("mmap'd", str(cm.exception))
+        self.assertEqual(sha(p), h0)
+
+    def test_blind_proc_fails_closed_unless_assume_down(self):  # F1
+        G._psutil_scan = lambda: None
+        G._win_exclusive = lambda paths: None
+        for label, scans in (("blind at first scan", [([], 42)]),
+                             ("blind only at the pre-swap scan", [([], 0), ([], 42)])):
+            with self.subTest(label):
+                sub = os.path.join(self.d, label.replace(" ", "_"))
+                os.mkdir(sub)
+                p, keys = build(sub)
+                h0 = sha(p)
+                seq = list(scans)
+                G._proc_scan = lambda paths: seq.pop(0) if len(seq) > 1 else seq[0]
+                with self.assertRaises(G.GrowRefused) as cm:
+                    run_grow(p)
+                msg = str(cm.exception)
+                self.assertIn("42 processes could not be inspected", msg)
+                self.assertIn("KNOWN to be down", msg)
+                self.assertEqual(sha(p), h0)
+                self.assertEqual([f for f in os.listdir(sub) if ".pre_grow." in f], [])
+                seq[:] = list(scans)
+                self.assertTrue(run_grow(p, assume_down=True)["applied"])
+
+    def test_hidepid_hidden_processes_fail_closed(self):          # F1: invisible pids
+        G._psutil_scan = lambda: None
+        G._win_exclusive = lambda paths: None
+        G._proc_scan = lambda paths: ([], 0)
+        G._proc_hidden = lambda: True
+        p, keys = build(self.d)
+        h0 = sha(p)
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn("hidepid", str(cm.exception))
+        self.assertEqual(sha(p), h0)
+
+    def test_no_detection_method_refuses_unless_assume_down(self):  # kills R18
+        G._proc_scan = lambda paths: None
+        G._win_exclusive = lambda paths: None
+        G._psutil_scan = lambda: None
+        p, keys = build(self.d)
+        h0 = sha(p)
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn("no in-use detection method", str(cm.exception))
+        self.assertEqual(sha(p), h0)
+        self.assertTrue(run_grow(p, assume_down=True)["applied"])
+
+    def test_second_grower_refused_by_lock(self):                # kills R13
+        p, keys = build(self.d)
+        h0 = sha(p)
+        with open(p + ".grow.lock", "wb") as f:
+            f.write(b"99999")
+        with self.assertRaises(G.GrowRefused) as cm:
+            run_grow(p)
+        self.assertIn(".grow.lock", str(cm.exception))
+        self.assertEqual(sha(p), h0)
+        with open(p + ".grow.lock", "rb") as f:
+            self.assertEqual(f.read(), b"99999", "another grower's lock was taken over")
+
+    def test_fsync_tmp_and_dir_before_replace(self):            # kills R1
+        import stat as _stat
+        p, keys = build(self.d)
+        tmp = p + ".grow.tmp"
+        dino = os.stat(self.d).st_ino
+        ev = []
+        real_fsync, real_replace = os.fsync, os.replace
+
+        def fsync(fd):
+            st = os.fstat(fd)
+            if _stat.S_ISDIR(st.st_mode) and st.st_ino == dino:
+                ev.append("fsync_dir")
+            elif os.path.exists(tmp) and os.stat(tmp).st_ino == st.st_ino:
+                with open(tmp, "rb") as f:
+                    ev.append("fsync_tmp_final" if f.read(4) == G.MAGIC else "fsync_tmp")
+            return real_fsync(fd)
+
+        def replace(a, b):
+            if os.path.abspath(a) == os.path.abspath(tmp):
+                ev.append("replace")
+            return real_replace(a, b)
+        os.fsync, os.replace = fsync, replace
+        try:
+            run_grow(p)
+        finally:
+            os.fsync, os.replace = real_fsync, real_replace
+        self.assertIn("replace", ev)
+        before, after = ev[:ev.index("replace")], ev[ev.index("replace") + 1:]
+        self.assertIn("fsync_tmp_final", before, "temp (with its header) not fsynced before the swap: %s" % ev)
+        self.assertIn("fsync_dir", before, "directory not fsynced before the swap: %s" % ev)
+        self.assertIn("fsync_dir", after, "directory not fsynced after the swap: %s" % ev)
+
+    def test_header_tail_copied_verbatim(self):                   # kills R11
+        p, keys = build(self.d)
+        with open(p, "rb") as f:
+            tail0 = f.read(G.HEADER_SIZE)[48:]
+        self.assertTrue(any(tail0), "synthetic header tail is all zero: test would be blind")
+        run_grow(p)
+        with open(p, "rb") as f:
+            self.assertEqual(f.read(G.HEADER_SIZE)[48:], tail0)
 
 
 class TestProtectEgo(Base):

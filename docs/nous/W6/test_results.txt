@@ -1,4 +1,4 @@
-CONTROL (origin/main + existing expand_manifold_v2.py)         FAIL  ran=11 failing=10
+CONTROL (origin/main + existing expand_manifold_v2.py)         FAIL  ran=22 failing=21
       - TestCrash.test_crash_at_every_step_hard_exit
       - TestCrash.test_crash_at_every_step_raise
       - TestGrow.test_after_grow_new_node_evicts_nothing
@@ -9,26 +9,143 @@ CONTROL (origin/main + existing expand_manifold_v2.py)         FAIL  ran=11 fail
       - TestProtectEgo.test_all_protected_deletes_nothing_and_refuses
       - TestProtectEgo.test_ego_region_node_survives
       - TestProtectEgo.test_personal_and_seeded_tracer_survive
-FIX (this branch)                                              PASS  ran=11 failing=0
-M1 grow: companions (.csr/.keys) not moved aside               FAIL  ran=11 failing=1
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_fsync_tmp_and_dir_before_replace
+      - TestSafetyChecks.test_header_tail_copied_verbatim
+      - TestSafetyChecks.test_hidepid_hidden_processes_fail_closed
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+      - TestSafetyChecks.test_maps_only_holder_detected
+      - TestSafetyChecks.test_no_detection_method_refuses_unless_assume_down
+      - TestSafetyChecks.test_second_grower_refused_by_lock
+      - TestSafetyChecks.test_source_changed_after_verify_refuses_before_touching_companions
+      - TestSafetyChecks.test_verify_failure_refuses
+CONTROL-B (pre-fix grow_cortex.py @ 0f49669)                   FAIL  ran=22 failing=5
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_fsync_tmp_and_dir_before_replace
+      - TestSafetyChecks.test_hidepid_hidden_processes_fail_closed
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+FIX (this branch)                                              PASS  ran=22 failing=0
+M1 grow: companions (.csr/.keys) not moved aside               FAIL  ran=22 failing=1
       - TestGrow.test_companions_rebuilt_for_new_capacity
-M2 grow: string arena grown too, sidecar tags not remapped     FAIL  ran=11 failing=4
+M2 grow: string arena grown too, sidecar tags not remapped     FAIL  ran=22 failing=4
       - TestCrash.test_crash_at_every_step_hard_exit
       - TestCrash.test_crash_at_every_step_raise
       - TestGrow.test_after_grow_new_node_evicts_nothing
       - TestGrow.test_grow_preserves_every_node_and_index
-M3 grow: header keeps the OLD string/edge offsets              FAIL  ran=11 failing=4
+M3 grow: header keeps the OLD string/edge offsets              FAIL  ran=22 failing=4
       - TestCrash.test_crash_at_every_step_hard_exit
       - TestCrash.test_crash_at_every_step_raise
       - TestGrow.test_after_grow_new_node_evicts_nothing
       - TestGrow.test_grow_preserves_every_node_and_index
-M4 grow: crashed run leaves its temp file behind               FAIL  ran=11 failing=1
+M4 grow: crashed run leaves its temp file behind               FAIL  ran=22 failing=5
       - TestCrash.test_crash_at_every_step_raise
-M5 guard: region only, PERSONAL/SEEDED tracer not protected    FAIL  ran=11 failing=1
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+      - TestSafetyChecks.test_source_changed_after_verify_refuses_before_touching_companions
+      - TestSafetyChecks.test_verify_failure_refuses
+M5 guard: region only, PERSONAL/SEEDED tracer not protected    FAIL  ran=22 failing=1
       - TestProtectEgo.test_personal_and_seeded_tracer_survive
-M6 guard: all-protected falls back to deleting anyway          FAIL  ran=11 failing=1
+M6 guard: all-protected falls back to deleting anyway          FAIL  ran=22 failing=1
       - TestProtectEgo.test_all_protected_deletes_nothing_and_refuses
-M7 guard: switch ON when unset                                 FAIL  ran=11 failing=1
+M7 guard: switch ON when unset                                 FAIL  ran=22 failing=1
       - TestProtectEgo.test_off_by_default_matches_original
+R1 skip fsync of tmp (both)                                    FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_fsync_tmp_and_dir_before_replace
+R2 verify disabled (returns [])                                FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_verify_failure_refuses
+R3 replace BEFORE verify                                       FAIL  ran=22 failing=3
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestSafetyChecks.test_verify_failure_refuses
+R4 edges written 24 B too far                                  FAIL  ran=22 failing=12
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestGrow.test_after_grow_new_node_evicts_nothing
+      - TestGrow.test_companions_rebuilt_for_new_capacity
+      - TestGrow.test_grow_preserves_every_node_and_index
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_fsync_tmp_and_dir_before_replace
+      - TestSafetyChecks.test_header_tail_copied_verbatim
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+      - TestSafetyChecks.test_no_detection_method_refuses_unless_assume_down
+      - TestSafetyChecks.test_source_changed_after_verify_refuses_before_touching_companions
+R5 strings written 1 B too far                                 FAIL  ran=22 failing=12
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestGrow.test_after_grow_new_node_evicts_nothing
+      - TestGrow.test_companions_rebuilt_for_new_capacity
+      - TestGrow.test_grow_preserves_every_node_and_index
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_fsync_tmp_and_dir_before_replace
+      - TestSafetyChecks.test_header_tail_copied_verbatim
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+      - TestSafetyChecks.test_no_detection_method_refuses_unless_assume_down
+      - TestSafetyChecks.test_source_changed_after_verify_refuses_before_touching_companions
+R6 recheck_source removed                                      FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_source_changed_after_verify_refuses_before_touching_companions
+R7 companions moved AFTER replace                              FAIL  ran=22 failing=4
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+R8 no backup made                                              FAIL  ran=22 failing=2
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+R9 in-use hits ignored                                         FAIL  ran=22 failing=1
+      - TestGrow.test_refuses_while_another_process_has_it_mapped
+R10 /proc maps scan removed (fd only)                          FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_maps_only_holder_detected
+R11 header tail 48..4095 zeroed                                FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_header_tail_copied_verbatim
+R12 new node slots filled 0x01                                 FAIL  ran=22 failing=12
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestGrow.test_after_grow_new_node_evicts_nothing
+      - TestGrow.test_companions_rebuilt_for_new_capacity
+      - TestGrow.test_grow_preserves_every_node_and_index
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_fsync_tmp_and_dir_before_replace
+      - TestSafetyChecks.test_header_tail_copied_verbatim
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+      - TestSafetyChecks.test_no_detection_method_refuses_unless_assume_down
+      - TestSafetyChecks.test_source_changed_after_verify_refuses_before_touching_companions
+R13 lock not O_EXCL                                            FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_second_grower_refused_by_lock
+R14 grow switch ON when unset                                  FAIL  ran=22 failing=1
+      - TestGrow.test_refuses_without_switch_and_when_shrinking
+R15 guard: all-protected evicts slot 0 anyway                  FAIL  ran=22 failing=1
+      - TestProtectEgo.test_all_protected_deletes_nothing_and_refuses
+R16 guard: PERSONAL only (SEEDED dropped)                      FAIL  ran=22 failing=1
+      - TestProtectEgo.test_personal_and_seeded_tracer_survive
+R17 move_companions moves .names too                           FAIL  ran=22 failing=4
+      - TestCrash.test_crash_at_every_step_hard_exit
+      - TestCrash.test_crash_at_every_step_raise
+      - TestGrow.test_after_grow_new_node_evicts_nothing
+      - TestGrow.test_grow_preserves_every_node_and_index
+R18 assume-down gate removed                                   FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_no_detection_method_refuses_unless_assume_down
+N1 F1: blind processes ignored (fail-open again)               FAIL  ran=22 failing=2
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+      - TestSafetyChecks.test_hidepid_hidden_processes_fail_closed
+N2 F2: pre-swap in-use rescan removed                          FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+N3 F2: pre-swap full-hash check removed                        FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+N4 F2: pre-swap scan ignores blindness (assume_down forced)    FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+N5 F2: refusal leaves the companions moved aside               FAIL  ran=22 failing=3
+      - TestSafetyChecks.test_blind_proc_fails_closed_unless_assume_down
+      - TestSafetyChecks.test_content_change_with_same_mtime_refused_right_before_swap
+      - TestSafetyChecks.test_holder_that_maps_after_first_scan_refused_before_swap
+N6 F3: no directory fsync before the swap                      FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_fsync_tmp_and_dir_before_replace
+N7 F1: /proc hidepid (invisible pids) ignored                  FAIL  ran=22 failing=1
+      - TestSafetyChecks.test_hidepid_hidden_processes_fail_closed
 
-EXPECTED: control FAIL, fix PASS, every mutant FAIL -> MET
+mutants: 32 run, 0 survive
+EXPECTED: controls FAIL, fix PASS, every mutant FAIL -> MET

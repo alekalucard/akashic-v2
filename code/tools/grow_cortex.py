@@ -31,7 +31,11 @@ CRASH SAFETY
        with the old N and GPUSpread's (N,N) tensor would not match). They rebuild on the
        next open. Done BEFORE the swap: if we crash here the old manifold simply rebuilds
        them, which is harmless.
-    5. os.replace(tmp, path)  -- atomic on POSIX and NTFS; then fsync the directory
+    5. fsync the directory (backup link + companion renames durable), then a FINAL
+       CHECK right before the swap: full SHA-256 of the source == the one taken before
+       the copy, a second in-use scan, and (size, mtime, inode) unchanged. Any hit:
+       refuse, put the companions back, drop the backup link, delete the temp.
+       os.replace(tmp, path)  -- atomic on POSIX and NTFS; then fsync the directory
     6. extend <path>.embeddings with zeros to new_cap*768 (ManifoldMemory would do this
        itself on a read-write open, manifold_memory.py _ensure_embedding_file)
     A crash before 5 leaves the live file byte-identical. A crash after 5 leaves the
@@ -46,7 +50,10 @@ REFUSES TO RUN WHEN THE FILE LOOKS IN USE (best effort, see in_use_report)
     * quiescence: size/mtime of the manifold must not change over a short window
     * a <path>.grow.lock created O_EXCL stops two growers at once
     * if no detection method works on this OS, refuses unless --assume-down is given
-    And re-checks the source's (size, mtime, inode) right before the swap.
+    * FAIL CLOSED (fix round): if ANY process could not be inspected (unreadable
+      /proc/<pid>/fd AND maps: another user, hidepid), refuses unless --assume-down
+    And re-checks the source's (size, mtime, inode) after verify, then runs the FINAL
+    CHECK above immediately before os.replace.
 
 SWITCH: --apply additionally requires AKASHIC_CORTEX_GROW=1 in the environment.
 There is no runtime path: nothing in her code imports or calls this.
@@ -71,7 +78,7 @@ ALL_COMPANIONS = (".csr", ".keys", ".embeddings", ".names")
 # Steps in order. Tests set _FAULT to one of these to simulate a crash there.
 STEPS = ("lock", "in_use", "read_old", "tmp_create", "copy_nodes", "zero_new_nodes",
          "copy_strings", "copy_edges", "zero_new_edges", "write_header", "fsync_tmp",
-         "verify", "recheck_source", "backup", "move_companions", "replace",
+         "verify", "recheck_source", "backup", "move_companions", "final_check", "replace",
          "dirsync", "extend_embeddings", "unlock")
 _FAULT = None
 _FAULT_MODE = "raise"      # "exit" = os._exit(9): a hard kill, no finally blocks run
@@ -155,9 +162,26 @@ def _proc_scan(paths):
             seen_any = True
         except (PermissionError, FileNotFoundError, ProcessLookupError, OSError):
             pass
-        if not seen_any:
-            blind += 1
+        if not seen_any and os.path.exists("/proc/%s" % pid):
+            blind += 1                          # (a pid that exited mid-scan is not blind)
     return hits, blind
+
+
+def _proc_hidden():
+    """True when /proc HIDES other users' pids from us (hidepid=2/invisible or 4/ptraceable)
+    and we are not root: those pids are not listed at all, so _proc_scan cannot count them."""
+    if os.name == "nt" or not hasattr(os, "geteuid") or os.geteuid() == 0:
+        return False
+    try:
+        with open("/proc/self/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 4 and parts[1] == "/proc":
+                    return bool({"hidepid=2", "hidepid=invisible", "hidepid=4",
+                                 "hidepid=ptraceable"} & set(parts[3].split(",")))
+    except OSError:
+        pass
+    return False
 
 
 def _win_exclusive(paths):
@@ -203,15 +227,20 @@ def _psutil_scan():
 
 
 def in_use_report(path, quiet_s=1.5):
-    """Best-effort: (hits, methods_used, notes). Any hit means: do not touch the file."""
+    """Best-effort: (hits, methods_used, notes, blind). Any hit means: do not touch the file.
+    blind = number of processes /proc would not let us inspect (0 off-Linux)."""
     paths = [path] + [path + s for s in ALL_COMPANIONS]
-    hits, methods, notes = [], [], []
+    hits, methods, notes, blind = [], [], [], 0
     r = _proc_scan(paths)
     if r is not None:
         methods.append("proc")
         hits += r[0]
+        blind = r[1]
         if r[1]:
             notes.append("%d processes could not be inspected (permissions)" % r[1])
+        if _proc_hidden():
+            blind += 1
+            notes.append("/proc is mounted hidepid=2/4: other users' processes are invisible")
     r = _win_exclusive(paths)
     if r is not None:
         methods.append("win-exclusive-open")
@@ -227,7 +256,22 @@ def in_use_report(path, quiet_s=1.5):
         methods.append("quiescence")
         if (s0.st_size, s0.st_mtime_ns) != (s1.st_size, s1.st_mtime_ns):
             hits.append("%s changed during a %.1fs quiet window" % (path, quiet_s))
-    return list(dict.fromkeys(hits)), methods, notes
+    return list(dict.fromkeys(hits)), methods, notes, blind
+
+
+def detection_gate(methods, blind, assume_down):
+    """None when the in-use scan can be trusted; else the refusal text (fail CLOSED)."""
+    if assume_down:
+        return None
+    if not (set(methods) - {"quiescence"}):
+        return ("no in-use detection method works here (%s); pass --assume-down "
+                "only if you KNOW she is down" % ",".join(methods))
+    if blind:
+        return ("%d processes could not be inspected (unreadable /proc/<pid>/fd and maps, "
+                "or hidden by /proc hidepid; counted as 1), so she could be running as one of "
+                "them. Refusing. "
+                "--assume-down is ONLY for when she is KNOWN to be down." % blind)
+    return None
 
 
 # ---------------------------------------------------------------- layout
@@ -346,6 +390,33 @@ def _src_ident(path):
     return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
 
 
+def _sha256(path):
+    """Full-file SHA-256. Full, not sampled: her writes are scattered single-record updates
+    a sample would miss, and the tool already reads the whole file twice (copy + verify)."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(CHUNK), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def final_check(path, ident0, sha0, assume_down):
+    """Run IMMEDIATELY before os.replace. None = safe to swap; else the refusal text.
+    Slowest first, cheapest last, so the stat is the closest thing to the swap."""
+    if _sha256(path) != sha0:
+        return "source content changed since the copy (full SHA-256 differs)."
+    hits, methods, _notes, blind = in_use_report(path, quiet_s=0)
+    if hits:
+        return "file looks IN USE right before the swap:\n  " + "\n  ".join(hits)
+    gate = detection_gate(methods, blind, assume_down)
+    if gate:
+        return gate
+    if _src_ident(path) != ident0:
+        return "source (size, mtime or inode) changed right before the swap."
+    return None
+
+
 def _fsync_dir(d):
     if os.name == "nt":
         return
@@ -400,16 +471,17 @@ def grow(path, new_ncap, new_ecap=None, apply=False, assume_down=False, quiet_s=
     swapped = False
     try:
         _step("in_use")
-        hits, methods, notes = in_use_report(path, quiet_s=quiet_s)
+        hits, methods, notes, blind = in_use_report(path, quiet_s=quiet_s)
         report["in_use_methods"] = methods
         report["in_use_notes"] = notes
         if hits:
             raise GrowRefused("file looks IN USE -- shut her down first:\n  " + "\n  ".join(hits))
-        if not (set(methods) - {"quiescence"}) and not assume_down:
-            raise GrowRefused("no in-use detection method works here (%s); pass --assume-down "
-                              "only if you KNOW she is down" % ",".join(methods))
+        gate = detection_gate(methods, blind, assume_down)
+        if gate:
+            raise GrowRefused(gate)
         _step("read_old")
         ident0 = _src_ident(path)
+        sha0 = _sha256(path)
         old2 = read_layout(path)
         if old2["hdr"] != old["hdr"]:
             raise GrowRefused("header changed since planning")
@@ -462,6 +534,20 @@ def grow(path, new_ncap, new_ecap=None, apply=False, assume_down=False, quiet_s=
                 os.replace(c, "%s.pre_grow.%s" % (c, stamp))
                 moved.append(c)
         report["companions_moved_aside"] = moved
+        _fsync_dir(d)                           # backup link + companion renames durable
+        _step("final_check")
+        why = final_check(path, ident0, sha0, assume_down)
+        if why:
+            for c in moved:                     # undo: companions back where they were
+                aside = "%s.pre_grow.%s" % (c, stamp)
+                if not os.path.exists(c) and os.path.exists(aside):
+                    os.replace(aside, c)
+            try:
+                if os.path.samefile(bak, path):
+                    os.remove(bak)              # only a hard-link alias; a real copy is kept
+            except OSError:
+                pass
+            raise GrowRefused(why + " Nothing swapped; the live file is untouched.")
         _step("replace")
         os.replace(tmp, path)
         swapped = True
@@ -497,7 +583,8 @@ def main(argv=None):
     ap.add_argument("--edges", type=int, default=None, help="new edge capacity (default unchanged)")
     ap.add_argument("--apply", action="store_true", help="write (also needs AKASHIC_CORTEX_GROW=1)")
     ap.add_argument("--assume-down", action="store_true",
-                    help="proceed even if no in-use detection method is available")
+                    help="proceed even if in-use detection is unavailable or some processes "
+                         "could not be inspected. ONLY when she is KNOWN to be down")
     a = ap.parse_args(argv)
     try:
         r = grow(a.manifold, a.nodes, a.edges, apply=a.apply, assume_down=a.assume_down)
