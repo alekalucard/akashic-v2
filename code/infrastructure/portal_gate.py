@@ -96,6 +96,7 @@ _WD_CHUNK = 10000         # keys per chunk (measured: docs/nous/W9/SUMMARY.md)
 _WD_PAUSE_S = 0.01        # sleep between chunks
 _PORTAL_GATES = _wd_weakref.WeakSet()
 _WD_PASS_LOCK = threading.Lock()
+_WD_MAKE_LOCK = threading.Lock()
 
 
 def writer_decay_on() -> bool:
@@ -1422,10 +1423,13 @@ class LocalManifoldGate:
         if not writer_decay_on():
             return "off"
         try:
-            wd = getattr(self, "_writer_decay", None)
-            if wd is None:
-                wd = WriterDecay(self.graph)
-                self._writer_decay = wd
+            # one WriterDecay per GRAPH (not per gate): a second gate on the same manifold shares its cadence and its pass
+            with _WD_MAKE_LOCK:
+                wd = getattr(self.graph, "_w9_writer_decay", None)
+                if wd is None:
+                    wd = WriterDecay(self.graph)
+                    self.graph._w9_writer_decay = wd
+            self._writer_decay = wd
             return wd.maybe_start(beat, tau)
         except Exception as e:
             print(f"[WriterDecay] error: {type(e).__name__}: {e}", flush=True)

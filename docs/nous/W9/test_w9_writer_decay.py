@@ -248,6 +248,19 @@ class TestW9(_Base):
             pg._WD_PASS_LOCK.release()
         self.assertAlmostEqual(_act(m, "habit"), 0.5, places=6)
 
+    def test_two_gates_one_graph_share_one_cadence(self):
+        m = _mk(self.d)
+        m.upsert_node("habit", activation=0.5)
+        os.environ[SW] = "1"
+        g1, g2 = self.gate(m), self.gate(m)
+        g1.maybe_writer_decay(0, 1.0)
+        g2.maybe_writer_decay(0, 1.0)
+        self.assertEqual(g1.maybe_writer_decay(250, 1.0), "started")
+        g1._writer_decay._thread.join(10)
+        self.assertEqual(g2.maybe_writer_decay(250, 1.0), "not_due")      # same pass already ran for this graph
+        self.assertIs(g1._writer_decay, g2._writer_decay)
+        self.assertAlmostEqual(_act(m, "habit"), 0.499, places=5)
+
     # ---- cadence: the interior's, translated to beats ----
     def test_interval_matches_interior(self):
         self.assertEqual([pg.interior_decay_interval(t) for t in (0, -3, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 99.0)],
