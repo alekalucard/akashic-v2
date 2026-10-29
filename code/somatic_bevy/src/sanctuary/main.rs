@@ -19,6 +19,7 @@ mod gm_editor;
 mod gltf_avatar;
 mod chat_panel;
 mod postal_bridge;
+mod room;
 
 use world::SanctuaryWorldPlugin;
 use avatar::AvatarPlugin;
@@ -65,7 +66,8 @@ fn main() {
     println!("  F9            - Send test Nous message");
     println!();
 
-    App::new()
+    let mut app = App::new();
+    app
         // Full Bevy with rendering
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -109,9 +111,14 @@ fn main() {
             test_populate_chat,
             test_sourpatches_message,
             test_nous_message,
-        ))
+        ));
 
-        .run();
+    // Her room (first slice): OFF unless SANCTUARY_ROOM=1
+    if room::room_enabled() {
+        app.add_plugins(room::RoomPlugin);
+    }
+
+    app.run();
 }
 
 /// Global sanctuary state
