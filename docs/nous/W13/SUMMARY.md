@@ -1,117 +1,155 @@
-# W13 - a gate over the coma (branch nous/w13-coma-gate)
+# W13: a gate over the coma (branch nous/w13-coma-gate)
 
-Organ template: NOT edited, so Ace's permission is not needed for this branch. Both copies are untouched and have the same
-content (`diff` after stripping CR: empty) [M]. The gate calls the template's existing `wake()` (Organ_Template_0_3_0.py:3487-3509) [C].
+**Organ template: NOT edited**, so this branch needs no permission from Ace. Both copies are untouched, and their content is
+identical once CR is stripped [M]. The gate calls the template's existing `wake()` (Organ_Template_0_3_0.py:3487-3509) [C].
 
-Switch: **AKASHIC_COMA_GATE**. It is ON only when the value is exactly "1": `os.environ.get("AKASHIC_COMA_GATE", "0") == "1"`
-(server.py:5648, coma_gate.py:39) [C]. When it is unset or any other value, `_coma_gate = None` and every hook is skipped [C][M].
+**Switch: AKASHIC_COMA_GATE.** It is ON only when the value is exactly "1": `os.environ.get("AKASHIC_COMA_GATE", "0") == "1"`
+(server.py:5648, coma_gate.py:48) [C]. If it is unset, or set to "0", "true", " 1" or anything else, `_coma_gate = None` and all
+4 hooks are skipped [C][M].
 
-Files: new code/infrastructure/coma_gate.py (166 lines), code/tests/test_w13_coma_gate.py (15 tests),
-code/tests/w13_coma_gate_mutants.py. code/server.py: +30 lines, 0 removed. The file stays LF (0 CR before and after) [M].
+**Files:**
+- New: code/infrastructure/coma_gate.py (204 lines), code/tests/test_w13_coma_gate.py (26 tests), code/tests/w13_coma_gate_mutants.py.
+- code/server.py: +31 lines, 0 removed. The file is LF and stays LF: 0 CR before and after [M].
 
 ## 1. Map of the coma
 
-The checks live in one place only: the template, which has two copies with the same content.
-`_is_comatose` is at Organ_Template_0_3_0.py:3426-3477 [C].
-- `AKASHIC_COMA` :3440 uses `bool(env.get(...))`, so ANY non-empty value, "0" included, turns the coma ON [C].
-- `AKASHIC_SLEEP` :3445 overrides everything except P00 and the infra names. `AKASHIC_WAKE_PLANES` :3472. `AKASHIC_WAKE` :3476 [C].
-- Always exempt: plane P00 (:3455) and 11 infra names (:3459-3463) [C].
-- `_is_comatose` is read by: boot() :3572 (skips on_boot), and shadow start at :1447 (AKASHIC_SHARED_SHADOW_SCAN) and :1468 (AKASHIC_SHADOW_DEFER) [C].
+**Where it is checked.** Only in the template; its two copies are identical. `_is_comatose` is at Organ_Template_0_3_0.py:3426-3477 [C].
+- `AKASHIC_COMA` (:3440) is read with `bool(env.get(..))`. Any non-empty value turns it ON, including "0" [C].
+- `AKASHIC_SLEEP` (:3445) overrides everything except P00 and the infra set.
+- `AKASHIC_WAKE_PLANES` (:3472) and `AKASHIC_WAKE` (:3476) wake fairies [C].
+- Always exempt: plane P00 (:3455) and 11 infra names (:3459-3463).
+- Callers: boot() at :3572, plus the shadow start at :1447 and :1468 [C].
 
-Who sets them [C]:
-- boot_sour.bat: :27 COMA=1, :29 WAKE_PLANES=P20, :36 WAKE=<list>, :38 SLEEP=<3 names>. The "coma" mode at :56-57 blanks WAKE and WAKE_PLANES.
-- Also: start_HQ_COMA.bat:7, start_HQ_LEAN.bat:8-14, start_HQ_LEAN_GUI.bat and start_HQ_LEAN_GUI_TRACEMALLOC.bat :14-35,
-  start_nous_COMA.bat:23, start_nous_satellite.bat:20,39.
+**Who sets the variables** [C] (no .cmd or .ps1 file sets any of them [M]):
+- boot_sour.bat: :27 sets COMA=1, :29 sets WAKE_PLANES=P20, :36 sets WAKE, :38 sets SLEEP. Its "coma" mode blanks WAKE and WAKE_PLANES (:56-57).
+- Also: start_HQ_COMA.bat:7, start_HQ_LEAN.bat:8-14, start_HQ_LEAN_GUI(_TRACEMALLOC).bat:14-35, start_nous_COMA.bat:23,
+  start_nous_satellite.bat:20,39.
 - SLEEP only: start_nous.bat:97, boot_sour_full.bat:58.
-- No .cmd or .ps1 file sets any of them (grep) [M].
 
-What a comatose fairy still does [C]:
-- __init__ registers it in CITIZEN_OBJECTS and in the fairy registry (:1212-1248).
-- _wire_infrastructure runs (:3565): postal subscribe, directory register, heartbeat.
-- Its state is set to SLEEPING and it publishes `fairy.state.changed {coma:true}` (:3575-3582).
-- On every heartbeat it stamps `_tick_count`/`_last_tick`, echoes liveness every 10th beat, then returns (:4940-4981).
-- It does NOT run: on_boot, the spell chain (:3592), the SRM cluster (:3606), or the HeartbeatRegistry auto-register (:3616+).
-- Shadow: the per-fairy thread starts unless one of the two shadow flags is on. boot_sour.bat:45-46 sets both, so no shadow there.
+**What a comatose fairy still does** [C]:
+- It registers in CITIZEN_OBJECTS and the fairy registry (:1212-1248).
+- `_wire_infrastructure` runs: postal subscribe, directory register, heartbeat (:3565).
+- It sets `_booted=True` (:3548) and SLEEPING, and publishes `fairy.state.changed {coma:true}` (:3575-3582).
+- On every heartbeat it stamps liveness, and echoes every 10th beat (:4940-4981).
+- It skips on_boot, the spell chain (:3592), the SRM cluster (:3606) and the HeartbeatRegistry registration (:3616+).
+- The shadow thread runs unless AKASHIC_SHARED_SHADOW_SCAN or AKASHIC_SHADOW_DEFER is set. boot_sour.bat:45-46 sets both.
 
-No code calls `.wake(` anywhere, apart from the template's own definitions (grep) [M].
+**Nothing in code calls `.wake(`** [M grep].
 
-Her three gates [C]: AutonomyFairy, AutopilotFairy and EmbodimentFairy.
-- SomaticMindFairy._wake_three_gates expects {"autonomy","autopilot","embodiment"} (SomaticMindFairy/fairy.py:8171).
-  server.py:5665 runs it as SYSTEM.umf.
-- Each gate publishes `boot.fairy.request`: AutonomyFairy/fairy.py:2557, AutopilotFairy/fairy.py:3850, EmbodimentFairy/fairy.py:2128.
-- The only subscriber is server.py `_handle_fairy_boot_request`, subscribed at :6028 [C][M grep].
+**Her three gates** [C]:
+- AutonomyFairy (:2557), AutopilotFairy (:3850) and EmbodimentFairy (:2128) each publish `boot.fairy.request`.
+- SomaticMindFairy._wake_three_gates (fairy.py:8141, which expects these three at :8171) is launched by server.py:5665.
+- The only subscriber is `_handle_fairy_boot_request` (server.py:6029).
+- A fourth publisher, one_cortex.py:176 with gate "k2_fallback", is not one of her gates.
 
-Where the 7 gate requests are refused [C]: nothing refuses them outright. One of two things happens:
-- (a) The handler skips with "already registered" (server.py:5895). HarmonicCortex (:6523), QuantumInterference, QuantumSearch
-  and SRMIngest are built by the serial block and appended to registered_fairies, so they take this path.
-- (b) The handler builds the fairy and calls `instance.boot()` (:5964). boot() returns True with the fairy ASLEEP
-  (template :3572-3583), and the handler still prints "BOOTED" (:6001). That is the BOOTED-then-sleep line.
+**Where the 7 are refused.** Nothing refuses them explicitly. Each request ends one of two ways [C]:
+- **Skipped.** The handler prints "already registered" (server.py:5896). HarmonicCortex (:6523), QuantumInterference,
+  QuantumSearch and SRMIngest are built by the serial block and appended to registered_fairies first.
+- **Built, then put to sleep.** The handler builds the fairy and calls `instance.boot()` (:5965). boot() returns True with the
+  fairy asleep (template :3572-3583), and the handler still prints "BOOTED" (:6002).
 
-Domain lists [C]: AutonomyFairy:2425-2434 (InterestScheduler, SRMIngest, QuantumInterference, HarmonicCortex, QuantumSearch)
-and EmbodimentFairy:2006,2020 (PainDrive, SomaticAvatar).
+The requests come from the domain lists in AutonomyFairy:2425-2434 and EmbodimentFairy:2006,2020. All 7 classes inherit the
+template Fairy, and none of them overrides boot/wake [M grep].
 
-Discrepancy: InterestSchedulerFairy IS listed in boot_sour.bat:36 AKASHIC_WAKE, so under boot_sour the env gate does not sleep it [C].
-I could not verify why it sleeps in her run (there are no logs here).
+**Discrepancy:** InterestSchedulerFairy IS in boot_sour.bat:36 AKASHIC_WAKE [C]. I could not verify why it sleeps in her run, because there are no logs here.
 
-## 2. Shape
+## 2. Shape of the gate
 
-- **Who opens it:**
-  - The owner, by typing a line into an allow-list file: code/state/coma_gate_open.txt by default, or the path in AKASHIC_COMA_GATE_FILE.
-    A bare `Name` line means the owner opens it now: the owner watch wakes it within 5 s. It also lets her gates open it.
-  - Her gates, through their existing `boot.fairy.request` topic, but only for names the file opens to them with a `gate:Name` line.
-- **What opening does:** it finds the ONE existing instance and calls that instance's own `wake()`. It never constructs one.
-  - First place it looks: `fairy_template.citizen_registry.CITIZEN_OBJECTS[name]`, the single dict set at template :1248.
-  - Fallback: the directory record's `metadata["fairy_instance"]` (server.py sets it, e.g. :5985).
-  - One lock covers the check and the wake (coma_gate.py:104).
-- **How to close it:** delete the line, and later opens are refused. A fairy that was already woken stays awake until the next boot.
-  The gate does not re-sleep it with the template's `sleep()`, because `on_sleep` is optional and threads started by on_boot would keep running [I].
-- **What is logged:** each refusal is one line, `[COMA-GATE] REFUSED <name> (source=gate:<gate>|owner): <reason>`. Each open is one `OPENED` line.
+**Who may open it.**
+- The owner, through an allow-list file: code/state/coma_gate_open.txt, or the path in AKASHIC_COMA_GATE_FILE. The file is read on every call.
+  - A bare `Name` line means the owner opens it. A watch thread wakes it within 5 s, and her gates may also open it.
+  - A `gate:Name` line means only her gates may open it, when they ask.
+- Her three gates, through `boot.fairy.request`. Only gate values autonomy, autopilot or embodiment count (coma_gate.py:37).
+
+**What opening does.** The gate finds the ONE existing instance: CITIZEN_OBJECTS first (template :1248), then the directory
+record's metadata (server.py:5986). It never builds one. It calls that instance's own `wake()` and then marks the directory record "running".
+- A per-name claim, taken under a short lock, stops a double wake. The lock is released before `wake()`, so one slow on_boot does not block other fairies.
+- A just-built object that is not the registered one is refused (:118).
+- Only one woken instance per name is allowed (:125-129).
+
+**How to close it.** Delete the line, and later opens are refused. A fairy that is already awake stays awake until the next boot.
+The gate does not call the template's `sleep()`, because `on_sleep` is optional and threads started by on_boot would keep running [I].
+
+**What is logged.** Each refusal is one line: `[COMA-GATE] REFUSED <name> (source=..): <reason>`. The reasons are: not on the
+allow-list, not one of her three gates, no existing instance, a second copy, already opened, no wake(), and wake() raised.
 
 ## 3. What was built (switch OFF by default)
 
-coma_gate.py provides [C]:
-- `enabled`
-- `read_allow_list`: reads the file on every call, is BOM-safe, and a missing file means nothing opens.
-- `find_instance`: looks in sys.modules and never imports the template.
-- `open_for`, `on_boot_request`, `sweep`, `start_owner_watch`.
-
-server.py hooks, each behind `if _coma_gate is not None`:
-- Import: :5644-5651.
-- Early hook :5868-5875: an existing, asleep, listed instance is woken, then the handler returns and builds nothing.
-- Post-build hook :5967-5973: the instance just built is asleep and listed, so it is woken.
-- Owner watch: :6030-6035.
+- **Import** (server.py:5644-5651): the module is imported only when the switch is ON.
+- **Early hook** (:5868-5876): if a listed fairy already has an instance, the handler never builds again. It wakes the instance
+  if it is asleep. Unlisted fairies, a non-gate source, or no instance fall through to today's path.
+- **Post-build hook** (:5968-5974): wakes the instance the handler just built, but only if it is the registered one.
+- **Owner watch** (:6031-6036): the thread that wakes owner-listed fairies.
 
 ## Tests [M]
 
 Run with `python3 code/tests/test_w13_coma_gate.py`.
-- This branch: 15/15 pass.
-- CONTROL against main's server.py (SERVER_SRC=<main copy>): 4 tests FAIL:
-  - a new build wakes exactly once,
-  - an existing registered instance wakes in place,
-  - an existing unregistered instance is not rebuilt,
-  - the structural switch test.
-  The OFF test passes on main too, because OFF is today's behaviour.
-- CONTROL with no coma_gate.py, as on main (COMA_GATE_SRC=/nonexistent): 11 ERROR + 1 FAIL.
-- MUTANTS (code/tests/w13_coma_gate_mutants.py): 9/9 killed.
-  - M1 switch default "1"; M2 `!= "0"`; M3 asleep check dropped; M4 owner/gate split ignored; M5 allow-list cached;
-    M6 on_boot called instead of wake.
-  - S1 server switch default "1"; S2 post-build hook dropped; S3 early hook falls through (builds a 2nd instance).
+
+| Run | Result |
+|---|---|
+| This branch | 26/26 pass |
+| CONTROL: main's server.py (SERVER_SRC) | 9 FAIL (every gate-ON handler test and the structural test). The OFF test passes, because OFF is today's behaviour. |
+| CONTROL: main, which has no module (COMA_GATE_SRC=/nonexistent) | 1 FAIL + 23 ERROR |
+| MUTANTS (w13_coma_gate_mutants.py) | 20/20 killed |
+
+The mutants cover: the switch default and `!=` form (M1, M2, S1); a dropped asleep check, claim, lock-across-wake,
+second-copy check or one-per-name check; a cached allow-list; on_boot called instead of wake; no GATES check; HANDLED
+shrunk; the early or post-build hook removed or weakened; the directory not marked; and a case-sensitive `gate:` prefix.
 
 ## Could NOT verify
 
-- Real fairies were not run. The tests use a FakeFairy that copies wake()'s contract, and a structural test pins the template text.
-  What a real on_boot does after a wake was not exercised.
-- wake() does NOT run the steps boot() skipped after on_boot: the spell chain (:3592), the SRM cluster (:3606) and the
-  HeartbeatRegistry register (:3616+) [C]. A woken fairy may therefore lack them [I]. That is how the template's wake() works today.
-- In her runtime: the postal delivery order and threading of boot.fairy.request, and how the 5 s watch thread behaves under PYTHON_GIL=0.
-- Why InterestSchedulerFairy sleeps under boot_sour (see the discrepancy above).
+- No real fairy was run. FakeFairy copies the wake() contract, and a structural test pins the template text.
+- wake() does not run what boot() skipped after on_boot: the spell chain (:3592), the SRM cluster (:3606) and the HeartbeatRegistry
+  registration (:3616+) [C]. A woken fairy may lack those [I]. This is how the template's own wake() behaves today.
+- How postal threading and order behave in her runtime, and the watch thread under PYTHON_GIL=0.
+- Why InterestScheduler sleeps under boot_sour.
 
 ## CHECK THESE 3
 
-1. The handler prints BOOTED for a fairy that boot() has just put to sleep: server.py:5964 and :6001, against template :3572-3583.
-2. CITIZEN_OBJECTS is the ONE instance map, and the gate cannot build an instance: template :1212-1248, coma_gate.py:66-84.
-3. With the switch OFF the behaviour is identical to today: server.py:5646-5651 leaves `_coma_gate = None`, and every use
-   (:5870, :5971, :6033) sits behind `_coma_gate is not None`.
+1. The handler prints BOOTED for a fairy that boot() just put to sleep: server.py:5965 and :6002, against template :3572-3583.
+2. The gate cannot build an instance and wakes at most one per name: coma_gate.py:75-93 and :114-140, with template :1212-1248 (the registry slot rule).
+3. With the switch OFF, behaviour is today's: server.py:5646-5651 leaves `_coma_gate = None`, and the uses at :5871, :5972 and :6034 are all guarded.
 
 ## REVIEW
-(pending)
+
+The reviewer was a fresh remote session (session_01WZwX7mfHQSfYU3QCAgTfSw) that did not see my reasoning. It ran 3 rounds.
+
+- **Round 1** found: (7b) an awake listed instance was rebuilt; (7c) a listed instance was rebuilt after wake() raised;
+  (7d) concurrent builds were both woken; (4b) any gate value was accepted; (7e) the lock was held across on_boot; and test gaps.
+- **Round 2** found that 7d was still broken under a registry that always overwrites, plus test gap N3.
+
+All of these were fixed in e4fc3df and b780a2f. This is the final verdict, round 3 at b780a2f, verbatim:
+
+```
+# | claim/attack | result | evidence file:line [tag]
+1a | branch tests pass | HOLDS | 26/26 OK, code/tests/test_w13_coma_gate.py [M]
+1b | controls fail on main | HOLDS | main + no module: 1 FAIL + 23 ERROR/26; main server.py + new module: 9 FAIL [M]
+2a | author mutants M1-6, S1-4, X1-X10 | HOLDS | 20/20 killed, w13_coma_gate_mutants.py [M]
+2b | my N1-N3, N6-N10 | HOLDS | all killed (N3, the round-2 gap, is now killed), probe/m2.py, m3.py [M]
+2c | my N4 (post-build hook drops directory=) | survives, equivalent | server.py marks the record "running" right after anyway, server.py:5980-5984 [M][C]
+3 | switch OFF unless exactly "1" | HOLDS | coma_gate.py:42, server.py:5648; 4 uses, all guarded :5871/:5972/:6033 [C][M]
+4a | publishers of boot.fairy.request | HOLDS | Autonomy:2557, Autopilot:3850, Embodiment:2128, one_cortex.py:176 [C]
+4b | only her 3 gates may open | HOLDS | GATES coma_gate.py:37; P4 "anybody" stays asleep [M]
+4c | k2_fallback / unlisted fairy falls through to today's path | HOLDS (same as main) | P2/7g: second build happens identically with the gate OFF [M]
+4d | other wake / build paths | OPEN | directory/fairy.py:914 wake_fairy not routed through the gate; portal-subprocess fairies are invisible to find_instance [C][I]
+5 | second template / second handler copy | HOLDS | P10 Organ_Template_0.3.0.py byte-identical (cmp); no other handler [M][C]
+6 | behaviour change with switch OFF | HOLDS | server.py diff is additions only (0 removed lines); OFF probes match main (P1-P4, 7d OFF) [M]
+7a | 7b: existing instance, awake, not registered, second request | HOLDS (fixed) | built=1, resolves=0; "awake" is in HANDLED, coma_gate.py:39 [M]
+7b | 7c: wake() raises | HOLDS (fixed) | built=1, resolves=0 [M]
+7c | 7d: concurrent build, harness that always overwrites the slot | HOLDS (fixed) | built=2 (as on main), awake=1, on_boot=1; _opened check coma_gate.py:125-129 [M]
+7d | 7d: concurrent build, real template rule | HOLDS | built=2, awake=1, and the registry holds the awake copy, probe/p4.py [M]
+7e | 7d under the overwrite rule: registry slot holds the asleep copy | OPEN (benign) | awake copy != CITIZEN_OBJECTS copy; the real template rule avoids this [M][I]
+7f | lock held across slow on_boot | HOLDS (fixed) | per-name _waking claim; lock released before wake(); X7 killed [M]
+7g | one woken instance per name, forever | OPEN (design) | a hot-reloaded replacement is refused ("already-opened", which is in HANDLED) while the old object is alive, so it stays asleep [C][I]
+7h | double build race itself | OPEN (not the gate's) | two concurrent requests still build 2 instances, as on main; the gate only keeps 1 awake [M]
+8 | line endings | HOLDS | CR=0 in all 4 files on the branch; server.py CR=0 on main; the 3 new files don't exist on main [M]
+```
+
+### OPEN
+
+- **4d.** `directory/fairy.py:914 wake_fairy`, used by the BootOrchestrator, calls `boot()`. boot() returns early once
+  `_booted` is set (template :3545), so this path never wakes a comatose fairy, and the gate does not hook it [C].
+  The owner watch still reaches those instances through CITIZEN_OBJECTS. Fairies booted in a portal subprocess are out of reach.
+- **7g.** One woken instance per name, for good. A hot-reloaded replacement stays asleep until the old object is collected.
+  This is a deliberate trade against 7d.
+- **7e / 7h.** Main's duplicate-build race is not fixed here, and is out of scope. The gate keeps only one copy awake.
