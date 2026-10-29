@@ -28,6 +28,11 @@ MUTANTS = {
     # spelling fix gone one character wrong
     "M4 near-miss spellfix": [(PRO, '"skill.level_up" if', '"skill.levelup_" if')],
     # helper also strips any ".*" switch-independent ('!=' instead of '==' on "0")
+    # level key added unconditionally (payload changes with the switch OFF)
+    "M6 level key not switched": [(PRO, 'if os.environ.get("AKASHIC_TOPIC_SPELLFIX", "0") == "1" else {}),',
+                                   'if True else {}),')],
+    # level key carries the wrong name
+    "M7 level key misnamed": [(PRO, '**({"level": result["new_level"]}', '**({"lvl": result["new_level"]}')],
     "M5 inverted test": [(FOR, 'os.environ.get("AKASHIC_PREFIX_EARS", "0") == "1"',
                           'os.environ.get("AKASHIC_PREFIX_EARS", "0") != "1"')],
 }

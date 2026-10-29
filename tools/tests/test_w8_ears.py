@@ -168,6 +168,27 @@ class SwitchOn(unittest.TestCase):
             self.assertIn(new, pubs, f)
             self.assertNotIn(old, pubs, f)
 
+    def test_level_up_payload_carries_level_when_fixed(self):
+        # EgoLearnerFairy._on_skill_level_up reads payload["level"] (fairy.py:594); profile.py sent
+        # only "new_level", so every level-up on the fixed path would have counted as level 0.
+        tree = ast.parse(read(PRO))
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and n.args
+                 and "skill.level_up" in ast.unparse(n.args[0])]
+        self.assertEqual(len(calls), 1)
+        payload = calls[0].args[1]
+        from types import SimpleNamespace as NS
+        ns = {"result": {"new_level": 3}, "skill_name": "s",
+              "self": NS(_profile=NS(actor_name="A"))}
+        for env, want in ((SPELL_ON, {"fairy": "A", "skill": "s", "new_level": 3, "level": 3}),
+                          (OFF, {"fairy": "A", "skill": "s", "new_level": 3}),
+                          (ON, {"fairy": "A", "skill": "s", "new_level": 3})):
+            with mock.patch.dict(os.environ, env, clear=False):
+                for k in ("AKASHIC_TOPIC_SPELLFIX", "AKASHIC_PREFIX_EARS"):
+                    if k not in env:
+                        os.environ.pop(k, None)
+                got = eval(compile(ast.Expression(payload), PRO, "eval"), {"os": os, **ns})
+            self.assertEqual(got, want, env)
+
     def test_switches_independent(self):
         for f, (old, new) in SPELL.items():
             self.assertIn(old, topics(read(f), ON)["pub"], f)

@@ -1,5 +1,10 @@
 # W8 SUMMARY: let the stranded letters through
 
+## Follow-up (10-29, owner approved): level key for EgoLearner
+- `profile.py:121-128`: with `AKASHIC_TOPIC_SPELLFIX=1` the `skill.level_up` payload now also carries `"level"` (EgoLearnerFairy reads
+  `payload.get("level", 0)`, `EgoLearnerFairy/fairy.py:594`) [C]. Switch off: payload exactly as before (test) [M]. CRLF kept (445/445).
+- Tests now 10: FIXED PASS; CONTROL FAIL (4); M1-M7 all FAIL, incl. M6 "level key not switched" and M7 "level key misnamed" [M].
+
 Branch `nous/w8-ears` (from `origin/nous/w3-dead-letter-triage`). Tags: [C] read in code,
 [M] measured here, [I] inference. Line numbers are on this branch.
 

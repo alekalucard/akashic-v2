@@ -122,6 +122,9 @@ class ProfileMixin:
                     "fairy": self._profile.actor_name,
                     "skill": skill_name,
                     "new_level": result["new_level"],
+                    # W8: EgoLearnerFairy reads "level" (fairy.py:594); add it on the fixed path only
+                    **({"level": result["new_level"]}
+                       if os.environ.get("AKASHIC_TOPIC_SPELLFIX", "0") == "1" else {}),
                 },
             )
 
