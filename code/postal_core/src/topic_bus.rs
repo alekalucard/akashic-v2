@@ -17,6 +17,7 @@ use crate::backpressure::BackpressurePolicy;
 use crate::envelope::Envelope;
 use crate::metrics::{MetricsSnapshot, PostalMetrics};
 use crate::priority::Priority;
+use crate::return_office::{ReturnOffice, RETURN_POOL, RETURN_RATE_DEFAULT, RETURN_RATE_FLOOR, RETURN_RING_DEFAULT};
 use crate::worker::{cpu_pressure, WorkerPool, WorkerPoolConfig};
 
 /// Configuration for the TopicBus.
@@ -34,6 +35,20 @@ pub struct TopicBusConfig {
     pub backpressure: BackpressurePolicy,
     /// Autoscale check interval in ms.
     pub autoscale_interval_ms: u64,
+    /// W2 return to sender. Default: AKASHIC_RETURN_TO_SENDER == "1" (OFF when unset).
+    pub return_to_sender: bool,
+    /// Ring of the last N returns. Default: AKASHIC_RETURN_RING or 256.
+    pub return_ring: usize,
+    /// Returned letters re-published per intent per second (floor 1). Default: AKASHIC_RETURN_RATE or 10.
+    pub return_rate_per_intent: u32,
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name).map(|v| v == "1").unwrap_or(false)
+}
+
+fn env_num<T: std::str::FromStr>(name: &str, default: T) -> T {
+    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
 impl Default for TopicBusConfig {
@@ -50,6 +65,9 @@ impl Default for TopicBusConfig {
             default_target_p95_ms: 150,
             backpressure: BackpressurePolicy::DropOldestLow,
             autoscale_interval_ms: 250,
+            return_to_sender: env_flag("AKASHIC_RETURN_TO_SENDER"),
+            return_ring: env_num("AKASHIC_RETURN_RING", RETURN_RING_DEFAULT),
+            return_rate_per_intent: env_num("AKASHIC_RETURN_RATE", RETURN_RATE_DEFAULT).max(RETURN_RATE_FLOOR),
         }
     }
 }
@@ -118,6 +136,9 @@ pub struct TopicBus {
 
     /// Stop flag.
     stop_flag: Arc<AtomicBool>,
+
+    /// W2 return to sender. None = switch off = publish_routed exactly as before.
+    returns: Option<Arc<ReturnOffice>>,
 }
 
 impl TopicBus {
@@ -128,6 +149,11 @@ impl TopicBus {
 
     /// Create a new TopicBus with custom configuration.
     pub fn with_config(config: TopicBusConfig) -> Self {
+        let returns = if config.return_to_sender {
+            Some(Arc::new(ReturnOffice::new(config.return_ring, config.return_rate_per_intent)))
+        } else {
+            None
+        };
         let bus = Self {
             config: RwLock::new(config),
             topic_configs: DashMap::new(),
@@ -135,6 +161,7 @@ impl TopicBus {
             metrics: Arc::new(PostalMetrics::new()),
             autoscaler: RwLock::new(None),
             stop_flag: Arc::new(AtomicBool::new(false)),
+            returns,
         };
         bus.start_autoscaler();
         bus
@@ -230,6 +257,7 @@ impl TopicBus {
         self.ensure_topic(&topic);
 
         // Get subscribers and enqueue for each
+        let mut wanted = 0usize;
         if let Some(entry) = self.topics.get(&topic) {
             let state = entry.value();
 
@@ -243,10 +271,30 @@ impl TopicBus {
                 // TODO: Implement batching/coalescing for subscribers that want it
                 // For now, direct enqueue
                 state.pool.enqueue(envelope.clone(), subscriber.handler_id);
+                wanted += 1;
+            }
+        }
+
+        // W2 RETURN TO SENDER: nobody wanted it. Counted as returned, NOT as published. Runs after the
+        // DashMap guard above is dropped: the return publish may ensure_topic(RETURN_POOL).
+        if wanted == 0 {
+            if let Some(office) = &self.returns {
+                if let Some(back) = office.process(&envelope) {
+                    self.publish_routed(RETURN_POOL, back);
+                }
+                return;
             }
         }
 
         self.metrics.inc_published();
+    }
+
+    /// W2: return-to-sender counters and ring. {"enabled": false} when the switch is off.
+    pub fn returns_snapshot(&self) -> serde_json::Value {
+        match &self.returns {
+            Some(office) => office.snapshot(),
+            None => serde_json::json!({"enabled": false}),
+        }
     }
 
     /// Publish with a specific priority override.
@@ -485,5 +533,105 @@ mod tests {
         assert_eq!(stats.len(), 2);
 
         bus.shutdown();
+    }
+
+    // ── W2 return to sender ────────────────────────────────────────────────────────────
+    fn bus_with_returns(on: bool) -> TopicBus {
+        let mut cfg = TopicBusConfig::default();
+        cfg.return_to_sender = on;
+        cfg.return_ring = 16;
+        cfg.return_rate_per_intent = 10;
+        TopicBus::with_config(cfg)
+    }
+
+    fn letter(intent: &str, sender: &str) -> Envelope {
+        Envelope::new(intent, serde_json::json!({"source": sender, "x": 1}))
+    }
+
+    #[test]
+    fn w2_off_is_todays_behaviour() {
+        let bus = bus_with_returns(false);
+        bus.publish_routed("delta", letter("delta.two", "S"));
+        assert_eq!(bus.metrics().messages_published, 1); // counted published, dropped: today
+        assert_eq!(bus.returns_snapshot(), serde_json::json!({"enabled": false}));
+        bus.shutdown();
+    }
+
+    #[test]
+    fn w2_on_returns_to_sender_mailbox() {
+        let bus = bus_with_returns(true);
+        let got = Arc::new(AtomicUsize::new(0));
+        let g = Arc::clone(&got);
+        bus.subscribe_filtered(
+            "postal",
+            move |env| {
+                if env.payload["intent"] == "delta.two" && env.payload["_returned"] == true {
+                    g.fetch_add(1, Ordering::Relaxed);
+                }
+            },
+            "mailbox-S",
+            0,
+            1,
+            Some("postal.returned.S".to_string()),
+        );
+        thread::sleep(Duration::from_millis(50));
+        bus.publish_routed("delta", letter("delta.two", "S"));
+        for _ in 0..100 {
+            if got.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(got.load(Ordering::Relaxed), 1);
+        let r = bus.returns_snapshot();
+        assert_eq!(r["messages_returned"], 1);
+        assert_eq!(r["returns_delivered"], 1);
+        assert_eq!(r["return_undeliverable"], 0);
+        assert_eq!(bus.metrics().messages_published, 1); // the delivered return, not the letter
+        bus.shutdown();
+    }
+
+    #[test]
+    fn w2_on_undeliverable_return_is_counted_not_looped() {
+        let bus = bus_with_returns(true);
+        bus.publish_routed("delta", letter("delta.two", "S"));
+        let r = bus.returns_snapshot();
+        assert_eq!(r["messages_returned"], 1);
+        assert_eq!(r["return_undeliverable"], 1);
+        assert_eq!(r["ring"].as_array().unwrap().len(), 2);
+        assert_eq!(bus.metrics().messages_published, 0);
+        bus.shutdown();
+    }
+
+    #[test]
+    fn w2_on_no_sender_counted_not_sent() {
+        let bus = bus_with_returns(true);
+        bus.publish_routed("void", Envelope::new("void.x", serde_json::json!({})));
+        let r = bus.returns_snapshot();
+        assert_eq!(r["returns_no_sender"], 1);
+        assert_eq!(r["returns_delivered"], 0);
+        bus.shutdown();
+    }
+
+    /// Per-publish cost, no subscriber. cargo test --release -- --ignored --nocapture w2_cost
+    #[test]
+    #[ignore]
+    fn w2_cost() {
+        for on in [false, true] {
+            let mut cfg = TopicBusConfig::default();
+            cfg.return_to_sender = on;
+            cfg.return_rate_per_intent = 1; // most returns suppressed: measures the office, not pools
+            let bus = TopicBus::with_config(cfg);
+            let n = 200_000u32;
+            let env = letter("cost.none", "S");
+            bus.publish_routed("cost", env.clone()); // create the pool outside the timing
+            let t0 = std::time::Instant::now();
+            for _ in 0..n {
+                bus.publish_routed("cost", env.clone());
+            }
+            let ns = t0.elapsed().as_nanos() as f64 / n as f64;
+            println!("W2 rust no-subscriber publish, return_to_sender={}: {:.0} ns/publish", on, ns);
+            bus.shutdown();
+        }
     }
 }

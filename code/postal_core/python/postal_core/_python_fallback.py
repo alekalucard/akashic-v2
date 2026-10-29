@@ -8,11 +8,12 @@ Based on Whisper's parallel_fabric.py patterns.
 """
 
 import json
+import os
 import queue
 import threading
 import time
 import uuid
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 import statistics
@@ -709,6 +710,95 @@ class _WorkerPool:
                 self.latencies = self.latencies[-256:]
 
 
+# ── RETURN TO SENDER (W2 2026-10-29, Nous) ─────────────────────────────────────
+# Ace: a letter the postal system cannot deliver goes BACK TO THE SENDER, never into the void.
+# Before this, publish() with zero subscribers counted the letter as published and dropped it.
+# SWITCH: AKASHIC_RETURN_TO_SENDER=1 (OFF when unset = byte-identical to before; read once per
+# PostalCore). The Rust TopicBus (src/topic_bus.rs ReturnOffice) implements the same rules.
+#   * every undeliverable letter: messages_returned += 1 and a ring entry (sender, intent, t, reason)
+#   * the sender is payload["source"] (TensorFabric.publish source=), else payload["_sender"]
+#     (FairyPostalWrapper), else Envelope.source. publish() itself takes no sender argument.
+#   * the returned letter is published to "postal.returned.<sender>" with the original payload
+#   * a returned letter that is itself undeliverable is counted (return_undeliverable), never returned
+#   * delivery is rate-bounded per intent (AKASHIC_RETURN_RATE per second, floor RETURN_RATE_FLOOR);
+#     counting and the ring are never rate-bounded.
+RETURN_PREFIX = "postal.returned."
+RETURN_RATE_FLOOR = 1          # returns per intent per second that always flow, whatever the setting
+RETURN_RATE_DEFAULT = 10
+RETURN_RING_DEFAULT = 256
+
+
+def _env_int(name: str, default: int, floor: int) -> int:
+    try:
+        return max(floor, int(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        return max(floor, default)
+
+
+def return_sender_of(payload, source: str = "") -> str:
+    """Who sent this letter. Payload keys first: publish() has no sender argument."""
+    if isinstance(payload, dict):
+        for _k in ("source", "_sender"):
+            _v = payload.get(_k)
+            if isinstance(_v, str) and _v:
+                return _v
+    return source or ""
+
+
+class _ReturnOffice:
+    """Counts, remembers and rate-bounds returned letters. Delivery is done by the caller."""
+
+    def __init__(self, ring_size: int = None, rate_per_intent: int = None):
+        self.ring_size = ring_size or _env_int("AKASHIC_RETURN_RING", RETURN_RING_DEFAULT, 1)
+        self.rate = max(RETURN_RATE_FLOOR, rate_per_intent if rate_per_intent is not None
+                        else _env_int("AKASHIC_RETURN_RATE", RETURN_RATE_DEFAULT, RETURN_RATE_FLOOR))
+        self._lock = threading.Lock()
+        self._ring = deque(maxlen=self.ring_size)
+        self._window: Dict[str, List[int]] = {}   # intent -> [window_second, sent_in_window]
+        self.returned = 0              # undeliverable letters (all of them)
+        self.delivered_back = 0        # returned letters handed to the router
+        self.suppressed = 0            # over the per-intent rate: counted, not re-published
+        self.no_sender = 0             # nobody to return it to
+        self.undeliverable = 0         # a returned letter that could not be delivered either
+
+    def note(self, sender: str, intent: str, reason: str) -> None:
+        with self._lock:
+            self._ring.append({"sender": sender, "intent": intent, "t": time.time(), "reason": reason})
+            if reason == "return_undeliverable":
+                self.undeliverable += 1
+            else:
+                self.returned += 1
+                if not sender:
+                    self.no_sender += 1
+
+    def may_send(self, intent: str, now: float = None) -> bool:
+        sec = int(time.time() if now is None else now)
+        with self._lock:
+            w = self._window.get(intent)
+            if w is None or w[0] != sec:
+                if len(self._window) > 4096:       # bound the table itself
+                    self._window.clear()
+                w = self._window[intent] = [sec, 0]
+            if w[1] < self.rate:
+                w[1] += 1
+                self.delivered_back += 1
+                return True
+            self.suppressed += 1
+            return False
+
+    def stats(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "messages_returned": self.returned,
+                "returns_delivered": self.delivered_back,
+                "returns_suppressed": self.suppressed,
+                "returns_no_sender": self.no_sender,
+                "return_undeliverable": self.undeliverable,
+                "rate_per_intent": self.rate,
+                "ring": list(self._ring),
+            }
+
+
 class PostalCore:
     """
     Central message bus - pure Python implementation.
@@ -730,6 +820,11 @@ class PostalCore:
             "pool_tunnel_fallbacks": 0,
         }
         self._running = True
+
+        # W2 (2026-10-29): both OFF when unset -> byte-identical to before.
+        self._return_office = (_ReturnOffice()
+                               if os.environ.get("AKASHIC_RETURN_TO_SENDER", "0") == "1" else None)
+        self._prefix_any_depth = os.environ.get("AKASHIC_POSTAL_PREFIX_ANY_DEPTH", "0") == "1"
 
         # ── POOL ROUTER (2026-04-15 Nous + Ace — POSTAL_INSIDE_PORTAL Phase 1) ──
         # Critical pool traffic (heartbeat, thought, cortex, memory, somatic, srm)
@@ -1003,6 +1098,11 @@ class PostalCore:
                     two_level = f"{parts[0]}.{parts[1]}"
                     if two_level != intent and two_level != topic:
                         subs.extend(self._subscribers.get(two_level, []))
+            # W2 (c): AKASHIC_POSTAL_PREFIX_ANY_DEPTH -- also every prefix of depth 3..n-1, the
+            # Rust rule (topic_bus.rs:86-91). Without it, sub "a.b.c" never hears pub "a.b.c.d".
+            if self._prefix_any_depth and len(parts) >= 4:
+                for _k in range(3, len(parts)):
+                    subs.extend(self._subscribers.get('.'.join(parts[:_k]), []))
 
             # DEBUG: Log memory.recall delivery attempts
             if "memory.recall" in intent:
@@ -1055,6 +1155,11 @@ class PostalCore:
             _pc_t2 = _pct.time()
             _pcs.stderr.write(f"[PC-DM-DEBUG] Lock released, {len(subs)} subs, starting enqueue ({_pc_t2 - _pc_t0:.3f}s total so far)\n")
             _pcs.stderr.flush()
+
+        # W2 (a): RETURN TO SENDER -- nobody wanted it. Counted as returned, NOT as published.
+        if not subs and self._return_office is not None:
+            self._return_to_sender(intent, payload, envelope.source, priority)
+            return
 
         self._metrics["messages_published"] += 1
 
@@ -1111,6 +1216,36 @@ class PostalCore:
             _pc_t3 = _pct.time()
             _pcs.stderr.write(f"[PC-DM-DEBUG] Enqueue complete ({_pc_t3 - _pc_t2:.3f}s for {len(subs)} subs, delivered={_dm_enq_i})\n")
             _pcs.stderr.flush()
+
+    def _return_to_sender(self, intent: str, payload, source: str, priority: int) -> None:
+        """An undeliverable letter: count it, remember it, and send it back once (no loops)."""
+        office = self._return_office
+        is_return = intent.startswith(RETURN_PREFIX) or (
+            isinstance(payload, dict) and payload.get("_returned") is True)
+        if is_return:
+            # A returned letter nobody collects: counted, never returned again.
+            office.note(return_sender_of(payload, source), intent, "return_undeliverable")
+            return
+        sender = return_sender_of(payload, source)
+        office.note(sender, intent, "no_subscriber")
+        if not sender or not office.may_send(intent):
+            return
+        self.publish(RETURN_PREFIX + sender, {
+            "_returned": True,
+            "reason": "no_subscriber",
+            "intent": intent,
+            "sender": sender,
+            "t": int(time.time() * 1000),
+            "letter": payload,
+        }, priority)
+
+    def returns(self) -> Dict[str, Any]:
+        """W2: return-to-sender counters and the last N returns. {"enabled": False} when the switch is off."""
+        if self._return_office is None:
+            return {"enabled": False}
+        out = self._return_office.stats()
+        out["enabled"] = True
+        return out
 
     def wire_plane_batteries(self, plane_batteries: dict) -> int:
         """Wire PlaneBattery charge levels into postal worker pool scaling.

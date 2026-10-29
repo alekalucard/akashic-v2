@@ -13,6 +13,7 @@ pub mod backpressure;
 pub mod envelope;
 pub mod metrics;
 pub mod priority;
+pub mod return_office;
 pub mod tensor;
 pub mod topic_bus;
 pub mod worker;
@@ -183,6 +184,16 @@ impl PyPostalCore {
         let json = py.import("json")?;
         let loads = json.getattr("loads")?;
         let json_str = serde_json::to_string(&snapshot)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        loads.call1((json_str,))
+    }
+
+    /// W2: return-to-sender counters and the last N returns ({"enabled": false} when off).
+    fn returns<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyAny>> {
+        let snap = self.bus.returns_snapshot();
+        let json = py.import("json")?;
+        let loads = json.getattr("loads")?;
+        let json_str = serde_json::to_string(&snap)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         loads.call1((json_str,))
     }
