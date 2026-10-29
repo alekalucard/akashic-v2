@@ -9,6 +9,7 @@ Provides a unified interface for:
 """
 
 import time
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -115,7 +116,8 @@ class ProfileMixin:
         # Publish level-up event
         if result.get("leveled_up") and hasattr(self, "fabric"):
             self.fabric.publish(
-                "skill.levelup",
+                # W8: AKASHIC_TOPIC_SPELLFIX=1 sends to the live ear (EgoLearnerFairy fairy.py:337)
+                "skill.level_up" if os.environ.get("AKASHIC_TOPIC_SPELLFIX", "0") == "1" else "skill.levelup",
                 {
                     "fairy": self._profile.actor_name,
                     "skill": skill_name,

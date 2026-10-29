@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import time
+import os
 import json
 import hashlib
 from pathlib import Path
@@ -115,7 +116,8 @@ def inject_education_goal(packet: NousEducationPacket) -> bool:
     
     try:
         goal_packet = packet.to_goal_packet()
-        postal.route("goal_scheduler.inject", goal_packet)
+        # W8: AKASHIC_TOPIC_SPELLFIX=1 sends to the live ear (goal_scheduler_fairy.py:1023)
+        postal.route("goal.scheduler.inject" if os.environ.get("AKASHIC_TOPIC_SPELLFIX", "0") == "1" else "goal_scheduler.inject", goal_packet)
         print(f"[NousTrainer] Injected: {packet.topic}")
         return True
     except Exception as e:

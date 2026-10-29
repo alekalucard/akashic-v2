@@ -29,6 +29,18 @@ from ..mini_stubs.mini_cognition import get_mini_cognition
 from ..mini_stubs.mini_body import get_mini_body
 
 
+def _prefix_ear(topic):
+    """W8: a literal "x.*" ear becomes the prefix "x" when AKASHIC_PREFIX_EARS=1.
+
+    No router expands '*' (code/postal_core/src/topic_bus.rs:86-91); a subscription on
+    "x" receives "x" and every "x.Y". Switch unset or not "1": topic is returned unchanged.
+    """
+    import os
+    if os.environ.get("AKASHIC_PREFIX_EARS", "0") == "1" and topic.endswith(".*"):
+        return topic[:-2]
+    return topic
+
+
 class SomaticMode(Enum):
     """Operating modes for SomaticMind."""
     PRE_BOOT = "pre_boot"       # Training wheels - direct links active
@@ -106,8 +118,8 @@ class SomaticMind:
 
     # Subscriptions for learning
     SUBSCRIPTIONS = [
-        "blueprint.*",           # System state changes
-        "diary.*",               # Fairy activity logs
+        _prefix_ear("blueprint.*"),  # System state changes
+        _prefix_ear("diary.*"),      # Fairy activity logs
         "health.*",              # TracerDaemon health
         "fairy.error",           # Error events
         "consciousness.*",       # Consciousness loop events

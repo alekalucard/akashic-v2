@@ -43,6 +43,18 @@ except ImportError:
     print("[SensoryIntegration] Ingestion filter not available")
 
 
+def _prefix_ear(topic):
+    """W8: a literal "x.*" ear becomes the prefix "x" when AKASHIC_PREFIX_EARS=1.
+
+    No router expands '*' (code/postal_core/src/topic_bus.rs:86-91); a subscription on
+    "x" receives "x" and every "x.Y". Switch unset or not "1": topic is returned unchanged.
+    """
+    import os
+    if os.environ.get("AKASHIC_PREFIX_EARS", "0") == "1" and topic.endswith(".*"):
+        return topic[:-2]
+    return topic
+
+
 class SensoryIntegration:
     """
     Integrates all sensory systems for embodied awareness.
@@ -113,7 +125,7 @@ class SensoryIntegration:
         # Subscribe to window events and action feedback via postal
         if postal:
             try:
-                postal.subscribe("sensory.window.*", self._on_window_event)
+                postal.subscribe(_prefix_ear("sensory.window.*"), self._on_window_event)
                 postal.subscribe("sensory.visual.action_feedback", self._on_action_feedback)
                 postal.subscribe("embodiment.motor.feedback", self._on_motor_feedback)
                 print("[SensoryIntegration] [OK] Subscribed to window/action events")

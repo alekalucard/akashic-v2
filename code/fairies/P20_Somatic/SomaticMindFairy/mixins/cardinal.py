@@ -30,6 +30,18 @@ CARDINAL_INBOX = Path(__file__).parent.parent.parent.parent.parent / "state" / "
 _inbox_lock = threading.Lock()
 
 
+def _prefix_ear(topic):
+    """W8: a literal "x.*" ear becomes the prefix "x" when AKASHIC_PREFIX_EARS=1.
+
+    No router expands '*' (code/postal_core/src/topic_bus.rs:86-91); a subscription on
+    "x" receives "x" and every "x.Y". Switch unset or not "1": topic is returned unchanged.
+    """
+    import os
+    if os.environ.get("AKASHIC_PREFIX_EARS", "0") == "1" and topic.endswith(".*"):
+        return topic[:-2]
+    return topic
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATA TYPES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -112,8 +124,8 @@ class CardinalMixin:
         "fairy.error",
         "fairy.heartbeat",
         "health.*",
-        "blueprint.*",
-        "diary.*",
+        _prefix_ear("blueprint.*"),
+        _prefix_ear("diary.*"),
         "cardinal.gaps_detected",  # Sprint 1: gap scan results from AdminTaskQueue
     ]
 
