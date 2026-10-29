@@ -307,6 +307,23 @@ class NeverDelete(Base):
         """OFF equivalence: env unset -> today's pruning (done_keep = 16)."""
         self.assertEqual(len(self._finish()), TB.cfg("done_keep"))
 
+    def _ledger(self, n):
+        os.makedirs(TB.DIR, exist_ok=True)
+        for i in range(n):
+            TB._ledger_add("u%04d" % i)
+        return TB._ledger_read()
+
+    def test_control_ledger_keeps_every_uuid(self):
+        """CONTROL (fails on main: the ledger keeps 256 uuids, so a kept done-* file older than that could replay twice)."""
+        os.environ["AKASHIC_BIND_CARRYOVER"] = "1"
+        got = self._ledger(TB.cfg("ledger_keep") + 10)
+        self.assertEqual(len(got), TB.cfg("ledger_keep") + 10)
+        self.assertEqual(got[0], "u0000")
+
+    def test_off_ledger_trims_like_today(self):
+        got = self._ledger(TB.cfg("ledger_keep") + 10)
+        self.assertEqual(len(got), TB.cfg("ledger_keep"))
+
 
 # ---------------------------------------------------------------- persist_owner + server.py hook
 class Owner(Base):
@@ -347,6 +364,43 @@ def _server_fn():
     return (ast.get_source_segment(src, fn[0]) if fn else None), calls
 
 
+def _calls_in(node, name, attr=None):
+    """Calls of `name(...)` (or `attr`.`name`(...)) inside node, NOT descending into nested function definitions."""
+    out, todo = [], [node]
+    while todo:
+        n = todo.pop()
+        for c in ast.iter_child_nodes(n):
+            if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                continue
+            if isinstance(c, ast.Call):
+                f = c.func
+                if (attr is None and getattr(f, "id", None) == name) or \
+                        (attr is not None and isinstance(f, ast.Attribute) and f.attr == name and getattr(f.value, "id", None) == attr):
+                    out.append(c)
+            todo.append(c)
+    return out
+
+
+def _hook_placement():
+    """For each hook call: is it a plain statement whose LATER siblings run shutdown_system(), with no os._exit before it?"""
+    src = open(os.path.join(TREE, "server.py"), "rb").read().decode("utf-8")
+    tree = ast.parse(src)
+    res = {}
+    for parent in ast.walk(tree):
+        for field in ("body", "orelse", "finalbody"):
+            stmts = getattr(parent, field, None)
+            if not isinstance(stmts, list):
+                continue
+            for i, st in enumerate(stmts):
+                if isinstance(st, ast.Expr) and isinstance(st.value, ast.Call) and \
+                        getattr(st.value.func, "id", "") == "_w11_bind_carryover":
+                    reason = st.value.args[0].value
+                    later = any(_calls_in(ast.Module(body=[x], type_ignores=[]), "shutdown_system") for x in stmts[i + 1:])
+                    earlier_exit = any(_calls_in(ast.Module(body=[x], type_ignores=[]), "_exit", "os") for x in stmts[:i])
+                    res[reason] = later and not earlier_exit
+    return res
+
+
 class ServerHook(Base):
     def _run(self):
         code, calls = _server_fn()
@@ -373,6 +427,10 @@ class ServerHook(Base):
         """CONTROL (fails on main: server.py has no hook)."""
         os.environ["AKASHIC_BIND_CARRYOVER"] = "1"
         self.assertEqual(self._run(), ["reboot"])
+
+    def test_control_hooks_run_before_shutdown_system(self):
+        """CONTROL (fails on main: no hooks). Each hook is a plain statement that runs BEFORE shutdown_system() on its route."""
+        self.assertEqual(_hook_placement(), {"reboot": True, "ctrl_c": True})
 
     def test_server_hook_off_when_unset(self):
         code, _ = _server_fn()

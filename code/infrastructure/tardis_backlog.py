@@ -285,7 +285,8 @@ def _ledger_read():
 
 def _ledger_add(u: str) -> None:
     lst = [x for x in _ledger_read() if x != u] + [u]
-    lst = lst[-cfg("ledger_keep"):]
+    if not _carry():                                    # W11: done-* files are kept forever, so is every uuid that guards them
+        lst = lst[-cfg("ledger_keep"):]
     p = _ledger_path()
     tmp = p + ".tmp"
     with open(tmp, "wb") as f:

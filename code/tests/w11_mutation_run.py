@@ -36,6 +36,16 @@ MUTANTS = {
          "        with _OWNER_LOCK:")],
     "M7 verbatim keeps the _tf_ bookkeeping keys": [
         ("infrastructure/tardis_backlog.py", 'if not (isinstance(k, str) and k.startswith("_tf_"))', "")],
+    "M8 ledger trimmed even with carryover ON": [
+        ("infrastructure/tardis_backlog.py", "    if not _carry():                                    # W11: done-*", "    if True:                                    # W11: done-*")],
+    "M9 reboot hook moved after os._exit (unreachable)": [
+        ("server.py", '                _w11_bind_carryover("reboot")   # W11: OFF (AKASHIC_BIND_CARRYOVER unset) = no-op\n', ""),
+        ("server.py", '                    os._exit(0)\n            threading.Thread(target=_do_reboot',
+         '                    os._exit(0)\n                    _w11_bind_carryover("reboot")\n            threading.Thread(target=_do_reboot')],
+    "M10 ctrl_c hook moved after shutdown_system()": [
+        ("server.py", '        _w11_bind_carryover("ctrl_c")   # W11: OFF (AKASHIC_BIND_CARRYOVER unset) = no-op\n', ""),
+        ("server.py", '            SYSTEM.shutdown_fairy.wait_for_completion(timeout=8.0)\n        shutdown_system()\n',
+         '            SYSTEM.shutdown_fairy.wait_for_completion(timeout=8.0)\n        shutdown_system()\n        _w11_bind_carryover("ctrl_c")\n')],
 }
 
 
