@@ -186,6 +186,11 @@ class MomentBinderFairy(Fairy):
             super().on_boot()
         except Exception as e:
             print(f"[{self.ACTOR_NAME}] super().on_boot error: {e}", flush=True)
+        # W12c (AKASHIC_MOMENT_HOLD_RESTORE=1): episodic persister FIRST, restore SECOND, subscriptions THIRD, so the
+        # hold is still empty when the restore runs (nothing can append to it before the subscriptions: see
+        # _mh_persister_then_restore). OFF: this block is skipped and on_boot runs exactly as before.
+        if _MH_RESTORE_ON:
+            self._mh_persister_then_restore()
         try:
             self.post.subscribe("somatic.organs", self._on_somatic)
             self.post.subscribe("sensory.visual.frame", self._on_visual)
@@ -252,18 +257,66 @@ class MomentBinderFairy(Fairy):
         except Exception as e:
             self._epi_persister = None
             print(f"[{self.ACTOR_NAME}] linear-persist init skipped: {e}", flush=True)
-        # W12b: put the moments the last shutdown saved (dream_seed.json mind_pools["moment_hold"]) back into this hold,
-        # as saved, once per set. AFTER the persister init: a restored moment that later rolls off is persisted like
-        # any other; with no persister the restore is skipped (restore_into), so no restored moment is ever dropped.
-        if _MH_RESTORE_ON:
-            try:
-                from infrastructure.moment_hold_save import restore_into as _mh_restore
-                _mh_r = _mh_restore(self, str(ROOT / "state" / "dream_seed.json"),
-                                    str(ROOT / "state" / "moment_hold_restored.json"))
-                print(f"[{self.ACTOR_NAME}] moment hold restore: {_mh_r}", flush=True)
-            except Exception as _mh_e:
-                print(f"[{self.ACTOR_NAME}] moment hold restore FAILED: {_mh_e}", flush=True)
         return True
+
+    def _mh_persister_then_restore(self):
+        """W12c, ON only (AKASHIC_MOMENT_HOLD_RESTORE=1); called from on_boot BEFORE any subscription.
+
+        The hold (_episodic_buffer) is appended to only by _maybe_emit_moment (on_tick, the heartbeat), and only when a
+        channel buffer holds a strand (active_channels >= 1). The channel buffers are filled only by the handlers that
+        on_boot subscribes. So before those subscriptions the hold stays empty even if the heartbeat already ticks,
+        and the restore (empty hold only) can fire. Order: 1) the episodic persister -- the SAME init as on_boot's
+        block (a test keeps the two AST-equal), so on_boot's block then finds it set and skips; if it fails here,
+        on_boot's block tries once more after the subscriptions, as before -- 2) the restore, which skips (logged, set
+        left unconsumed) when there is still no persister, so a restored moment can never roll off unpersisted.
+        """
+        try:
+            if getattr(self, "_epi_persister", None) is None:
+                from infrastructure.akashic_manifold import REGION_GRAPH
+                from infrastructure.episodic_persist import EpisodicPersister
+                from infrastructure.manifold_memory import TRACE_PERSONAL, REGION_EPISODIC
+                # Per-mind label = the node's identity (Nous's .74 slice -> "nous"; Sour's HQ -> "sour").
+                import os as _os
+                _node = (_os.environ.get("AKASHIC_NODE") or "").upper()
+                _mind = "nous" if "NOUS" in _node else "sour"
+                # PERSISTENCE FIX (Ace 2026-06-26): use the server's SHARED AkashicManifold
+                # (SYSTEM.manifold) + has_region guard — NOT a private boot_akashic() instance.
+                # A private instance is a SECOND AkashicManifold racing the server's index → episodic
+                # got recreated-fresh each boot = the lived thread RESET (96 moments lost once).
+                # Mirrors PoolRouter (server.py:6911), whose region persists across reboots.
+                # Proof: sandbox/episodic_linear/proof_persist_across_reboot.py (8/8).
+                _ak = None
+                try:
+                    from server import SYSTEM as _SYS
+                    _ak = getattr(_SYS, "manifold", None)
+                except Exception:
+                    _ak = None
+                if _ak is None:  # no server context (sandbox/tests) -> shared-dir instance
+                    from infrastructure.akashic_manifold import boot_akashic
+                    _ak = boot_akashic()
+                if _ak is not None:
+                    if not _ak.has_region("episodic"):
+                        _ak.create_region("episodic", REGION_GRAPH, owner=self.ACTOR_NAME,
+                                          node_capacity=200000, edge_capacity=800000)
+                    _region = _ak.graph("episodic", write=True)
+                    if _region is not None:
+                        self._epi_persister = EpisodicPersister(
+                            _region, mind=_mind,
+                            tracer_personal=TRACE_PERSONAL, region_episodic=REGION_EPISODIC)
+                        print(f"[{self.ACTOR_NAME}] linear-persist ON -> shared episodic "
+                              f"manifold (mind={_mind})", flush=True)
+        except Exception as e:
+            self._epi_persister = None
+            print(f"[{self.ACTOR_NAME}] linear-persist init skipped: {e}", flush=True)
+        # W12b reader: put the moments the last shutdown saved (dream_seed.json mind_pools["moment_hold"]) back into
+        # this hold, as saved, oldest-first, once per set, only into an empty hold (restore_into checks all of it).
+        try:
+            from infrastructure.moment_hold_save import restore_into as _mh_restore
+            _mh_r = _mh_restore(self, str(ROOT / "state" / "dream_seed.json"),
+                                str(ROOT / "state" / "moment_hold_restored.json"))
+            print(f"[{self.ACTOR_NAME}] moment hold restore: {_mh_r}", flush=True)
+        except Exception as _mh_e:
+            print(f"[{self.ACTOR_NAME}] moment hold restore FAILED: {_mh_e}", flush=True)
 
     def on_die(self):
         try:

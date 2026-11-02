@@ -1,7 +1,9 @@
 """W12: MomentBinder HOLD -> dream seed at shutdown (switch AKASHIC_MOMENT_HOLD_SAVE, OFF unless "1").
 
-Synthetic data in a temp dir only. Never imports server.py or any fairy: the helper module is loaded by file
-path (stdlib-only, no side effects), server.py is read as text and parsed with ast.
+Synthetic data in a temp dir only. Never imports server.py: the helper module is loaded by file path (stdlib-only,
+no side effects), server.py is read as text and parsed with ast. W12c (TestBootOrder) loads MomentBinderFairy's
+fairy.py by file path with its organ template, `server` and `infrastructure.*` replaced by fakes in sys.modules
+(its own top level is stdlib imports, sys.path inserts -- restored after -- and constants); ROOT points at a temp dir.
 
   python code/tests/test_w12_moment_hold.py
 Env overrides (used to run the same tests against main's files and against mutants):
@@ -30,6 +32,8 @@ SERVER_PATH = os.environ.get("W12_SERVER", os.path.join(CODE, "server.py"))
 FAIRY_PATH = os.environ.get("W12_FAIRY", os.path.join(CODE, "fairies", "P30_Cognition", "MomentBinderFairy", "fairy.py"))
 RSW = "AKASHIC_MOMENT_HOLD_RESTORE"
 SW = "AKASHIC_MOMENT_HOLD_SAVE"
+# sha256(ast.unparse(on_boot)) of origin/main's MomentBinderFairy (fairy.py at main, 2026-11-02)
+MAIN_ON_BOOT_SHA = "66a484f2483665907b65ea0413d7942f85b8ca0ec71d0bbd98d12bd36355a2ac"
 
 
 def load():
@@ -471,22 +475,291 @@ class TestFairyWiring(unittest.TestCase):
         self.assertIn("self._episodic_buffer", ast.unparse(on[0]))
 
     def test_control_on_boot_calls_restore(self):
-        with open(FAIRY_PATH, "r", encoding="utf-8") as f:
-            tree = ast.parse(f.read())
-        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MomentBinderFairy")
-        fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "on_boot")
+        # W12c (changed from W12b, where the restore was on_boot's last step): on_boot's ONLY gated step is the call
+        # to _mh_persister_then_restore, right after super().on_boot() and BEFORE the subscriptions; that method runs
+        # the episodic persister init first and the restore second (R2-3: never before the persister).
+        _, fns = _fairy_tree()
+        fn = fns["on_boot"]
         body = fn.body
-        # the last step before `return True`, AFTER the episodic persister init (R2-3)
-        self.assertIsInstance(body[-1], ast.Return)
-        gate = body[-2]
-        self.assertIsInstance(gate, ast.If, "no gated restore block before on_boot's return")
-        self.assertIn("EpisodicPersister", ast.unparse(body[-3]))
-        self.assertEqual(ast.unparse(gate.test), "_MH_RESTORE_ON")
-        src = ast.unparse(gate)
-        self.assertIn("infrastructure.moment_hold_save", src)
-        self.assertIn("restore_into", src)
-        self.assertNotIn("sleep_consolidate", ast.unparse(fn))
+        gates = [i for i, n in enumerate(body) if isinstance(n, ast.If) and ast.unparse(n.test) == "_MH_RESTORE_ON"]
+        self.assertEqual(gates, [1], "one gated step, right after super().on_boot()")
+        gate = body[1]
         self.assertEqual(len(gate.orelse), 0)
+        self.assertEqual([ast.unparse(x) for x in gate.body], ["self._mh_persister_then_restore()"])
+        self.assertIn("self.post.subscribe", ast.unparse(body[2]))
+        self.assertNotIn("restore_into", ast.unparse(fn))
+        m = fns["_mh_persister_then_restore"]
+        steps = [x for x in m.body if not (isinstance(x, ast.Expr) and isinstance(x.value, ast.Constant))]
+        self.assertEqual(len(steps), 2)
+        self.assertIn("EpisodicPersister", ast.unparse(steps[0]))
+        self.assertIn("infrastructure.moment_hold_save", ast.unparse(steps[1]))
+        self.assertIn("restore_into", ast.unparse(steps[1]))
+        self.assertNotIn(".subscribe(", "".join(ast.unparse(x) for x in steps))
+        self.assertNotIn("sleep_consolidate", ast.unparse(m) + ast.unparse(fn))
+
+    def test_early_persister_init_is_on_boots_own(self):
+        """W12c drift guard: the ON-path persister init is AST-equal to on_boot's own block (which then skips)."""
+        _, fns = _fairy_tree()
+        ob = [x for x in fns["on_boot"].body if isinstance(x, ast.Try) and "EpisodicPersister" in ast.unparse(x)]
+        m = [x for x in fns["_mh_persister_then_restore"].body
+             if isinstance(x, ast.Try) and "EpisodicPersister" in ast.unparse(x)]
+        self.assertEqual(len(ob), 1)
+        self.assertEqual(len(m), 1)
+        self.assertEqual(ast.dump(ob[0]), ast.dump(m[0]))
+        self.assertTrue(ast.unparse(ob[0].body[0].test).startswith('getattr(self, \'_epi_persister\', None) is None'))
+
+    def test_off_on_boot_equals_main(self):
+        """W12c: with every `if _MH_RESTORE_ON:` step removed, on_boot is origin/main's on_boot (pinned: sha256 of
+        ast.unparse, the same on Python 3.11-3.13)."""
+        import hashlib
+        _, fns = _fairy_tree()
+        fn = fns["on_boot"]
+        fn.body = [s for s in fn.body if not (isinstance(s, ast.If) and ast.unparse(s.test) == "_MH_RESTORE_ON"
+                                              and not s.orelse)]
+        self.assertEqual(hashlib.sha256(ast.unparse(fn).encode()).hexdigest(), MAIN_ON_BOOT_SHA)
+
+
+# ---- W12c: the reader fires (behavioural; the real on_boot / on_tick / _maybe_emit_moment over fakes) ----------------
+
+SUBSCRIBED = ["somatic.organs", "sensory.visual.frame", "sensory.audio.observation", "sensory.chat.observation",
+              "sourpatches.speak", "inner_voice.stream", "consciousness.thought", "cognition.output",
+              "autonomy.goal", "autonomy.wanting.felt", "affect.state"]
+
+
+class World:
+    """The fakes' shared log + the 'live' events injected while the episodic persister initialises."""
+
+    def __init__(self):
+        self.log = []
+        self.binder = None
+        self.graph_fails = 0          # how many graph() calls raise before one succeeds
+        self.during_init = None       # callable run inside the persister init (the slow part)
+        self.persisted = []
+
+
+def _fakes(world, hold_mod):
+    import types
+
+    class FakePost:
+        def __init__(self):
+            self.subs = {}
+
+        def subscribe(self, topic, handler, name=None):
+            world.log.append("sub:" + topic)
+            self.subs.setdefault(topic, []).append(handler)
+            return True
+
+        def publish(self, topic, payload):
+            for h in list(self.subs.get(topic, [])):
+                h(dict(payload))
+            return True
+
+    class FakeBase:
+        def __init__(self, fabric=None):
+            self.post = FakePost()
+
+        def on_boot(self):
+            world.log.append("super.on_boot")
+            return True
+
+    class FakeRegion:
+        pass
+
+    class FakeAk:
+        def has_region(self, name):
+            return True
+
+        def create_region(self, *a, **k):
+            return True
+
+        def graph(self, name, write=False):
+            world.log.append("graph")
+            if world.during_init is not None:          # a letter + a heartbeat tick land while the persister inits
+                world.during_init()
+            if world.graph_fails > 0:
+                world.graph_fails -= 1
+                raise OSError("synthetic persister init failure")
+            return FakeRegion()
+
+    class FakePersister:
+        def __init__(self, region, mind="nous", tracer_personal=1, region_episodic=2):
+            world.log.append("persister")
+
+        def persist(self, m):
+            world.persisted.append(m)
+
+    def m(name, **kw):
+        x = types.ModuleType(name)
+        x.__dict__.update(kw)
+        return x
+
+    def logged_restore(binder, seed_path, marker_path):
+        world.log.append("restore")
+        r = hold_mod.restore_into(binder, seed_path, marker_path)
+        world.log.append("restore=" + r)
+        return r
+
+    infra = m("infrastructure")
+    infra.__path__ = []
+    fairies = m("fairies")
+    fairies.__path__ = []
+    p00 = m("fairies.P00_Autonomic")
+    p00.__path__ = []
+    return {
+        "fairies": fairies, "fairies.P00_Autonomic": p00,
+        "fairies.P00_Autonomic.organ_template": m("fairies.P00_Autonomic.organ_template", MyFairy=FakeBase),
+        "infrastructure": infra,
+        "infrastructure.akashic_manifold": m("infrastructure.akashic_manifold", REGION_GRAPH=1,
+                                             boot_akashic=lambda: FakeAk()),
+        "infrastructure.episodic_persist": m("infrastructure.episodic_persist", EpisodicPersister=FakePersister),
+        "infrastructure.manifold_memory": m("infrastructure.manifold_memory", TRACE_PERSONAL=1, REGION_EPISODIC=2),
+        "infrastructure.moment_hold_save": m("infrastructure.moment_hold_save", restore_into=logged_restore),
+        "server": m("server", SYSTEM=types.SimpleNamespace(manifold=FakeAk())),
+    }
+
+
+class TestBootOrder(Base):
+    """W12c: with AKASHIC_MOMENT_HOLD_RESTORE=1 on_boot inits the persister, restores, THEN subscribes; OFF = as before."""
+
+    def setUp(self):
+        super().setUp()
+        from pathlib import Path
+        os.makedirs(os.path.join(self.tmp, "state"))
+        self.seed_path = os.path.join(self.tmp, "state", "dream_seed.json")
+        self.marker = os.path.join(self.tmp, "state", "moment_hold_restored.json")
+        with open(self.seed_path, "w", encoding="utf-8") as f:
+            json.dump(SEED, f, indent=2)
+        os.environ[SW] = "1"
+        self.assertTrue(self.mod.hand_off(self.binder, self.seed_path).startswith("saved 60"))
+        os.environ.pop(SW)
+        self.seed_before = self.seed_bytes()
+        self.world = World()
+        self._mods = mock.patch.dict(sys.modules, _fakes(self.world, self.mod))
+        self._mods.start()
+        self._path = list(sys.path)
+        self.Path = Path
+
+    def tearDown(self):
+        self._mods.stop()
+        sys.path[:] = self._path
+        super().tearDown()
+
+    def load_fairy(self, restore_env):
+        """Import fairy.py fresh (the switch is read at import) with RSW set to restore_env (None = unset)."""
+        if restore_env is None:
+            os.environ.pop(RSW, None)
+        else:
+            os.environ[RSW] = restore_env
+        spec = importlib.util.spec_from_file_location("w12c_fairy_under_test", FAIRY_PATH)
+        fm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fm)
+        sys.path[:] = self._path
+        fm.ROOT = self.Path(self.tmp)            # state/dream_seed.json + the marker live in the temp dir
+        return fm
+
+    def boot(self, fm):
+        import io
+        import contextlib
+        b = fm.MomentBinderFairy()
+        b._last_consolidate_ts = 1e18            # keep the 60 s rememberer out of these ticks
+        self.world.binder = b
+        with contextlib.redirect_stdout(io.StringIO()):
+            b.on_boot()
+        return b
+
+    def letter_and_tick(self, text, beat):
+        b = self.world.binder
+        b.post.publish("consciousness.thought", {"text": text, "source": "InnerNarratorFairy"})
+        b.on_tick(beat)                          # the heartbeat may tick at any time (registered before on_boot)
+
+    def arrive_during_init(self):
+        self.world.during_init = lambda: self.letter_and_tick("a live thought during the persister init", 4)
+
+    def test_control_restore_fires_when_a_moment_arrives_during_init(self):
+        """CONTROL: a letter + tick during the (slow) persister init. Tip: subscribed already -> hold non-empty ->
+        restore skips. W12c: not subscribed yet -> hold empty -> all 60 restored; the next live moment lands after."""
+        fm = self.load_fairy("1")
+        self.arrive_during_init()
+        b = self.boot(fm)
+        res = [x for x in self.world.log if x.startswith("restore=")]
+        self.assertEqual(len(res), 1, self.world.log)
+        self.assertTrue(res[0].startswith("restore=restored 60"), res[0])
+        self.assertEqual(list(b._episodic_buffer), self.moments)              # exactly as saved, oldest-first
+        lg = self.world.log
+        self.assertLess(lg.index("persister"), lg.index("restore"))
+        self.assertLess(lg.index("restore"), lg.index("sub:" + SUBSCRIBED[0]))
+        self.assertEqual([x for x in lg if x.startswith("sub:")], ["sub:" + t for t in SUBSCRIBED])
+        import io
+        import contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.letter_and_tick("the first live thought after boot", 8)
+        hold = list(b._episodic_buffer)
+        self.assertEqual(hold[:59], self.moments[1:])                           # the saved ones, in order ...
+        self.assertIn("the first live thought after boot", hold[59]["input_text"])   # ... then the live one
+        self.assertEqual([p.get("ts") for p in self.world.persisted], [self.moments[0]["ts"]])  # oldest -> persisted
+        self.assertEqual(self.seed_bytes(), self.seed_before)                  # nothing written to the seed
+
+    def test_tick_during_init_appends_nothing_before_subscriptions(self):
+        """ON: the heartbeat ticking during the init with no subscription yet cannot append to the hold."""
+        fm = self.load_fairy("1")
+        seen = []
+
+        def during():
+            self.world.binder.on_tick(4)
+            seen.append(len(self.world.binder._episodic_buffer))
+        self.world.during_init = during
+        self.boot(fm)
+        self.assertEqual(seen, [0])
+
+    def _off_order(self, restore_env):
+        fm = self.load_fairy(restore_env)
+        self.arrive_during_init()
+        b = self.boot(fm)
+        lg = self.world.log
+        self.assertEqual(lg[:1 + len(SUBSCRIBED)], ["super.on_boot"] + ["sub:" + t for t in SUBSCRIBED], lg)
+        self.assertEqual(lg[1 + len(SUBSCRIBED):], ["graph", "persister"], lg)   # the tip's/main's order, no restore
+        self.assertNotIn("restore", lg)
+        self.assertEqual(len(b._episodic_buffer), 1)                          # the live moment, as before
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_off_order_unset(self):
+        self._off_order(None)
+
+    def test_off_order_for_every_value_but_1(self):
+        for v in ("0", "", "true", "yes", "on", "1 ", " 1", "01", "2"):
+            with self.subTest(v=v):
+                self.world.log.clear()
+                self._off_order(v)
+
+    def test_persister_fails_no_restore_set_unconsumed(self):
+        """ON, persister init fails: restore skips (logged), nothing marked, the seed untouched; on_boot's own block
+        retries after the subscriptions as before; a later boot with the persister up restores the set."""
+        fm = self.load_fairy("1")
+        self.world.graph_fails = 1
+        b = self.boot(fm)
+        res = [x for x in self.world.log if x.startswith("restore=")]
+        self.assertEqual(len(res), 1)
+        self.assertIn("no episodic persister", res[0])
+        self.assertEqual(len(b._episodic_buffer), 0)
+        self.assertFalse(os.path.exists(self.marker))
+        self.assertEqual(self.seed_bytes(), self.seed_before)
+        lg = self.world.log
+        self.assertEqual(lg.count("graph"), 2)
+        self.assertLess(lg.index("sub:" + SUBSCRIBED[-1]), len(lg) - 1 - lg[::-1].index("graph"))
+        self.assertIsNotNone(b._epi_persister)                                # the retry, as on the tip
+        self.world.log.clear()
+        b2 = self.boot(fm)                                                      # a later boot
+        self.assertEqual(list(b2._episodic_buffer), self.moments)
+
+    def test_once_per_set_one_binder(self):
+        fm = self.load_fairy("1")
+        b1 = self.boot(fm)
+        b2 = self.boot(fm)
+        self.assertEqual(len(b1._episodic_buffer), 60)
+        self.assertEqual(len(b2._episodic_buffer), 0)
+        self.assertTrue(any("already restored" in x for x in self.world.log))
+        with open(self.marker) as f:
+            self.assertEqual(len(json.load(f)["consumed"]), 1)
 
 
 if __name__ == "__main__":
