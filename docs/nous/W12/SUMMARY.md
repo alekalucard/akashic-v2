@@ -1,3 +1,90 @@
+# W12c: the reader fires
+
+Branch `nous/w12-moment-hold`. Previous tip 354f36a; W12c code commit 414327b; no review fixes were needed. This builds option (a) of OPEN 2 below (R3-3), which is now closed. Line numbers below are from the branch.
+
+**Built.** With `AKASHIC_MOMENT_HOLD_RESTORE=1`, `on_boot` now calls `_mh_persister_then_restore()` right after `super().on_boot()` (fairy.py:192-193) and before the first subscription (fairy.py:195) [C].
+- That method runs (1) the episodic persister init, AST-equal to on_boot's own block (fairy.py:273-310 vs :222-259; a test keeps them equal), then (2) `restore_into` (fairy.py:311-319) [C].
+- on_boot's own persister block then sees `_epi_persister` set and does nothing. If the early init failed, the block tries once more after the subscriptions, exactly as on the tip [C, M].
+- The trailing restore block at the end of on_boot (tip fairy.py:255-265) is gone [C].
+- Every restore guarantee is unchanged, because `moment_hold_save.py` is unchanged: empty hold only, once per set, one binder, no persister means skip with the set left unconsumed, nothing deleted, no consolidation, moments exactly as saved [C].
+
+**Why the hold is empty at restore time.** `_episodic_buffer.append` exists at one site only, `_maybe_emit_moment` (fairy.py:753). That runs from `on_tick` (:443) [C].
+- The heartbeat is registered before `on_boot`, in `_wire_infrastructure` (Organ_Template_0_3_0.py:4386, called at :3565, before on_boot at :3586). So `on_tick` can fire during on_boot [C].
+- But `_maybe_emit_moment` returns early when no channel holds a strand (fairy.py:466), and the channel buffers are filled only by the handlers that on_boot subscribes (fairy.py:344-416) [C].
+- `__init__` starts no thread (fairy.py:145-178), and `super().on_boot()` only emits FACET_READY (Organ_Template_0_3_0.py:4267-4270) [C].
+- So nothing can append before the subscriptions. Measured by test: a tick during the init appends 0 [M].
+- There is no second copy: `class MomentBinderFairy` exists only in code/fairies/P30_Cognition/MomentBinderFairy/fairy.py, and nothing under code/P30_Cognition has one [M grep].
+
+**Switch.** `_MH_RESTORE_ON = os.environ.get("AKASHIC_MOMENT_HOLD_RESTORE", "0") == "1"` (fairy.py:47), read once at import [C].
+- OFF means the gated call is skipped, and on_boot runs today's order: super, 11 subscribes, persister [M, for unset, "0", "", "true", "yes", "on", "1 ", " 1", "01", "2"].
+- With the `if _MH_RESTORE_ON:` step removed, on_boot hashes the same as origin/main's and as the tip's: sha256(ast.unparse) = 66a484f2..., identical on Python 3.11, 3.12 and 3.13 [M].
+
+**Cost (moving the persister earlier).** With the switch ON, the 11 subscriptions now wait for the whole persister init [C]. That init does:
+- the imports;
+- `from server import SYSTEM` (fairy.py:239);
+- `create_region` on the first run only, which zero-fills 200k nodes / 800k edges (akashic_manifold.py:631-690; manifold_memory.py:604-619);
+- `graph("episodic", write=True)`, which opens the region (akashic_manifold.py:700-720). That goes to `_open_existing` and then `_rebuild_indices`, a Python loop over all 200,000 node slots plus the edges (manifold_memory.py:638-652, :782, :828).
+- Plus the restore itself: a seed read, sha256, and one fsync'd marker write [C].
+
+The duration on her machine is not measured: probably sub-second to a few seconds [I]. On the tip the same work ran right after the subscriptions, so total boot time is the same. Only the subscribe moment moves later [C/I].
+
+**Letters in that window are not seen by this fairy.** I found no replay or retained message in `TensorFabric.subscribe` (tensor_fabric.py:1075-1100) [C]. I did not check the Rust postal core [I]. See OPEN W12c-1.
+
+**Tests [M]** (`python3 code/tests/test_w12_moment_hold.py`)
+- **Branch:** 36/36. These are the 28 W12a/b tests plus 8 new ones. One W12b test, `test_control_on_boot_calls_restore`, is REWRITTEN for the new placement; the old version asserted "restore is on_boot's last step".
+- **CONTROL** `test_control_restore_fires_when_a_moment_arrives_during_init`: a letter plus a tick land inside the persister init, and the test runs the real on_boot, on_tick and `_maybe_emit_moment` over fakes.
+  - On the tip's fairy.py it FAILS: `restore=skipped: hold already has 1 moment(s)`.
+  - On the branch all 60 are restored exactly as saved. The next live moment lands after them, and the evicted oldest saved moment goes to the persister.
+- **Tip's fairy.py:** 3 F + 1 E. **main's fairy.py:** 7 F + 1 E; the OFF-order tests pass there.
+- **Tip's test file on the new code:** 27/28. The 1 failure is the deliberately changed placement test.
+- **Mutants:** all 8 killed:
+  - restore before the persister;
+  - subscriptions still before the restore;
+  - switch read as `!= "0"`;
+  - the call not gated;
+  - the copied init drifts;
+  - the gate placed before `super().on_boot()`;
+  - the early path skips the persister;
+  - restore into a non-empty hold allowed (moment_hold_save.py).
+- **Line endings:** 0 CR before and after in every touched file.
+
+**Could NOT verify.**
+- A real boot. Not run, by the session rules.
+- How long the persister init really takes on her tree.
+- Whether the Rust postal core replays to late subscribers.
+- Whether `from server import SYSTEM` re-imports server.py when the server runs as `__main__`. This is unchanged by W12c but now sits before the subscriptions [I].
+
+**OPEN (W12c)**
+1. Letters on the 11 topics published between the old and new subscribe moments are missed by the binder when the switch is ON. Those moments simply have fewer strands. Not buffered, by design.
+2. The persister init now exists twice (on_boot and `_mh_persister_then_restore`), so OFF stays AST-equal to main. Drift is caught by `test_early_persister_init_is_on_boots_own`.
+3. If the early init fails, the restore waits for a later boot, even if on_boot's retry succeeds a moment later.
+
+**CHECK THESE 3**
+1. fairy.py:192-193: the only gated step, and it sits before the subscriptions at :195.
+2. fairy.py:262-319: persister init and then restore. Is the copy truly identical to :222-259?
+3. fairy.py:466 with :344-416: is "no subscription, so no strand, so no append" really the only route into the hold?
+
+## REVIEW (W12c)
+Fresh remote session session_01WZwX7m1FuyXR9p83a26CsC. It was given only the diff and the task, and told to REFUTE. Verdict: **NOT REFUTED** (1 round). Nothing needed fixing, so no second round.
+
+| # | finding | severity |
+|---|---|---|
+| 1 | 36/36 on the branch [M] | NONE |
+| 2 | On 354f36a's fairy.py: CONTROL fails, plus 3 more (the persister-failure test, the placement test, and the drift guard, which errors because there is no copy there) [M] | NONE |
+| 3 | On main's fairy.py: 7 F + 1 E, including the CONTROL [M] | NONE |
+| 4 | The tip's test file on the new code: 1/28 fails, `test_control_on_boot_calls_restore`, because the restore moved on purpose (fairy.py:192) [M/C] | NONE |
+| 5 | The switch is OFF for unset, "0", "", "true", " 1", "1 " and "01". Only "1" turns it on (fairy.py:47, moment_hold_save.py:238) [M] | NONE |
+| 6 | OFF: on_boot with the `_MH_RESTORE_ON` blocks stripped is AST-equal to main's and to 354f36a's. The removed tail block was ON-only [M/C] | NONE |
+| 7 | The only append is fairy.py:753. Channel buffers are filled only by the handlers subscribed in on_boot (:344-416). `__init__` starts no thread [C] | NONE |
+| 8 | The heartbeat is wired before on_boot (Organ_Template:4356, :4386), but `_maybe_emit_moment` returns at fairy.py:466 when the buffers are empty. NEEDS_AFFECT/NEEDS_GOALS template subscriptions are off for this fairy (template :4528-4535, :2257/:2259; fairy.py:113-115). wake() calls the same on_boot [C/I] | NONE |
+| 9 | No second copy: there is no MomentBinder under top-level code/P*. working_memory_hub's `_episodic_buffer` is unrelated [C/M] | NONE |
+| 10 | The persister init is duplicated (fairy.py:273-310). The drift guard catches any divergence, but an edit still has to be made in two places [C/I] | MINOR (OPEN W12c-2) |
+| 11 | No replay on subscribe (tensor_fabric.py:231-242). With the switch ON, letters published during the init are lost [C/I] | MINOR (OPEN W12c-1) |
+| 12 | Early init fails, so the restore skips and the set stays unconsumed. on_boot's own block retries the init, but the restore waits for the next boot [C] | NONE (OPEN W12c-3) |
+| 13 | 0 CR, before and after [M] | NONE |
+
+---
+
 # W12: MomentBinder HOLD saved at shutdown (W12a) and put back at boot (W12b)
 
 Branch `nous/w12-moment-hold`. Review branch `nous/w12-review` (docs/nous/W12/REVIEW.md, last commit 3490796).
